@@ -1,0 +1,18 @@
+{
+  "recommendations": [
+    "bradlc.vscode-tailwindcss",
+    "dbaeumer.vscode-eslint",
+    "dotenv.dotenv-vscode",
+    "editorconfig.editorconfig",
+    "esbenp.prettier-vscode",
+    "lokalise.i18n-ally",
+    "ms-playwright.playwright",
+    "nhoizey.gremlins",
+    "pflannery.vscode-versionlens",
+    "shardulm94.trailing-spaces",
+    "sidneys1.gitconfig",
+    "stylelint.vscode-stylelint",
+    "usernamehw.errorlens",
+    "viktorzetterstrom.non-breaking-space-highlighter"
+  ]
+}
