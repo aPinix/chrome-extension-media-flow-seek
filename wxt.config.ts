@@ -20,13 +20,9 @@ export default defineConfig({
       name: 'Media Flow Seek',
       short_name: 'MediaFlowSeek',
       description:
-        'Control (Video, YouTube, Vimeo, etc.) media playback timeline with mouse scroll horizontally, even if the media or browser is not in focus.',
+        'Control (Video, YouTube, Vimeo, ...) media playback with mouse scroll horizontally, even if the media or browser is not in focus.',
       version: '1.0.0',
-      author: 'Pinix',
-      homepage_url: 'https://github.com/your-username/media-flow-seek',
-      support_url: 'https://github.com/your-username/media-flow-seek/issues',
-
-      // Icons
+      author: 'aPinix',
       icons: {
         '16': 'icon/16.png',
         '32': 'icon/32.png',
@@ -34,7 +30,6 @@ export default defineConfig({
         '96': 'icon/96.png',
         '128': 'icon/128.png',
       },
-
       permissions: [
         'activeTab',
         'scripting',

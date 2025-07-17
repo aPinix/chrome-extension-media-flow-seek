@@ -13,18 +13,36 @@ export default defineContentScript({
     let isUserScrubbing = false;
 
     // Horizontal scroll inversion state
-    let invertHorizontalScroll = false;
+    let invertHorizontalScroll = true;
 
-    // Load horizontal scroll inversion setting
-    const loadScrollInversionSetting = () => {
-      chrome.storage.sync.get(['invertHorizontalScroll'], (result) => {
-        invertHorizontalScroll = result.invertHorizontalScroll || false;
-        if (DEBUG)
-          console.log(
-            '📜 Loaded scroll inversion setting:',
-            invertHorizontalScroll
-          );
-      });
+    // Timeline hover state
+    let showTimelineOnHover = false;
+
+    // Timeline height state
+    const timelineDefaultHeight = 6;
+    let timelineHeight = timelineDefaultHeight;
+
+    // Load settings
+    const loadSettings = () => {
+      chrome.storage.sync.get(
+        ['invertHorizontalScroll', 'showTimelineOnHover', 'timelineHeight'],
+        (result) => {
+          invertHorizontalScroll = result.invertHorizontalScroll ?? true;
+          showTimelineOnHover = result.showTimelineOnHover ?? false;
+          timelineHeight = result.timelineHeight ?? timelineDefaultHeight;
+          if (DEBUG) {
+            console.log(
+              '📜 Loaded scroll inversion setting:',
+              invertHorizontalScroll
+            );
+            console.log(
+              '📜 Loaded timeline hover setting:',
+              showTimelineOnHover
+            );
+            console.log('📜 Loaded timeline height setting:', timelineHeight);
+          }
+        }
+      );
     };
 
     // Listen for messages from popup
@@ -36,6 +54,34 @@ export default defineContentScript({
             '📤 Updated scroll inversion from popup:',
             invertHorizontalScroll
           );
+        sendResponse({ success: true });
+      } else if (message.action === 'updateTimelineHover') {
+        showTimelineOnHover = message.showTimelineOnHover;
+        if (DEBUG)
+          console.log(
+            '📤 Updated timeline hover from popup:',
+            showTimelineOnHover
+          );
+        sendResponse({ success: true });
+      } else if (message.action === 'updateTimelineHeight') {
+        timelineHeight = message.timelineHeight;
+        if (DEBUG)
+          console.log('📤 Updated timeline height from popup:', timelineHeight);
+
+        // Update existing timelines if any
+        if (scrubTimeline) {
+          scrubTimeline.style.height = `${timelineHeight}px`;
+          // Update position to account for new height
+          const video = currentVideo;
+          if (video) {
+            const videoRect = video.getBoundingClientRect();
+            const videoContainer = video.parentElement || document.body;
+            const containerRect = videoContainer.getBoundingClientRect();
+            const relativeTop = videoRect.top - containerRect.top;
+            scrubTimeline.style.top = `${relativeTop + video.offsetHeight - timelineHeight}px`;
+          }
+        }
+
         sendResponse({ success: true });
       }
     });
@@ -76,8 +122,8 @@ export default defineContentScript({
       );
     };
 
-    // Initialize scroll inversion
-    loadScrollInversionSetting();
+    // Initialize settings
+    loadSettings();
     addScrollInversionListener();
 
     // Get domain-specific color for progress bar
@@ -107,6 +153,9 @@ export default defineContentScript({
         if (DEBUG) console.log('🗑️ Removing existing overlay');
         scrubOverlay.remove();
       }
+
+      // Track hover state for timeline display
+      let isHovering = false;
 
       // Create overlay div
       scrubOverlay = document.createElement('div');
@@ -150,7 +199,7 @@ export default defineContentScript({
       scrubTimeline = document.createElement('div');
       scrubTimeline.style.cssText = `
         position: absolute;
-        height: 4px;
+        height: ${timelineHeight}px;
         background: rgba(255, 255, 255, 0.3);
         z-index: 1001;
         opacity: 0;
@@ -190,7 +239,7 @@ export default defineContentScript({
 
       // Set initial timeline position (full width bar at bottom)
       scrubTimeline.style.left = `${relativeLeft}px`;
-      scrubTimeline.style.top = `${relativeTop + video.offsetHeight - 4}px`;
+      scrubTimeline.style.top = `${relativeTop + video.offsetHeight - timelineHeight}px`;
       scrubTimeline.style.width = `${video.offsetWidth}px`;
 
       videoContainer.appendChild(scrubOverlay);
@@ -212,7 +261,7 @@ export default defineContentScript({
 
         // Update timeline bar position (full width at bottom)
         scrubTimeline.style.left = `${relativeLeft}px`;
-        scrubTimeline.style.top = `${relativeTop + video.offsetHeight - 4}px`;
+        scrubTimeline.style.top = `${relativeTop + video.offsetHeight - timelineHeight}px`;
         scrubTimeline.style.width = `${video.offsetWidth}px`;
       };
 
@@ -236,10 +285,20 @@ export default defineContentScript({
 
       // Track when user is actively scrubbing
       let scrubTimeout: number | null = null;
+      let needsScrollSync = true;
 
       // Handle scrolling to scrub video
       scrubOverlay.addEventListener('scroll', () => {
         if (!video.duration || !scrubContent || !scrubTimeline) return;
+
+        // Sync scroll position to current video time when user starts scrolling
+        if (needsScrollSync && !isUserScrubbing && scrubOverlay) {
+          const progress = video.currentTime / video.duration;
+          const maxScroll = scrubContent.offsetWidth - scrubOverlay.offsetWidth;
+          const targetScroll = progress * maxScroll;
+          scrubOverlay.scrollLeft = targetScroll;
+          needsScrollSync = false;
+        }
 
         isUserScrubbing = true;
 
@@ -263,14 +322,52 @@ export default defineContentScript({
         // Set flag to false after user stops scrubbing
         scrubTimeout = window.setTimeout(() => {
           isUserScrubbing = false;
+          needsScrollSync = true; // Reset sync flag when user stops scrubbing
 
-          // Hide timeline
+          // Handle timeline visibility after scrubbing ends
           if (scrubTimeline) {
-            scrubTimeline.style.opacity = '0';
+            const shouldShowOnHover = showTimelineOnHover && isHovering;
+            if (!shouldShowOnHover) {
+              scrubTimeline.style.opacity = '0';
+            } else {
+              // If timeline should remain visible, update progress to reflect actual video time
+              const progress = video.currentTime / video.duration;
+              const progressBar =
+                scrubTimeline.firstElementChild as HTMLElement;
+              if (progressBar) {
+                progressBar.style.width = `${progress * 100}%`;
+              }
+            }
           }
         }, 150);
 
         video.currentTime = newTime;
+      });
+
+      // Handle hover events for timeline display
+      scrubOverlay.addEventListener('mouseenter', () => {
+        isHovering = true;
+        if (!showTimelineOnHover || !scrubTimeline || !video.duration) return;
+
+        // Show timeline on hover
+        scrubTimeline.style.opacity = '1';
+
+        // Update progress bar to show current video time (only if not scrubbing)
+        if (!isUserScrubbing) {
+          const progress = video.currentTime / video.duration;
+          const progressBar = scrubTimeline.firstElementChild as HTMLElement;
+          if (progressBar) {
+            progressBar.style.width = `${progress * 100}%`;
+          }
+        }
+      });
+
+      scrubOverlay.addEventListener('mouseleave', () => {
+        isHovering = false;
+        if (!showTimelineOnHover || !scrubTimeline || isUserScrubbing) return;
+
+        // Hide timeline when not hovering (unless user is scrubbing)
+        scrubTimeline.style.opacity = '0';
       });
 
       // Sync scroll position only on actual seek events (not during normal playback)
@@ -288,6 +385,7 @@ export default defineContentScript({
         const targetScroll = progress * maxScroll;
 
         scrubOverlay.scrollLeft = targetScroll;
+        needsScrollSync = true; // Reset sync flag when video is seeked
       });
 
       // Update overlay size on window resize
@@ -296,6 +394,26 @@ export default defineContentScript({
       // Update overlay size when video dimensions change
       const resizeObserver = new ResizeObserver(updateOverlaySize);
       resizeObserver.observe(video);
+
+      // Update timeline progress during hover when video is playing
+      video.addEventListener('timeupdate', () => {
+        if (
+          !showTimelineOnHover ||
+          !scrubTimeline ||
+          isUserScrubbing ||
+          !video.duration
+        )
+          return;
+
+        // Only update if timeline is visible (user is hovering)
+        if (scrubTimeline.style.opacity === '1') {
+          const progress = video.currentTime / video.duration;
+          const progressBar = scrubTimeline.firstElementChild as HTMLElement;
+          if (progressBar) {
+            progressBar.style.width = `${progress * 100}%`;
+          }
+        }
+      });
 
       currentVideo = video;
 

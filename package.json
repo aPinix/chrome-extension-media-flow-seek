@@ -1,6 +1,6 @@
 {
   "name": "media-flow-seek",
-  "description": "Control (Video, YouTube, Vimeo, etc.) media playback timeline with mouse scroll horizontally, even if the media or browser is not in focus.",
+  "description": "Control (Video, YouTube, Vimeo, ...) media playback with mouse scroll horizontally, even if the media or browser is not in focus.",
   "private": true,
   "version": "0.0.0",
   "type": "module",
