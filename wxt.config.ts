@@ -18,10 +18,11 @@ export default defineConfig({
     return {
       manifestVersion: 3,
       name: 'Media Flow Seek',
-      short_name: 'MediaFlowSeek',
+      short_name: 'Media Flow Seek',
+      default_locale: 'en',
       description:
         'Control (Video, YouTube, Vimeo, ...) media playback with mouse scroll horizontally, even if the media or browser is not in focus.',
-      version: '1.0.0',
+      version: '1.0.2',
       author: 'aPinix',
       icons: {
         '16': 'icon/16.png',
@@ -31,12 +32,14 @@ export default defineConfig({
         '128': 'icon/128.png',
       },
       permissions: [
-        'activeTab',
-        'scripting',
+        // 'activeTab',
         'tabs',
         'storage',
+        // 'scripting',
         // 'contextMenus',
+        // 'sidePanel',
       ],
+      host_permissions: ['<all_urls>'],
     };
   },
 });

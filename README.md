@@ -1,12 +1,31 @@
-# 🎬 Media Flow Seek
+<div style="display: flex; align-items: center;">
+  <img src="public/icon/48.png" alt="App Icon" width="48" style="margin-right: 12px;" />
+  <h1 style="margin: 0;">Media Flow Seek</h1>
+</div>
+
+<br />
+
+<img src="repo-images/apinix-media-flow-seek-screenshot-01.png" alt="App Icon" style="width: 100%;" />
 
 > **Control video playback timeline with horizontal mouse scroll - even when the browser isn't in focus!**
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/your-username/media-flow-seek)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![WXT](https://img.shields.io/badge/built%20with-WXT-orange.svg)](https://wxt.dev)
-[![React](https://img.shields.io/badge/React-19-61DAFB.svg)](https://reactjs.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6.svg)](https://www.typescriptlang.org)
+<p align="left">
+  <a href="https://github.com/aPinix/chrome-extension-media-flow-seek">
+    <img src="https://img.shields.io/badge/version-1.0.0-blue.svg" alt="Version" />
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" />
+  </a>
+  <a href="https://wxt.dev">
+    <img src="https://img.shields.io/badge/built%20with-WXT-orange.svg" alt="WXT" />
+  </a>
+  <a href="https://reactjs.org">
+    <img src="https://img.shields.io/badge/React-19-61DAFB.svg" alt="React" />
+  </a>
+  <a href="https://www.typescriptlang.org">
+    <img src="https://img.shields.io/badge/TypeScript-5.8-3178C6.svg" alt="TypeScript" />
+  </a>
+</p>
 
 ## ✨ Features
 
@@ -19,11 +38,16 @@
 ### 🎨 **Smart Visual Feedback**
 
 - **Platform-specific colors** - Progress bars match each platform's brand colors
-  - 🔴 **YouTube**: Red progress bar
-  - 🔵 **Vimeo**: Blue progress bar
-  - 🟣 **Twitch**: Purple progress bar
-  - 🟢 **Hulu**: Green progress bar
-  - 🩷 **TikTok**: Pink progress bar
+  - <span style="display: inline-block; width: 20px; height: 20px; border-radius: 50%; background-color: #ff0000; margin-right: 10px; vertical-align: middle;"></span><span style="font-weight: bold;">YouTube</span>: Red progress bar
+  - <span style="display: inline-block; width: 20px; height: 20px; border-radius: 50%; background-color: #1ab7ea; margin-right: 10px; vertical-align: middle;"></span><span style="font-weight: bold;">Vimeo</span>: Blue progress bar
+  - <span style="display: inline-block; width: 20px; height: 20px; border-radius: 50%; background-color: #9146ff; margin-right: 10px; vertical-align: middle;"></span><span style="font-weight: bold;">Twitch</span>: Purple progress bar
+  - <span style="display: inline-block; width: 20px; height: 20px; border-radius: 50%; background-color: #e50914; margin-right: 10px; vertical-align: middle;"></span><span style="font-weight: bold;">Netflix</span>: Red progress bar
+  - <span style="display: inline-block; width: 20px; height: 20px; border-radius: 50%; background-color: #0066cc; margin-right: 10px; vertical-align: middle;"></span><span style="font-weight: bold;">Dailymotion</span>: Blue progress bar
+  - <span style="display: inline-block; width: 20px; height: 20px; border-radius: 50%; background-color: #1ce783; margin-right: 10px; vertical-align: middle;"></span><span style="font-weight: bold;">Hulu</span>: Green progress bar
+  - <span style="display: inline-block; width: 20px; height: 20px; border-radius: 50%; background-color: #ff0050; margin-right: 10px; vertical-align: middle;"></span><span style="font-weight: bold;">TikTok</span>: Pink progress bar
+  - <span style="display: inline-block; width: 20px; height: 20px; border-radius: 50%; background-color: #e4405f; margin-right: 10px; vertical-align: middle;"></span><span style="font-weight: bold;">Instagram</span>: Pink progress bar
+  - <span style="display: inline-block; width: 20px; height: 20px; border-radius: 50%; background-color: #1877f2; margin-right: 10px; vertical-align: middle;"></span><span style="font-weight: bold;">Facebook</span>: Blue progress bar
+  - <span style="display: inline-block; width: 20px; height: 20px; border-radius: 50%; background-color: #1da1f2; margin-right: 10px; vertical-align: middle;"></span><span style="font-weight: bold;">X (Twitter)</span>: Blue progress bar
 - **Smooth timeline overlay** - Visual scrub bar appears during seeking
 - **Responsive design** - Adapts to any video size and position
 
@@ -43,15 +67,17 @@
 
 ### Chrome Web Store (Recommended)
 
-_Coming Soon - Extension will be available on Chrome Web Store_
+[![Chrome Web Store](https://img.shields.io/chrome-web-store/v/phhigkiikolopghmahejjlojejpocagg.svg)](https://chromewebstore.google.com/detail/media-flow-seek/phhigkiikolopghmahejjlojejpocagg)
+
+**[Install from Chrome Web Store](https://chromewebstore.google.com/detail/media-flow-seek/phhigkiikolopghmahejjlojejpocagg)**
 
 ### Manual Installation (Developer Mode)
 
 1. **Download the extension**:
 
    ```bash
-   git clone https://github.com/your-username/media-flow-seek.git
-   cd media-flow-seek
+   git clone https://github.com/aPinix/chrome-extension-media-flow-seek.git
+   cd chrome-extension-media-flow-seek
    ```
 
 2. **Install dependencies**:
@@ -119,8 +145,8 @@ _Coming Soon - Extension will be available on Chrome Web Store_
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/media-flow-seek.git
-cd media-flow-seek
+git clone https://github.com/aPinix/chrome-extension-media-flow-seek.git
+cd chrome-extension-media-flow-seek
 
 # Install dependencies
 bun install
@@ -228,6 +254,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **⭐ Star this repository if you find it helpful!**
 
-[Report Bug](https://github.com/your-username/media-flow-seek/issues) · [Request Feature](https://github.com/your-username/media-flow-seek/issues) · [Contribute](https://github.com/your-username/media-flow-seek/pulls)
+[Report Bug](https://github.com/aPinix/chrome-extension-media-flow-seek/issues) · [Request Feature](https://github.com/aPinix/chrome-extension-media-flow-seek/issues) · [Contribute](https://github.com/aPinix/chrome-extension-media-flow-seek/pulls)
 
 </div>

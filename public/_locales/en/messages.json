@@ -1,0 +1,8 @@
+{
+  "extName": {
+    "message": "Media Flow Seek"
+  },
+  "extDescription": {
+    "message": "Control (Video, YouTube, Vimeo, ...) media playback with mouse scroll horizontally, even if the media or browser is not in focus."
+  }
+}

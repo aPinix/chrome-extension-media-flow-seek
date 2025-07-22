@@ -6,14 +6,20 @@ export default defineContentScript({
     // Debug flag to control logging
     const DEBUG = false;
 
+    // Hide scrollbars in production
+    const HIDE_SCROLLBARS = true;
+
     let currentVideo: HTMLVideoElement | null = null;
     let scrubOverlay: HTMLDivElement | null = null;
-    let scrubContent: HTMLDivElement | null = null;
+    let scrubOverlayScrollContent: HTMLDivElement | null = null;
     let scrubTimeline: HTMLDivElement | null = null;
     let isUserScrubbing = false;
 
+    // Extension enabled state
+    let isEnabled = true;
+
     // Horizontal scroll inversion state
-    let invertHorizontalScroll = true;
+    let invertHorizontalScroll = false;
 
     // Timeline hover state
     let showTimelineOnHover = false;
@@ -22,15 +28,45 @@ export default defineContentScript({
     const timelineDefaultHeight = 6;
     let timelineHeight = timelineDefaultHeight;
 
+    // Blacklisted domains
+    let blacklistedDomains = '';
+
+    // Check if current domain is blacklisted
+    const isCurrentDomainBlacklisted = (): boolean => {
+      if (!blacklistedDomains.trim()) return false;
+
+      const currentHostname = window.location.hostname.toLowerCase();
+      const domains = blacklistedDomains
+        .split('\n')
+        .map((domain) => domain.trim().toLowerCase())
+        .filter((domain) => domain.length > 0);
+
+      return domains.some((domain) => currentHostname.includes(domain));
+    };
+
+    // Check if extension should run
+    const shouldRun = (): boolean => {
+      return isEnabled && !isCurrentDomainBlacklisted();
+    };
+
     // Load settings
     const loadSettings = () => {
       chrome.storage.sync.get(
-        ['invertHorizontalScroll', 'showTimelineOnHover', 'timelineHeight'],
+        [
+          'isEnabled',
+          'invertHorizontalScroll',
+          'showTimelineOnHover',
+          'timelineHeight',
+          'blacklistedDomains',
+        ],
         (result) => {
-          invertHorizontalScroll = result.invertHorizontalScroll ?? true;
+          isEnabled = result.isEnabled ?? true;
+          invertHorizontalScroll = result.invertHorizontalScroll ?? false;
           showTimelineOnHover = result.showTimelineOnHover ?? false;
           timelineHeight = result.timelineHeight ?? timelineDefaultHeight;
+          blacklistedDomains = result.blacklistedDomains ?? '';
           if (DEBUG) {
+            console.log('📜 Loaded extension enabled setting:', isEnabled);
             console.log(
               '📜 Loaded scroll inversion setting:',
               invertHorizontalScroll
@@ -40,6 +76,7 @@ export default defineContentScript({
               showTimelineOnHover
             );
             console.log('📜 Loaded timeline height setting:', timelineHeight);
+            console.log('📜 Loaded blacklisted domains:', blacklistedDomains);
           }
         }
       );
@@ -47,7 +84,30 @@ export default defineContentScript({
 
     // Listen for messages from popup
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-      if (message.action === 'updateScrollInversion') {
+      if (message.action === 'updateEnabled') {
+        isEnabled = message.isEnabled;
+        if (DEBUG)
+          console.log('📤 Updated extension enabled from popup:', isEnabled);
+
+        if (!isEnabled) {
+          // Remove existing overlays when disabled
+          if (DEBUG) console.log('🚫 Extension disabled, removing overlays');
+          const existingOverlays = document.querySelectorAll('.scrub-wrapper');
+          existingOverlays.forEach((overlay) => overlay.remove());
+
+          // Remove scrub-enabled attributes
+          const videos = document.querySelectorAll('video[data-scrub-enabled]');
+          videos.forEach((video) =>
+            video.removeAttribute('data-scrub-enabled')
+          );
+        } else {
+          // Extension is enabled, check for videos again
+          if (DEBUG) console.log('✅ Extension enabled, checking for videos');
+          setTimeout(() => checkForVideos(), 100);
+        }
+
+        sendResponse({ success: true });
+      } else if (message.action === 'updateScrollInversion') {
         invertHorizontalScroll = message.invertHorizontalScroll;
         if (DEBUG)
           console.log(
@@ -83,48 +143,42 @@ export default defineContentScript({
         }
 
         sendResponse({ success: true });
+      } else if (message.action === 'updateBlacklistedDomains') {
+        blacklistedDomains = message.blacklistedDomains;
+        if (DEBUG)
+          console.log(
+            '📤 Updated blacklisted domains from popup:',
+            blacklistedDomains
+          );
+
+        // If current domain is now blacklisted, remove overlays
+        if (isCurrentDomainBlacklisted()) {
+          if (DEBUG)
+            console.log('🚫 Current domain is blacklisted, removing overlays');
+          // Remove existing overlays
+          const existingOverlays = document.querySelectorAll('.scrub-wrapper');
+          existingOverlays.forEach((overlay) => overlay.remove());
+
+          // Remove scrub-enabled attributes
+          const videos = document.querySelectorAll('video[data-scrub-enabled]');
+          videos.forEach((video) =>
+            video.removeAttribute('data-scrub-enabled')
+          );
+        } else {
+          // Domain is no longer blacklisted, check for videos again
+          if (DEBUG)
+            console.log(
+              '✅ Current domain is no longer blacklisted, checking for videos'
+            );
+          setTimeout(() => checkForVideos(), 100);
+        }
+
+        sendResponse({ success: true });
       }
     });
 
-    // Add horizontal scroll inversion logic
-    const addScrollInversionListener = () => {
-      document.addEventListener(
-        'wheel',
-        (e) => {
-          if (!invertHorizontalScroll) return;
-
-          // Only intercept horizontal scroll events
-          if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-            e.preventDefault();
-
-            // Invert the horizontal scroll direction
-            const invertedDeltaX = -e.deltaX;
-
-            // Find the scrollable element
-            let target = e.target as Element;
-            while (target && target !== document.body) {
-              const style = window.getComputedStyle(target);
-              const overflowX = style.overflowX;
-
-              if (overflowX === 'auto' || overflowX === 'scroll') {
-                // Apply inverted scroll
-                target.scrollLeft += invertedDeltaX;
-                return;
-              }
-              target = target.parentElement!;
-            }
-
-            // If no scrollable parent found, scroll the window
-            window.scrollBy(invertedDeltaX, 0);
-          }
-        },
-        { passive: false }
-      );
-    };
-
     // Initialize settings
     loadSettings();
-    addScrollInversionListener();
 
     // Get domain-specific color for progress bar
     const getProgressColor = (): string => {
@@ -132,17 +186,38 @@ export default defineContentScript({
 
       if (hostname.includes('youtube.com')) return '#ff0000'; // YouTube red
       if (hostname.includes('vimeo.com')) return '#1ab7ea'; // Vimeo blue
-      if (hostname.includes('twitch.tv')) return '#9146ff'; // Twitch purple
-      if (hostname.includes('netflix.com')) return '#e50914'; // Netflix red
       if (hostname.includes('dailymotion.com')) return '#0066cc'; // Dailymotion blue
-      if (hostname.includes('hulu.com')) return '#1ce783'; // Hulu green
+      if (hostname.includes('twitch.tv')) return '#9146ff'; // Twitch purple
       if (hostname.includes('tiktok.com')) return '#ff0050'; // TikTok pink
       if (hostname.includes('instagram.com')) return '#e4405f'; // Instagram pink
       if (hostname.includes('facebook.com')) return '#1877f2'; // Facebook blue
-      if (hostname.includes('twitter.com') || hostname.includes('x.com'))
+      // if (hostname.includes('netflix.com')) return '#e50914'; // Netflix red
+      // if (hostname.includes('hulu.com')) return '#1ce783'; // Hulu green
+      if (hostname.includes('x.com') || hostname.includes('twitter.com'))
         return '#1da1f2'; // Twitter blue
 
-      return 'rgba(255, 255, 255, 0.8)'; // Default white with 80% opacity
+      return 'rgb(255 255 255 / 0.8)'; // Default white with 80% opacity
+    };
+
+    const getDebugColorBackground = () => {
+      return DEBUG
+        ? `
+        background-color: rgb(from ${getProgressColor()} r g b / 0.1);
+      `
+        : '';
+    };
+
+    const getDebugImageBackground = () => {
+      return DEBUG
+        ? `
+        background-size: 16px 16px;
+        background-image: repeating-linear-gradient(
+          315deg,
+          rgb(from ${getProgressColor()} r g b / 0.3) 0 1px,
+          #0000 0 50%
+        );
+      `
+        : '';
     };
 
     const createScrubOverlay = (video: HTMLVideoElement) => {
@@ -160,62 +235,74 @@ export default defineContentScript({
       // Create overlay div
       scrubOverlay = document.createElement('div');
       scrubOverlay.style.cssText = `
+        width: 100%;
+        height: 100%;
         position: absolute;
-        overflow-x: auto;
+        left: 0px;
+        top: 0px;
+        overflow-x: scroll;
         overflow-y: hidden;
-        background: rgba(0, 0, 0, 0);
-        // box-shadow: inset 0 0 0 5px red;
-        z-index: 1000;
+        border-radius: inherit;
+        background-color: rgb(0 0 0 / 0);
         pointer-events: auto;
-        scrollbar-width: none;
-        -ms-overflow-style: none;
+        ${getDebugColorBackground()}
+        ${HIDE_SCROLLBARS ? 'scrollbar-width: none; -ms-overflow-style: none;' : ''}
       `;
-
-      // Hide scrollbar for WebKit browsers
-      scrubOverlay.style.setProperty('scrollbar-width', 'none');
-      scrubOverlay.style.setProperty('-ms-overflow-style', 'none');
 
       // Add WebKit scrollbar hiding styles
       const style = document.createElement('style');
-      style.textContent = `
-        .scrub-overlay::-webkit-scrollbar {
-          display: none;
-        }
-      `;
+      if (HIDE_SCROLLBARS) {
+        style.textContent = `
+          .scrub-overlay::-webkit-scrollbar {
+            display: none;
+          }
+        `;
+      }
       document.head.appendChild(style);
       scrubOverlay.classList.add('scrub-overlay');
 
+      // Add unique identifier for this video's overlay
+      const videoId = `video-${Array.from(document.querySelectorAll('video')).indexOf(video)}-${video.src || video.currentSrc || 'unknown'}`;
+      scrubOverlay.setAttribute('data-video-id', videoId);
+
       // Create content div that represents video length
-      scrubContent = document.createElement('div');
-      scrubContent.style.cssText = `
+      scrubOverlayScrollContent = document.createElement('div');
+      scrubOverlayScrollContent.style.cssText = `
         height: 100%;
-        background: rgba(0, 0, 0, 0);
         min-width: 100%;
+        background-color: rgb(0 0 0 / 0);
+        ${getDebugImageBackground()}
       `;
 
-      scrubOverlay.appendChild(scrubContent);
+      scrubOverlay.appendChild(scrubOverlayScrollContent);
+      scrubOverlayScrollContent.classList.add('scrub-overlay-scroll-content');
 
       // Create timeline bar that appears during scrubbing
       scrubTimeline = document.createElement('div');
       scrubTimeline.style.cssText = `
-        position: absolute;
+        width: 100%;
         height: ${timelineHeight}px;
-        background: rgba(255, 255, 255, 0.3);
-        z-index: 1001;
+        position: absolute;
+        left: 0px;
+        top: calc(100% - ${timelineHeight}px);
+        background: rgb(255 255 255 / 0.3);
         opacity: 0;
         transition: opacity 0.3s ease;
       `;
 
       // Create progress indicator within timeline
-      const progressIndicator = document.createElement('div');
-      progressIndicator.style.cssText = `
-        height: 100%;
-        background: ${getProgressColor()};
+      const scrubTimelineProgressIndicator = document.createElement('div');
+      scrubTimelineProgressIndicator.style.cssText = `
         width: 0%;
-        transition: width 0.1s ease;
+        height: 100%;
+        background-color: ${getProgressColor()};
       `;
 
-      scrubTimeline.appendChild(progressIndicator);
+      scrubTimeline.appendChild(scrubTimelineProgressIndicator);
+      scrubTimeline.classList.add('scrub-timeline');
+      scrubTimelineProgressIndicator.classList.add(
+        'scrub-timeline-progress-indicator'
+      );
 
       // Position overlay over video with exact video dimensions
       const videoRect = video.getBoundingClientRect();
@@ -231,49 +318,65 @@ export default defineContentScript({
       const relativeTop = videoRect.top - containerRect.top;
       const relativeLeft = videoRect.left - containerRect.left;
 
-      // Set overlay to exact video size and position
-      scrubOverlay.style.width = `${video.offsetWidth}px`;
-      scrubOverlay.style.height = `${video.offsetHeight}px`;
-      scrubOverlay.style.top = `${relativeTop}px`;
-      scrubOverlay.style.left = `${relativeLeft}px`;
+      // Remove existing scrub wrapper if it exists
+      const existingScrubWrapper =
+        videoContainer.querySelector('.scrub-wrapper');
+      if (existingScrubWrapper) {
+        existingScrubWrapper.remove();
+      }
 
-      // Set initial timeline position (full width bar at bottom)
-      scrubTimeline.style.left = `${relativeLeft}px`;
-      scrubTimeline.style.top = `${relativeTop + video.offsetHeight - timelineHeight}px`;
-      scrubTimeline.style.width = `${video.offsetWidth}px`;
+      // Create scrub wrapper div that matches video size and position
+      const scrubWrapper = document.createElement('div');
+      scrubWrapper.style.cssText = `
+        position: absolute;
+        top: ${relativeTop}px;
+        left: ${relativeLeft}px;
+        width: ${video.offsetWidth}px;
+        height: ${video.offsetHeight}px;
+        pointer-events: none;
+      `;
+      scrubWrapper.classList.add('scrub-wrapper');
 
-      videoContainer.appendChild(scrubOverlay);
-      videoContainer.appendChild(scrubTimeline);
+      // Add all scrub elements to wrapper
+      scrubWrapper.appendChild(scrubOverlay);
+      scrubWrapper.appendChild(scrubTimeline);
 
-      // Function to update overlay size and position
+      // Add wrapper to video container
+      videoContainer.appendChild(scrubWrapper);
+
+      // Function to update wrapper size and position to match video
       const updateOverlaySize = () => {
-        if (!scrubOverlay || !video || !scrubTimeline) return;
+        const wrapper = videoContainer.querySelector(
+          '.scrub-wrapper'
+        ) as HTMLElement;
+        if (!wrapper || !video || !scrubOverlay || !scrubTimeline) return;
 
         const videoRect = video.getBoundingClientRect();
         const containerRect = videoContainer.getBoundingClientRect();
         const relativeTop = videoRect.top - containerRect.top;
         const relativeLeft = videoRect.left - containerRect.left;
 
-        scrubOverlay.style.width = `${video.offsetWidth}px`;
-        scrubOverlay.style.height = `${video.offsetHeight}px`;
-        scrubOverlay.style.top = `${relativeTop}px`;
-        scrubOverlay.style.left = `${relativeLeft}px`;
-
-        // Update timeline bar position (full width at bottom)
-        scrubTimeline.style.left = `${relativeLeft}px`;
-        scrubTimeline.style.top = `${relativeTop + video.offsetHeight - timelineHeight}px`;
-        scrubTimeline.style.width = `${video.offsetWidth}px`;
+        // Update only the wrapper to match video size and position
+        wrapper.style.top = `${relativeTop}px`;
+        wrapper.style.left = `${relativeLeft}px`;
+        wrapper.style.width = `${video.offsetWidth}px`;
+        wrapper.style.height = `${video.offsetHeight}px`;
       };
 
       // Update content width based on video duration
       const updateContentWidth = () => {
-        if (video.duration && scrubContent && scrubOverlay) {
+        if (video.duration && scrubOverlayScrollContent && scrubOverlay) {
           // Make content width proportional to video duration
           // Base width multiplied by duration in minutes
           const baseWidth = video.offsetWidth;
           const durationMinutes = video.duration / 60;
           const contentWidth = Math.max(baseWidth, baseWidth * durationMinutes);
-          scrubContent.style.width = `${contentWidth}px`;
+
+          // Ensure content is always at least 2x the overlay width for scrollability
+          const minScrollableWidth = baseWidth * 3;
+          const finalWidth = Math.max(contentWidth, minScrollableWidth);
+
+          scrubOverlayScrollContent.style.width = `${finalWidth}px`;
         }
       };
 
@@ -289,13 +392,18 @@ export default defineContentScript({
 
       // Handle scrolling to scrub video
       scrubOverlay.addEventListener('scroll', () => {
-        if (!video.duration || !scrubContent || !scrubTimeline) return;
+        if (!video.duration || !scrubOverlayScrollContent || !scrubTimeline)
+          return;
 
         // Sync scroll position to current video time when user starts scrolling
         if (needsScrollSync && !isUserScrubbing && scrubOverlay) {
           const progress = video.currentTime / video.duration;
-          const maxScroll = scrubContent.offsetWidth - scrubOverlay.offsetWidth;
-          const targetScroll = progress * maxScroll;
+          const maxScroll =
+            scrubOverlayScrollContent.offsetWidth - scrubOverlay.offsetWidth;
+          // Apply inversion when setting scroll position
+          const targetScroll = invertHorizontalScroll
+            ? progress * maxScroll
+            : (1 - progress) * maxScroll;
           scrubOverlay.scrollLeft = targetScroll;
           needsScrollSync = false;
         }
@@ -303,8 +411,15 @@ export default defineContentScript({
         isUserScrubbing = true;
 
         const scrollLeft = scrubOverlay!.scrollLeft;
-        const maxScroll = scrubContent.offsetWidth - scrubOverlay!.offsetWidth;
-        const scrollProgress = maxScroll > 0 ? scrollLeft / maxScroll : 0;
+        const maxScroll =
+          scrubOverlayScrollContent.offsetWidth - scrubOverlay!.offsetWidth;
+        let scrollProgress = maxScroll > 0 ? scrollLeft / maxScroll : 0;
+
+        // Apply inversion to scroll progress based on setting
+        if (!invertHorizontalScroll) {
+          scrollProgress = 1 - scrollProgress;
+        }
+
         const newTime = scrollProgress * video.duration;
 
         // Show timeline bar and update progress
@@ -374,15 +489,19 @@ export default defineContentScript({
       video.addEventListener('seeked', () => {
         if (
           !video.duration ||
-          !scrubContent ||
+          !scrubOverlayScrollContent ||
           !scrubOverlay ||
           isUserScrubbing
         )
           return;
 
         const progress = video.currentTime / video.duration;
-        const maxScroll = scrubContent.offsetWidth - scrubOverlay.offsetWidth;
-        const targetScroll = progress * maxScroll;
+        const maxScroll =
+          scrubOverlayScrollContent.offsetWidth - scrubOverlay.offsetWidth;
+        // Apply inversion when setting scroll position
+        const targetScroll = invertHorizontalScroll
+          ? progress * maxScroll
+          : (1 - progress) * maxScroll;
 
         scrubOverlay.scrollLeft = targetScroll;
         needsScrollSync = true; // Reset sync flag when video is seeked
@@ -425,6 +544,15 @@ export default defineContentScript({
       if (DEBUG) console.log('📍 Current URL:', window.location.href);
       if (DEBUG) console.log('📍 Page title:', document.title);
 
+      // Check if extension should run
+      if (!shouldRun()) {
+        if (DEBUG)
+          console.log(
+            '🚫 Extension is disabled or current domain is blacklisted, skipping video check.'
+          );
+        return;
+      }
+
       // Check in main document
       let videos = Array.from(document.querySelectorAll('video'));
 
@@ -448,6 +576,7 @@ export default defineContentScript({
             offsetWidth: video.offsetWidth,
             offsetHeight: video.offsetHeight,
             parentElement: video.parentElement?.tagName,
+            hasAttribute: video.hasAttribute('data-scrub-enabled'),
           });
         });
       }
@@ -488,17 +617,80 @@ export default defineContentScript({
 
       if (videos.length > 0) {
         videos.forEach((video, index) => {
-          if (!video.hasAttribute('data-scrub-enabled')) {
+          try {
+            // Check if video is visible and has dimensions
+            const isVisible = video.offsetWidth > 0 && video.offsetHeight > 0;
+            const hasAttribute = video.hasAttribute('data-scrub-enabled');
+
+            if (DEBUG) {
+              console.log(`📺 Video ${index + 1} analysis:`, {
+                isVisible,
+                hasAttribute,
+                offsetWidth: video.offsetWidth,
+                offsetHeight: video.offsetHeight,
+                readyState: video.readyState,
+              });
+            }
+
+            // Always try to create overlay if video is visible, even if attribute exists
+            if (isVisible) {
+              if (!hasAttribute) {
+                if (DEBUG)
+                  console.log(
+                    `✅ Setting up scrub overlay for video ${index + 1}:`,
+                    video
+                  );
+                createScrubOverlay(video as HTMLVideoElement);
+                video.setAttribute('data-scrub-enabled', 'true');
+              } else {
+                // Force recreation if overlay doesn't exist but attribute is set
+                const videoId = `video-${index}-${video.src || video.currentSrc || 'unknown'}`;
+                const existingOverlay = document.querySelector(
+                  `[data-video-id="${videoId}"]`
+                );
+
+                if (!existingOverlay) {
+                  if (DEBUG)
+                    console.log(
+                      `🔄 Recreating missing overlay for video ${index + 1}:`,
+                      video
+                    );
+                  // Remove attribute and recreate
+                  video.removeAttribute('data-scrub-enabled');
+                  createScrubOverlay(video as HTMLVideoElement);
+                  video.setAttribute('data-scrub-enabled', 'true');
+                } else {
+                  if (DEBUG)
+                    console.log(
+                      `⏭️ Video ${index + 1} already has scrub overlay`
+                    );
+                }
+              }
+            } else {
+              if (DEBUG)
+                console.log(
+                  `⚠️ Video ${index + 1} not visible, skipping overlay creation`
+                );
+
+              // Try again later for invisible videos
+              setTimeout(() => {
+                if (
+                  video.offsetWidth > 0 &&
+                  video.offsetHeight > 0 &&
+                  !video.hasAttribute('data-scrub-enabled')
+                ) {
+                  if (DEBUG)
+                    console.log(
+                      `🔄 Retrying overlay creation for previously invisible video ${index + 1}`
+                    );
+                  createScrubOverlay(video as HTMLVideoElement);
+                  video.setAttribute('data-scrub-enabled', 'true');
+                }
+              }, 1000);
+            }
+          } catch (error) {
             if (DEBUG)
-              console.log(
-                `✅ Setting up scrub overlay for video ${index + 1}:`,
-                video
-              );
-            createScrubOverlay(video as HTMLVideoElement);
-            video.setAttribute('data-scrub-enabled', 'true');
-          } else {
-            if (DEBUG)
-              console.log(`⏭️ Video ${index + 1} already has scrub overlay`);
+              console.error(`❌ Error processing video ${index + 1}:`, error);
           }
         });
       } else {

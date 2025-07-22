@@ -1,0 +1,8 @@
+{
+  "extName": {
+    "message": "Media Flow Seek"
+  },
+  "extDescription": {
+    "message": "Controle a reprodução de mídia (Vídeo, YouTube, Vimeo, ...) com rolagem horizontal do mouse, mesmo que a mídia ou o navegador não estejam em foco."
+  }
+}

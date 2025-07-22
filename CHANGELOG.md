@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.2] - 2025-01-22
+
+### ✨ New Features
+
+- **Enable/Disable Extension**: Toggle to completely enable or disable the extension functionality
+- **Blacklisted Domains**: Ability to add domains where the extension should not run
+
+### 🐛 Bug Fixes
+
+- **Browser History Navigation**: Fixed horizontal scroll interfering with browser back/forward navigation
+- **Scroll Event Conflicts**: Resolved conflicts between media seeking and page navigation
+- **Performance Optimizations**: Improved event handling efficiency for better responsiveness
+
+---
+
 ## [1.0.1] - 2025-07-17
 
 ### ✨ New Features
