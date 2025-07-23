@@ -6,9 +6,6 @@ export default defineContentScript({
     // Debug flag to control logging
     const DEBUG = false;
 
-    // Hide scrollbars in production
-    const HIDE_SCROLLBARS = true;
-
     let currentVideo: HTMLVideoElement | null = null;
     let scrubOverlay: HTMLDivElement | null = null;
     let scrubOverlayScrollContent: HTMLDivElement | null = null;
@@ -28,25 +25,82 @@ export default defineContentScript({
     const timelineDefaultHeight = 6;
     let timelineHeight = timelineDefaultHeight;
 
-    // Blacklisted domains
-    let blacklistedDomains = '';
+    // Domain rules with whitelist/blacklist/wildcard support
+    let domainRules = [
+      { domain: '*', type: 'blacklist', enabled: true },
+      { domain: 'youtube.com', type: 'whitelist', enabled: true },
+      { domain: 'vimeo.com', type: 'whitelist', enabled: false },
+      { domain: 'dailymotion.com', type: 'whitelist', enabled: false },
+      { domain: 'twitch.tv', type: 'whitelist', enabled: false },
+      { domain: 'tiktok.com', type: 'whitelist', enabled: false },
+      { domain: 'instagram.com', type: 'whitelist', enabled: false },
+      { domain: 'facebook.com', type: 'whitelist', enabled: false },
+      { domain: 'x.com', type: 'whitelist', enabled: false },
+    ];
 
-    // Check if current domain is blacklisted
-    const isCurrentDomainBlacklisted = (): boolean => {
-      if (!blacklistedDomains.trim()) return false;
+    // Check if current domain should run the extension
+    const shouldRun = (): boolean => {
+      if (!isEnabled) return false;
 
       const currentHostname = window.location.hostname.toLowerCase();
-      const domains = blacklistedDomains
-        .split('\n')
-        .map((domain) => domain.trim().toLowerCase())
-        .filter((domain) => domain.length > 0);
+      let shouldRunDomain = false;
 
-      return domains.some((domain) => currentHostname.includes(domain));
+      // Filter enabled rules, but always include global rule
+      const enabledRules = domainRules.filter(
+        (rule) => rule.domain === '*' || rule.enabled
+      );
+
+      // Sort by specificity (specific domains first, wildcard last)
+      const sortedRules = [...enabledRules].sort((a, b) => {
+        if (a.domain === '*') return 1;
+        if (b.domain === '*') return -1;
+        return 0;
+      });
+
+      // Check rules in order of specificity
+      for (const rule of sortedRules) {
+        if (rule.domain === '*') {
+          // Wildcard rule applies to all domains
+          shouldRunDomain = rule.type === 'whitelist';
+        } else if (currentHostname.includes(rule.domain.toLowerCase())) {
+          // Specific domain rule takes precedence
+          shouldRunDomain = rule.type === 'whitelist';
+          break;
+        }
+      }
+
+      return shouldRunDomain;
     };
 
-    // Check if extension should run
-    const shouldRun = (): boolean => {
-      return isEnabled && !isCurrentDomainBlacklisted();
+    // Default domain rules
+    const getDefaultDomainRules = () => [
+      { domain: '*', type: 'blacklist', enabled: true },
+      { domain: 'youtube.com', type: 'whitelist', enabled: true },
+      { domain: 'vimeo.com', type: 'whitelist', enabled: false },
+      { domain: 'dailymotion.com', type: 'whitelist', enabled: false },
+      { domain: 'twitch.tv', type: 'whitelist', enabled: false },
+      { domain: 'tiktok.com', type: 'whitelist', enabled: false },
+      { domain: 'instagram.com', type: 'whitelist', enabled: false },
+      { domain: 'facebook.com', type: 'whitelist', enabled: false },
+      { domain: 'x.com', type: 'whitelist', enabled: false },
+    ];
+
+    // Merge existing rules with new defaults
+    const mergeDomainRules = (existingRules: any[]) => {
+      const defaults = getDefaultDomainRules();
+      const merged = [...existingRules];
+
+      // Add any missing default domains
+      defaults.forEach((defaultRule) => {
+        const exists = merged.find(
+          (rule) => rule.domain === defaultRule.domain
+        );
+        if (!exists) {
+          merged.push(defaultRule);
+        }
+      });
+
+      return merged;
     };
 
     // Load settings
@@ -57,14 +111,19 @@ export default defineContentScript({
           'invertHorizontalScroll',
           'showTimelineOnHover',
           'timelineHeight',
-          'blacklistedDomains',
+          'domainRules',
         ],
         (result) => {
           isEnabled = result.isEnabled ?? true;
           invertHorizontalScroll = result.invertHorizontalScroll ?? false;
           showTimelineOnHover = result.showTimelineOnHover ?? false;
           timelineHeight = result.timelineHeight ?? timelineDefaultHeight;
-          blacklistedDomains = result.blacklistedDomains ?? '';
+
+          const existingRules = result.domainRules;
+          domainRules = existingRules
+            ? mergeDomainRules(existingRules)
+            : getDefaultDomainRules();
+
           if (DEBUG) {
             console.log('📜 Loaded extension enabled setting:', isEnabled);
             console.log(
@@ -76,7 +135,7 @@ export default defineContentScript({
               showTimelineOnHover
             );
             console.log('📜 Loaded timeline height setting:', timelineHeight);
-            console.log('📜 Loaded blacklisted domains:', blacklistedDomains);
+            console.log('📜 Loaded domain rules:', domainRules);
           }
         }
       );
@@ -143,18 +202,17 @@ export default defineContentScript({
         }
 
         sendResponse({ success: true });
-      } else if (message.action === 'updateBlacklistedDomains') {
-        blacklistedDomains = message.blacklistedDomains;
+      } else if (message.action === 'updateDomainRules') {
+        domainRules = message.domainRules;
         if (DEBUG)
-          console.log(
-            '📤 Updated blacklisted domains from popup:',
-            blacklistedDomains
-          );
+          console.log('📤 Updated domain rules from popup:', domainRules);
 
-        // If current domain is now blacklisted, remove overlays
-        if (isCurrentDomainBlacklisted()) {
+        // Check if extension should run with new rules
+        if (!shouldRun()) {
           if (DEBUG)
-            console.log('🚫 Current domain is blacklisted, removing overlays');
+            console.log(
+              '🚫 Current domain not allowed with new rules, removing overlays'
+            );
           // Remove existing overlays
           const existingOverlays = document.querySelectorAll('.scrub-wrapper');
           existingOverlays.forEach((overlay) => overlay.remove());
@@ -165,10 +223,10 @@ export default defineContentScript({
             video.removeAttribute('data-scrub-enabled')
           );
         } else {
-          // Domain is no longer blacklisted, check for videos again
+          // Domain is now allowed, check for videos again
           if (DEBUG)
             console.log(
-              '✅ Current domain is no longer blacklisted, checking for videos'
+              '✅ Current domain is now allowed, checking for videos'
             );
           setTimeout(() => checkForVideos(), 100);
         }
@@ -184,17 +242,17 @@ export default defineContentScript({
     const getProgressColor = (): string => {
       const hostname = window.location.hostname.toLowerCase();
 
-      if (hostname.includes('youtube.com')) return '#ff0000'; // YouTube red
-      if (hostname.includes('vimeo.com')) return '#1ab7ea'; // Vimeo blue
-      if (hostname.includes('dailymotion.com')) return '#0066cc'; // Dailymotion blue
-      if (hostname.includes('twitch.tv')) return '#9146ff'; // Twitch purple
-      if (hostname.includes('tiktok.com')) return '#ff0050'; // TikTok pink
-      if (hostname.includes('instagram.com')) return '#e4405f'; // Instagram pink
-      if (hostname.includes('facebook.com')) return '#1877f2'; // Facebook blue
-      // if (hostname.includes('netflix.com')) return '#e50914'; // Netflix red
-      // if (hostname.includes('hulu.com')) return '#1ce783'; // Hulu green
+      if (hostname.includes('youtube.com')) return '#ff0000';
+      if (hostname.includes('vimeo.com')) return '#1ab7ea';
+      if (hostname.includes('dailymotion.com')) return '#0066cc';
+      if (hostname.includes('twitch.tv')) return '#9146ff';
+      if (hostname.includes('tiktok.com')) return '#ff0050';
+      if (hostname.includes('instagram.com')) return '#e4405f';
+      if (hostname.includes('facebook.com')) return '#1877f2';
+      // if (hostname.includes('netflix.com')) return '#e50914'
+      // if (hostname.includes('hulu.com')) return '#1ce783'
       if (hostname.includes('x.com') || hostname.includes('twitter.com'))
-        return '#1da1f2'; // Twitter blue
+        return '#1da1f2';
 
       return 'rgb(255 255 255 / 0.8)'; // Default white with 80% opacity
     };
@@ -232,6 +290,11 @@ export default defineContentScript({
       // Track hover state for timeline display
       let isHovering = false;
 
+      // Track when user is actively scrubbing
+      let scrubTimeout: number | null = null;
+      let needsScrollSync = true;
+      let isSettingInitialScroll = false;
+
       // Create overlay div
       scrubOverlay = document.createElement('div');
       scrubOverlay.style.cssText = `
@@ -246,18 +309,17 @@ export default defineContentScript({
         background-color: rgb(0 0 0 / 0);
         pointer-events: auto;
         ${getDebugColorBackground()}
-        ${HIDE_SCROLLBARS ? 'scrollbar-width: none; -ms-overflow-style: none;' : ''}
+        scrollbar-width: none;
+        -ms-overflow-style: none;
       `;
 
       // Add WebKit scrollbar hiding styles
       const style = document.createElement('style');
-      if (HIDE_SCROLLBARS) {
-        style.textContent = `
-          .scrub-overlay::-webkit-scrollbar {
-            display: none;
-          }
-        `;
-      }
+      style.textContent = `
+        .scrub-overlay::-webkit-scrollbar {
+          display: none;
+        }
+      `;
       document.head.appendChild(style);
       scrubOverlay.classList.add('scrub-overlay');
 
@@ -377,6 +439,40 @@ export default defineContentScript({
           const finalWidth = Math.max(contentWidth, minScrollableWidth);
 
           scrubOverlayScrollContent.style.width = `${finalWidth}px`;
+
+          // Set initial scroll position right after width is applied
+          setTimeout(() => {
+            if (!scrubOverlay || !scrubOverlayScrollContent) return;
+
+            if (finalWidth <= 0) return;
+
+            // Prevent scroll listener from interfering with initial position
+            isSettingInitialScroll = true;
+            needsScrollSync = false;
+
+            // Set scroll position based on invert setting
+            if (invertHorizontalScroll) {
+              scrubOverlay.scrollLeft = 1; // Start at position 1 when inverted
+            } else {
+              scrubOverlay.scrollLeft = finalWidth - 1; // Start at end - 1 when not inverted
+            }
+
+            // Reset flag after setting
+            setTimeout(() => {
+              isSettingInitialScroll = false;
+            }, 50);
+
+            if (DEBUG) {
+              console.log(
+                '✅ Initial scroll position set after width update:',
+                {
+                  scrollLeft: scrubOverlay.scrollLeft,
+                  maxScroll: finalWidth,
+                  invertHorizontalScroll,
+                }
+              );
+            }
+          }, 500);
         }
       };
 
@@ -386,14 +482,13 @@ export default defineContentScript({
       // Update width when video metadata loads
       video.addEventListener('loadedmetadata', updateContentWidth);
 
-      // Track when user is actively scrubbing
-      let scrubTimeout: number | null = null;
-      let needsScrollSync = true;
-
       // Handle scrolling to scrub video
       scrubOverlay.addEventListener('scroll', () => {
         if (!video.duration || !scrubOverlayScrollContent || !scrubTimeline)
           return;
+
+        // Don't process scroll events when setting initial position
+        if (isSettingInitialScroll) return;
 
         // Sync scroll position to current video time when user starts scrolling
         if (needsScrollSync && !isUserScrubbing && scrubOverlay) {
@@ -548,7 +643,7 @@ export default defineContentScript({
       if (!shouldRun()) {
         if (DEBUG)
           console.log(
-            '🚫 Extension is disabled or current domain is blacklisted, skipping video check.'
+            '🚫 Extension is disabled or current domain is not allowed by domain rules, skipping video check.'
           );
         return;
       }

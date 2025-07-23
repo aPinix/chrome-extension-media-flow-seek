@@ -29,6 +29,7 @@
   },
   "dependencies": {
     "@radix-ui/react-checkbox": "^1.3.2",
+    "@radix-ui/react-scroll-area": "^1.2.9",
     "@radix-ui/react-slider": "^1.3.5",
     "@radix-ui/react-slot": "^1.2.3",
     "@radix-ui/react-switch": "^1.2.5",
@@ -40,6 +41,7 @@
     "lucide-react": "^0.525.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "react-virtuoso": "^4.13.0",
     "tailwind-merge": "^3.3.1",
     "tailwindcss": "^4.1.11",
     "vitest": "^3.2.4"
@@ -63,6 +65,7 @@
     "stylelint-config-standard": "^38.0.0",
     "stylelint-order": "^7.0.0",
     "stylelint-prettier": "^5.0.3",
+    "tldts": "^7.0.10",
     "tw-animate-css": "^1.3.5",
     "typescript": "^5.8.3",
     "wxt": "^0.20.7"

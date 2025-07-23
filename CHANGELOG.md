@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.3] - 2025-07-23
+
+### ✨ New Features
+
+- **Enhanced Domain Management UI**: Completely redesigned domain management interface with improved visual design and user experience
+
+### 🚀 Performance Enhancements
+
+- **Improved Scrolling Performance**: Custom scroll area implementation provides smoother scrolling experience
+
+---
+
 ## [1.0.2] - 2025-01-22
 
 ### ✨ New Features
