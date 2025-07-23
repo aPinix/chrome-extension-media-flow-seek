@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.4] - 2025-01-23
+
+### ✨ New Features
+
+- **Timeline Unit Selection**: Choose between pixel (px) and percentage (%) units for timeline height
+- **Domain Management Overhaul**: Completely redesigned domain management system with predefined configurations
+
+### 🐛 Bug Fixes
+
+- **Video Tag Compatibility**: Extension now fully supports video elements with custom mouse interactions (hover, click-to-play/pause, etc.); scrubbing and overlays work seamlessly regardless of player mouse behavior
+
+---
+
 ## [1.0.3] - 2025-07-23
 
 ### ✨ New Features

@@ -4,24 +4,27 @@ import {
   ChevronLeft,
   ChevronRight,
   GlobeIcon,
-  GripHorizontalIcon,
   Trash2Icon,
   XIcon,
 } from 'lucide-react';
 import { GroupedVirtuoso } from 'react-virtuoso';
 import { parse } from 'tldts';
 
+import { ThemeProvider, useTheme } from '@/components/theme-provider';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Slider } from '@/components/ui/slider';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { TimelineHeightControl } from '@/components/ui/timeline-height-control';
+import { getDefaultDomainRules } from '@/helpers/domains';
 import { cn } from '@/lib/utils';
-
-type DomainRule = {
-  domain: string;
-  type: 'whitelist' | 'blacklist';
-  enabled: boolean;
-};
+import type { DomainConfigT, DomainRuleTypeT } from '@/types/domains';
 
 type CardListItemProps = {
   title: string;
@@ -40,14 +43,11 @@ type SectionTitleProps = {
 };
 
 type DomainListItemProps = {
-  rule: DomainRule;
+  rule: DomainConfigT;
   isGlobal?: boolean;
   isCurrentDomain?: boolean;
   onToggleEnabled?: (domain: string) => void;
-  onToggleRuleType: (
-    domain: string,
-    currentType: 'whitelist' | 'blacklist'
-  ) => void;
+  onToggleRuleType: (domain: string, currentType: DomainRuleTypeT) => void;
   onRemove?: (domain: string) => void;
 };
 
@@ -261,45 +261,33 @@ const CardListItem: React.FC<CardListItemProps> = ({
   );
 };
 
-function Popup() {
-  const [isDark, setIsDark] = useState(
-    window.matchMedia('(prefers-color-scheme: dark)').matches
-  );
+function PopupContent() {
+  const { theme } = useTheme();
   const [isEnabled, setIsEnabled] = useState(true);
   const [invertHorizontalScroll, setInvertHorizontalScroll] = useState(false);
   const [showTimelineOnHover, setShowTimelineOnHover] = useState(false);
-  const [domainRules, setDomainRules] = useState<DomainRule[]>([
-    { domain: '*', type: 'blacklist', enabled: true },
-    { domain: 'youtube.com', type: 'whitelist', enabled: true },
-    { domain: 'vimeo.com', type: 'whitelist', enabled: false },
-    { domain: 'dailymotion.com', type: 'whitelist', enabled: false },
-    { domain: 'twitch.tv', type: 'whitelist', enabled: false },
-    { domain: 'tiktok.com', type: 'whitelist', enabled: false },
-    { domain: 'instagram.com', type: 'whitelist', enabled: false },
-    { domain: 'facebook.com', type: 'whitelist', enabled: false },
-    { domain: 'x.com', type: 'whitelist', enabled: false },
-  ]);
+  const [timelinePosition, setTimelinePosition] = useState<'top' | 'bottom'>(
+    'bottom'
+  );
+  const [domainRules, setDomainRules] = useState<DomainConfigT[]>(
+    getDefaultDomainRules()
+  );
   const [currentDomain, setCurrentDomain] = useState('');
   const [showDomainsView, setShowDomainsView] = useState(false);
 
-  const MIN_TIMELINE_HEIGHT = 0;
-  const MAX_TIMELINE_HEIGHT = 100;
   const timelineDefaultHeight = 6;
   const [timelineHeight, setTimelineHeight] = useState(timelineDefaultHeight);
+  const [timelineHeightUnit, setTimelineHeightUnit] = useState<'px' | '%'>(
+    'px'
+  );
 
   // Check if current settings differ from defaults (excluding domains)
   const isAtDefaults =
     isEnabled === true &&
     invertHorizontalScroll === false &&
     showTimelineOnHover === false &&
+    timelinePosition === 'bottom' &&
     timelineHeight === timelineDefaultHeight;
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    const handleChange = (e: MediaQueryListEvent) => setIsDark(e.matches);
-    mediaQuery.addEventListener('change', handleChange);
-    return () => mediaQuery.removeEventListener('change', handleChange);
-  }, []);
 
   useEffect(() => {
     // Get current tab domain
@@ -315,21 +303,10 @@ function Popup() {
       }
     });
 
-    // Default domain rules
-    const getDefaultDomainRules = (): DomainRule[] => [
-      { domain: '*', type: 'blacklist', enabled: true },
-      { domain: 'youtube.com', type: 'whitelist', enabled: true },
-      { domain: 'vimeo.com', type: 'whitelist', enabled: false },
-      { domain: 'dailymotion.com', type: 'whitelist', enabled: false },
-      { domain: 'twitch.tv', type: 'whitelist', enabled: false },
-      { domain: 'tiktok.com', type: 'whitelist', enabled: false },
-      { domain: 'instagram.com', type: 'whitelist', enabled: false },
-      { domain: 'facebook.com', type: 'whitelist', enabled: false },
-      { domain: 'x.com', type: 'whitelist', enabled: false },
-    ];
-
     // Merge existing rules with new defaults
-    const mergeDomainRules = (existingRules: DomainRule[]): DomainRule[] => {
+    const mergeDomainRules = (
+      existingRules: DomainConfigT[]
+    ): DomainConfigT[] => {
       const defaults = getDefaultDomainRules();
       const merged = [...existingRules];
 
@@ -352,16 +329,20 @@ function Popup() {
         'isEnabled',
         'invertHorizontalScroll',
         'showTimelineOnHover',
+        'timelinePosition',
         'timelineHeight',
+        'timelineHeightUnit',
         'domainRules',
       ],
       (result) => {
         setIsEnabled(result.isEnabled ?? true);
         setInvertHorizontalScroll(result.invertHorizontalScroll ?? false);
         setShowTimelineOnHover(result.showTimelineOnHover ?? false);
+        setTimelinePosition(result.timelinePosition ?? 'bottom');
         setTimelineHeight(result.timelineHeight ?? timelineDefaultHeight);
+        setTimelineHeightUnit(result.timelineHeightUnit ?? 'px');
 
-        const existingRules = result.domainRules as DomainRule[] | undefined;
+        const existingRules = result.domainRules as DomainConfigT[] | undefined;
         const finalRules = existingRules
           ? mergeDomainRules(existingRules)
           : getDefaultDomainRules();
@@ -376,7 +357,7 @@ function Popup() {
     );
   }, []);
 
-  const updateDomainRules = (newRules: DomainRule[]) => {
+  const updateDomainRules = (newRules: DomainConfigT[]) => {
     setDomainRules(newRules);
     chrome.storage.sync.set({ domainRules: newRules });
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -428,15 +409,46 @@ function Popup() {
     });
   };
 
-  const handleTimelineHeightChange = (value: number[]) => {
-    const height = value[0];
+  const handleTimelinePositionChange = (position: 'top' | 'bottom') => {
+    setTimelinePosition(position);
+    chrome.storage.sync.set({ timelinePosition: position });
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]?.id) {
+        chrome.tabs.sendMessage(tabs[0].id, {
+          action: 'updateTimelinePosition',
+          timelinePosition: position,
+        });
+      }
+    });
+  };
+
+  const handleTimelineHeightChange = (height: number) => {
     setTimelineHeight(height);
-    chrome.storage.sync.set({ timelineHeight: height });
+    chrome.storage.sync.set({
+      timelineHeight: height,
+      timelineHeightUnit,
+    });
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (tabs[0]?.id) {
         chrome.tabs.sendMessage(tabs[0].id, {
           action: 'updateTimelineHeight',
           timelineHeight: height,
+          timelineHeightUnit,
+        });
+      }
+    });
+  };
+
+  const handleTimelineHeightUnitChange = (unit: 'px' | '%') => {
+    setTimelineHeightUnit(unit);
+    chrome.storage.sync.set({ timelineHeightUnit: unit });
+    // Also trigger an update with the current height value
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]?.id) {
+        chrome.tabs.sendMessage(tabs[0].id, {
+          action: 'updateTimelineHeight',
+          timelineHeight,
+          timelineHeightUnit: unit,
         });
       }
     });
@@ -447,13 +459,17 @@ function Popup() {
       isEnabled: true,
       invertHorizontalScroll: false,
       showTimelineOnHover: false,
+      timelinePosition: 'bottom' as const,
       timelineHeight: timelineDefaultHeight,
+      timelineHeightUnit: 'px' as const,
     };
 
     setIsEnabled(defaultSettings.isEnabled);
     setInvertHorizontalScroll(defaultSettings.invertHorizontalScroll);
     setShowTimelineOnHover(defaultSettings.showTimelineOnHover);
+    setTimelinePosition(defaultSettings.timelinePosition);
     setTimelineHeight(defaultSettings.timelineHeight);
+    setTimelineHeightUnit(defaultSettings.timelineHeightUnit);
 
     chrome.storage.sync.set(defaultSettings);
 
@@ -472,14 +488,19 @@ function Popup() {
           showTimelineOnHover: defaultSettings.showTimelineOnHover,
         });
         chrome.tabs.sendMessage(tabs[0].id, {
+          action: 'updateTimelinePosition',
+          timelinePosition: defaultSettings.timelinePosition,
+        });
+        chrome.tabs.sendMessage(tabs[0].id, {
           action: 'updateTimelineHeight',
           timelineHeight: defaultSettings.timelineHeight,
+          timelineHeightUnit: defaultSettings.timelineHeightUnit,
         });
       }
     });
   };
 
-  const addCurrentDomainRule = (type: 'whitelist' | 'blacklist') => {
+  const addCurrentDomainRule = (type: DomainRuleTypeT) => {
     if (!currentDomain) return;
 
     const newRules = domainRules.filter(
@@ -489,21 +510,18 @@ function Popup() {
     updateDomainRules(newRules);
   };
 
-  const toggleDomainRule = (
-    domain: string,
-    currentType: 'whitelist' | 'blacklist'
-  ) => {
+  const toggleDomainRule = (domain: string, currentType: DomainRuleTypeT) => {
     const newType = currentType === 'whitelist' ? 'blacklist' : 'whitelist';
     const newRules = domainRules.map((rule) =>
       rule.domain === domain ? { ...rule, type: newType } : rule
-    ) as DomainRule[];
+    ) as DomainConfigT[];
     updateDomainRules(newRules);
   };
 
   const toggleDomainEnabled = (domain: string) => {
     const newRules = domainRules.map((rule) =>
       rule.domain === domain ? { ...rule, enabled: !rule.enabled } : rule
-    ) as DomainRule[];
+    ) as DomainConfigT[];
     updateDomainRules(newRules);
   };
 
@@ -518,7 +536,7 @@ function Popup() {
   };
 
   return (
-    <div className={cn(isDark && 'dark')}>
+    <div className={cn(theme === 'dark' && 'dark')}>
       <div
         className={`relative flex h-[600px] w-[400px] flex-col overflow-hidden bg-slate-100 shadow-xl dark:bg-slate-700`}
       >
@@ -620,22 +638,37 @@ function Popup() {
                   />
 
                   <CardListItem
+                    title="Timeline position"
+                    description="Choose where to display the progress bar"
+                    components={{
+                      RightSlot: (
+                        <Select
+                          value={timelinePosition}
+                          onValueChange={handleTimelinePositionChange}
+                        >
+                          <SelectTrigger className="w-24">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="top">Top</SelectItem>
+                            <SelectItem value="bottom">Bottom</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ),
+                    }}
+                  />
+
+                  <CardListItem
                     title="Timeline height"
                     description="Adjust the height of the progress bar"
                     components={{
                       BottomSlot: (
-                        <div className="flex items-center gap-3">
-                          <Slider
-                            value={[timelineHeight]}
-                            onValueChange={handleTimelineHeightChange}
-                            min={MIN_TIMELINE_HEIGHT}
-                            max={MAX_TIMELINE_HEIGHT}
-                            className="flex-1"
-                          />
-                          <span className="w-8 font-mono text-xs text-slate-700 dark:text-slate-300">
-                            {timelineHeight}px
-                          </span>
-                        </div>
+                        <TimelineHeightControl
+                          value={timelineHeight}
+                          unit={timelineHeightUnit}
+                          onChange={handleTimelineHeightChange}
+                          onUnitChange={handleTimelineHeightUnitChange}
+                        />
                       ),
                     }}
                   />
@@ -735,39 +768,60 @@ function Popup() {
                   </p>
                 </div>
 
-                {/* Action Buttons */}
-                <div className="flex gap-3">
-                  {!getCurrentDomainRule() ||
-                  getCurrentDomainRule()?.type !== 'whitelist' ? (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => addCurrentDomainRule('whitelist')}
-                      className={cn(
-                        'group relative flex-1 overflow-hidden rounded-xl border border-green-200/50 bg-gradient-to-r from-green-50 to-green-100/80 px-4 py-3 text-sm font-semibold text-green-700 shadow-sm transition-all duration-200 hover:from-green-100 hover:to-green-200/90 hover:shadow-md active:scale-95 dark:border-green-800/30 dark:from-green-900/30 dark:to-green-800/40 dark:text-green-300 dark:hover:from-green-900/50 dark:hover:to-green-800/60'
-                      )}
-                    >
-                      <CheckIcon className="mr-2 h-4 w-4 transition-transform group-hover:scale-110" />
-                      Whitelist
-                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-0 transition-opacity group-hover:opacity-100 dark:via-white/10" />
-                    </Button>
-                  ) : null}
+                {/* Action Controls */}
+                <div className="flex items-center gap-3">
+                  {/* Enable/Disable Switch */}
+                  {getCurrentDomainRule() && (
+                    <div className="flex flex-col items-center gap-1">
+                      <Switch
+                        checked={getCurrentDomainRule()?.enabled ?? false}
+                        onCheckedChange={() =>
+                          toggleDomainEnabled(currentDomain)
+                        }
+                        className="scale-90"
+                      />
+                      <span className="text-xs text-slate-600 dark:text-slate-400">
+                        {getCurrentDomainRule()?.enabled
+                          ? 'Enabled'
+                          : 'Disabled'}
+                      </span>
+                    </div>
+                  )}
 
-                  {!getCurrentDomainRule() ||
-                  getCurrentDomainRule()?.type !== 'blacklist' ? (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => addCurrentDomainRule('blacklist')}
-                      className={cn(
-                        'group relative flex-1 overflow-hidden rounded-xl border border-red-200/50 bg-gradient-to-r from-red-50 to-red-100/80 px-4 py-3 text-sm font-semibold text-red-700 shadow-sm transition-all duration-200 hover:from-red-100 hover:to-red-200/90 hover:shadow-md active:scale-95 dark:border-red-800/30 dark:from-red-900/30 dark:to-red-800/40 dark:text-red-300 dark:hover:from-red-900/50 dark:hover:to-red-800/60'
-                      )}
-                    >
-                      <XIcon className="mr-2 h-4 w-4 transition-transform group-hover:scale-110" />
-                      Blacklist
-                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-0 transition-opacity group-hover:opacity-100 dark:via-white/10" />
-                    </Button>
-                  ) : null}
+                  {/* Action Buttons */}
+                  <div className="flex flex-1 gap-3">
+                    {!getCurrentDomainRule() ||
+                    getCurrentDomainRule()?.type !== 'whitelist' ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => addCurrentDomainRule('whitelist')}
+                        className={cn(
+                          'group relative flex-1 overflow-hidden rounded-xl border border-green-200/50 bg-gradient-to-r from-green-50 to-green-100/80 px-4 py-3 text-sm font-semibold text-green-700 shadow-sm transition-all duration-200 hover:from-green-100 hover:to-green-200/90 hover:shadow-md active:scale-95 dark:border-green-800/30 dark:from-green-900/30 dark:to-green-800/40 dark:text-green-300 dark:hover:from-green-900/50 dark:hover:to-green-800/60'
+                        )}
+                      >
+                        <CheckIcon className="mr-2 h-4 w-4 transition-transform group-hover:scale-110" />
+                        Whitelist
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-0 transition-opacity group-hover:opacity-100 dark:via-white/10" />
+                      </Button>
+                    ) : null}
+
+                    {!getCurrentDomainRule() ||
+                    getCurrentDomainRule()?.type !== 'blacklist' ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => addCurrentDomainRule('blacklist')}
+                        className={cn(
+                          'group relative flex-1 overflow-hidden rounded-xl border border-red-200/50 bg-gradient-to-r from-red-50 to-red-100/80 px-4 py-3 text-sm font-semibold text-red-700 shadow-sm transition-all duration-200 hover:from-red-100 hover:to-red-200/90 hover:shadow-md active:scale-95 dark:border-red-800/30 dark:from-red-900/30 dark:to-red-800/40 dark:text-red-300 dark:hover:from-red-900/50 dark:hover:to-red-800/60'
+                        )}
+                      >
+                        <XIcon className="mr-2 h-4 w-4 transition-transform group-hover:scale-110" />
+                        Blacklist
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-0 transition-opacity group-hover:opacity-100 dark:via-white/10" />
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             ) : null}
@@ -828,6 +882,14 @@ function Popup() {
         </div>
       </div>
     </div>
+  );
+}
+
+function Popup() {
+  return (
+    <ThemeProvider defaultTheme="system" storageKey="theme-mode">
+      <PopupContent />
+    </ThemeProvider>
   );
 }
 

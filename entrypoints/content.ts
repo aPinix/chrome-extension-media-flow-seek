@@ -1,3 +1,5 @@
+import { getDefaultDomainRules, getProgressColor } from '@/helpers/domains';
+
 export default defineContentScript({
   matches: ['<all_urls>'],
   main() {
@@ -6,11 +8,17 @@ export default defineContentScript({
     // Debug flag to control logging
     const DEBUG = false;
 
-    let currentVideo: HTMLVideoElement | null = null;
-    let scrubOverlay: HTMLDivElement | null = null;
-    let scrubOverlayScrollContent: HTMLDivElement | null = null;
-    let scrubTimeline: HTMLDivElement | null = null;
-    let isUserScrubbing = false;
+    // Per-video state management
+    const videoStates = new Map<
+      HTMLVideoElement,
+      {
+        overlay: HTMLDivElement;
+        scrollContent: HTMLDivElement;
+        timeline: HTMLDivElement;
+        wrapper: HTMLDivElement;
+        isUserScrubbing: boolean;
+      }
+    >();
 
     // Extension enabled state
     let isEnabled = true;
@@ -24,19 +32,13 @@ export default defineContentScript({
     // Timeline height state
     const timelineDefaultHeight = 6;
     let timelineHeight = timelineDefaultHeight;
+    let timelineHeightUnit: 'px' | '%' = 'px';
+
+    // Timeline position state
+    let timelinePosition: 'top' | 'bottom' = 'bottom';
 
     // Domain rules with whitelist/blacklist/wildcard support
-    let domainRules = [
-      { domain: '*', type: 'blacklist', enabled: true },
-      { domain: 'youtube.com', type: 'whitelist', enabled: true },
-      { domain: 'vimeo.com', type: 'whitelist', enabled: false },
-      { domain: 'dailymotion.com', type: 'whitelist', enabled: false },
-      { domain: 'twitch.tv', type: 'whitelist', enabled: false },
-      { domain: 'tiktok.com', type: 'whitelist', enabled: false },
-      { domain: 'instagram.com', type: 'whitelist', enabled: false },
-      { domain: 'facebook.com', type: 'whitelist', enabled: false },
-      { domain: 'x.com', type: 'whitelist', enabled: false },
-    ];
+    let domainRules = getDefaultDomainRules();
 
     // Check if current domain should run the extension
     const shouldRun = (): boolean => {
@@ -72,19 +74,6 @@ export default defineContentScript({
       return shouldRunDomain;
     };
 
-    // Default domain rules
-    const getDefaultDomainRules = () => [
-      { domain: '*', type: 'blacklist', enabled: true },
-      { domain: 'youtube.com', type: 'whitelist', enabled: true },
-      { domain: 'vimeo.com', type: 'whitelist', enabled: false },
-      { domain: 'dailymotion.com', type: 'whitelist', enabled: false },
-      { domain: 'twitch.tv', type: 'whitelist', enabled: false },
-      { domain: 'tiktok.com', type: 'whitelist', enabled: false },
-      { domain: 'instagram.com', type: 'whitelist', enabled: false },
-      { domain: 'facebook.com', type: 'whitelist', enabled: false },
-      { domain: 'x.com', type: 'whitelist', enabled: false },
-    ];
-
     // Merge existing rules with new defaults
     const mergeDomainRules = (existingRules: any[]) => {
       const defaults = getDefaultDomainRules();
@@ -110,14 +99,18 @@ export default defineContentScript({
           'isEnabled',
           'invertHorizontalScroll',
           'showTimelineOnHover',
+          'timelinePosition',
           'timelineHeight',
+          'timelineHeightUnit',
           'domainRules',
         ],
         (result) => {
           isEnabled = result.isEnabled ?? true;
           invertHorizontalScroll = result.invertHorizontalScroll ?? false;
           showTimelineOnHover = result.showTimelineOnHover ?? false;
+          timelinePosition = result.timelinePosition ?? 'bottom';
           timelineHeight = result.timelineHeight ?? timelineDefaultHeight;
+          timelineHeightUnit = result.timelineHeightUnit ?? 'px';
 
           const existingRules = result.domainRules;
           domainRules = existingRules
@@ -134,7 +127,15 @@ export default defineContentScript({
               '📜 Loaded timeline hover setting:',
               showTimelineOnHover
             );
+            console.log(
+              '📜 Loaded timeline position setting:',
+              timelinePosition
+            );
             console.log('📜 Loaded timeline height setting:', timelineHeight);
+            console.log(
+              '📜 Loaded timeline height unit setting:',
+              timelineHeightUnit
+            );
             console.log('📜 Loaded domain rules:', domainRules);
           }
         }
@@ -159,6 +160,9 @@ export default defineContentScript({
           videos.forEach((video) =>
             video.removeAttribute('data-scrub-enabled')
           );
+
+          // Clear video states
+          videoStates.clear();
         } else {
           // Extension is enabled, check for videos again
           if (DEBUG) console.log('✅ Extension enabled, checking for videos');
@@ -182,24 +186,60 @@ export default defineContentScript({
             showTimelineOnHover
           );
         sendResponse({ success: true });
-      } else if (message.action === 'updateTimelineHeight') {
-        timelineHeight = message.timelineHeight;
+      } else if (message.action === 'updateTimelinePosition') {
+        timelinePosition = message.timelinePosition;
         if (DEBUG)
-          console.log('📤 Updated timeline height from popup:', timelineHeight);
+          console.log(
+            '📤 Updated timeline position from popup:',
+            timelinePosition
+          );
 
         // Update existing timelines if any
-        if (scrubTimeline) {
-          scrubTimeline.style.height = `${timelineHeight}px`;
-          // Update position to account for new height
-          const video = currentVideo;
-          if (video) {
-            const videoRect = video.getBoundingClientRect();
-            const videoContainer = video.parentElement || document.body;
-            const containerRect = videoContainer.getBoundingClientRect();
-            const relativeTop = videoRect.top - containerRect.top;
-            scrubTimeline.style.top = `${relativeTop + video.offsetHeight - timelineHeight}px`;
+        videoStates.forEach((state, video) => {
+          if (state.timeline) {
+            const heightValue =
+              timelineHeightUnit === '%'
+                ? `${timelineHeight}%`
+                : `${timelineHeight}px`;
+
+            // Update position based on timeline position setting
+            if (timelinePosition === 'top') {
+              state.timeline.style.top = '0px';
+            } else {
+              state.timeline.style.top = `calc(100% - ${heightValue})`;
+            }
           }
+        });
+
+        sendResponse({ success: true });
+      } else if (message.action === 'updateTimelineHeight') {
+        timelineHeight = message.timelineHeight;
+        timelineHeightUnit = message.timelineHeightUnit ?? 'px';
+        if (DEBUG) {
+          console.log('📤 Updated timeline height from popup:', timelineHeight);
+          console.log(
+            '📤 Updated timeline height unit from popup:',
+            timelineHeightUnit
+          );
         }
+
+        // Update existing timelines if any
+        videoStates.forEach((state, video) => {
+          if (state.timeline) {
+            const heightValue =
+              timelineHeightUnit === '%'
+                ? `${timelineHeight}%`
+                : `${timelineHeight}px`;
+            state.timeline.style.height = heightValue;
+
+            // Update position to account for new height and position setting
+            if (timelinePosition === 'top') {
+              state.timeline.style.top = '0px';
+            } else {
+              state.timeline.style.top = `calc(100% - ${heightValue})`;
+            }
+          }
+        });
 
         sendResponse({ success: true });
       } else if (message.action === 'updateDomainRules') {
@@ -222,6 +262,9 @@ export default defineContentScript({
           videos.forEach((video) =>
             video.removeAttribute('data-scrub-enabled')
           );
+
+          // Clear video states
+          videoStates.clear();
         } else {
           // Domain is now allowed, check for videos again
           if (DEBUG)
@@ -238,29 +281,10 @@ export default defineContentScript({
     // Initialize settings
     loadSettings();
 
-    // Get domain-specific color for progress bar
-    const getProgressColor = (): string => {
-      const hostname = window.location.hostname.toLowerCase();
-
-      if (hostname.includes('youtube.com')) return '#ff0000';
-      if (hostname.includes('vimeo.com')) return '#1ab7ea';
-      if (hostname.includes('dailymotion.com')) return '#0066cc';
-      if (hostname.includes('twitch.tv')) return '#9146ff';
-      if (hostname.includes('tiktok.com')) return '#ff0050';
-      if (hostname.includes('instagram.com')) return '#e4405f';
-      if (hostname.includes('facebook.com')) return '#1877f2';
-      // if (hostname.includes('netflix.com')) return '#e50914'
-      // if (hostname.includes('hulu.com')) return '#1ce783'
-      if (hostname.includes('x.com') || hostname.includes('twitter.com'))
-        return '#1da1f2';
-
-      return 'rgb(255 255 255 / 0.8)'; // Default white with 80% opacity
-    };
-
     const getDebugColorBackground = () => {
       return DEBUG
         ? `
-        background-color: rgb(from ${getProgressColor()} r g b / 0.1);
+        background-color: rgb(from ${getProgressColor(window.location.hostname)} r g b / 0.1);
       `
         : '';
     };
@@ -271,7 +295,7 @@ export default defineContentScript({
         background-size: 16px 16px;
         background-image: repeating-linear-gradient(
           315deg,
-          rgb(from ${getProgressColor()} r g b / 0.3) 0 1px,
+          rgb(from ${getProgressColor(window.location.hostname)} r g b / 0.3) 0 1px,
           #0000 0 50%
         );
       `
@@ -282,9 +306,14 @@ export default defineContentScript({
       if (DEBUG) console.log('🎯 Creating scrub overlay for video:', video);
 
       // Remove existing overlay if any
-      if (scrubOverlay) {
+      const existingOverlay = videoStates.get(video);
+      if (existingOverlay) {
         if (DEBUG) console.log('🗑️ Removing existing overlay');
-        scrubOverlay.remove();
+        existingOverlay.overlay.remove();
+        existingOverlay.scrollContent.remove();
+        existingOverlay.timeline.remove();
+        existingOverlay.wrapper.remove();
+        videoStates.delete(video);
       }
 
       // Track hover state for timeline display
@@ -292,11 +321,10 @@ export default defineContentScript({
 
       // Track when user is actively scrubbing
       let scrubTimeout: number | null = null;
-      let needsScrollSync = true;
       let isSettingInitialScroll = false;
 
       // Create overlay div
-      scrubOverlay = document.createElement('div');
+      const scrubOverlay = document.createElement('div');
       scrubOverlay.style.cssText = `
         width: 100%;
         height: 100%;
@@ -327,8 +355,42 @@ export default defineContentScript({
       const videoId = `video-${Array.from(document.querySelectorAll('video')).indexOf(video)}-${video.src || video.currentSrc || 'unknown'}`;
       scrubOverlay.setAttribute('data-video-id', videoId);
 
+      // Forward mouse events to the video underneath to preserve native video controls
+      const forwardMouseEvent = (eventType: string) => {
+        scrubOverlay.addEventListener(eventType, (e) => {
+          const mouseEvent = e as MouseEvent;
+          mouseEvent.preventDefault();
+          mouseEvent.stopPropagation();
+
+          // Create and dispatch a new event on the video element
+          const forwardedEvent = new MouseEvent(eventType, {
+            bubbles: true,
+            cancelable: true,
+            clientX: mouseEvent.clientX,
+            clientY: mouseEvent.clientY,
+            button: mouseEvent.button,
+            buttons: mouseEvent.buttons,
+            detail: mouseEvent.detail,
+          });
+
+          video.dispatchEvent(forwardedEvent);
+
+          if (DEBUG)
+            console.log(`🖱️ ${eventType} event forwarded to video element`);
+        });
+      };
+
+      // Forward common video interaction events
+      forwardMouseEvent('click');
+      forwardMouseEvent('dblclick'); // Often used for fullscreen
+      forwardMouseEvent('contextmenu'); // Right-click menu
+      forwardMouseEvent('mouseover'); // Hover to show controls
+      forwardMouseEvent('mouseout'); // Mouse leave to hide controls
+      forwardMouseEvent('mouseenter'); // Non-bubbling hover
+      forwardMouseEvent('mouseleave'); // Non-bubbling leave
+
       // Create content div that represents video length
-      scrubOverlayScrollContent = document.createElement('div');
+      const scrubOverlayScrollContent = document.createElement('div');
       scrubOverlayScrollContent.style.cssText = `
         height: 100%;
         min-width: 100%;
@@ -340,13 +402,22 @@ export default defineContentScript({
       scrubOverlayScrollContent.classList.add('scrub-overlay-scroll-content');
 
       // Create timeline bar that appears during scrubbing
-      scrubTimeline = document.createElement('div');
+      const scrubTimeline = document.createElement('div');
+      const heightValue =
+        timelineHeightUnit === '%'
+          ? `${timelineHeight}%`
+          : `${timelineHeight}px`;
+
+      // Set timeline position based on setting
+      const topPosition =
+        timelinePosition === 'top' ? '0px' : `calc(100% - ${heightValue})`;
+
       scrubTimeline.style.cssText = `
         width: 100%;
-        height: ${timelineHeight}px;
+        height: ${heightValue};
         position: absolute;
         left: 0px;
-        top: calc(100% - ${timelineHeight}px);
+        top: ${topPosition};
         background: rgb(255 255 255 / 0.3);
         opacity: 0;
         transition: opacity 0.3s ease;
@@ -357,7 +428,7 @@ export default defineContentScript({
       scrubTimelineProgressIndicator.style.cssText = `
         width: 0%;
         height: 100%;
-        background-color: ${getProgressColor()};
+        background-color: rgb(from ${getProgressColor(window.location.hostname)} r g b / 0.8);
       `;
 
       scrubTimeline.appendChild(scrubTimelineProgressIndicator);
@@ -380,9 +451,15 @@ export default defineContentScript({
       const relativeTop = videoRect.top - containerRect.top;
       const relativeLeft = videoRect.left - containerRect.left;
 
-      // Remove existing scrub wrapper if it exists
-      const existingScrubWrapper =
-        videoContainer.querySelector('.scrub-wrapper');
+      // Remove existing scrub wrapper for this specific video if it exists
+      const existingScrubWrapper = Array.from(
+        videoContainer.querySelectorAll('.scrub-wrapper')
+      ).find((wrapper) => {
+        const overlayInWrapper = wrapper.querySelector(
+          `[data-video-id="${videoId}"]`
+        );
+        return overlayInWrapper !== null;
+      });
       if (existingScrubWrapper) {
         existingScrubWrapper.remove();
       }
@@ -403,15 +480,16 @@ export default defineContentScript({
       scrubWrapper.appendChild(scrubOverlay);
       scrubWrapper.appendChild(scrubTimeline);
 
-      // Add wrapper to video container
-      videoContainer.appendChild(scrubWrapper);
+      // Insert wrapper right after the video element in DOM
+      if (video.nextSibling) {
+        videoContainer.insertBefore(scrubWrapper, video.nextSibling);
+      } else {
+        videoContainer.appendChild(scrubWrapper);
+      }
 
       // Function to update wrapper size and position to match video
       const updateOverlaySize = () => {
-        const wrapper = videoContainer.querySelector(
-          '.scrub-wrapper'
-        ) as HTMLElement;
-        if (!wrapper || !video || !scrubOverlay || !scrubTimeline) return;
+        if (!scrubWrapper || !video || !scrubOverlay || !scrubTimeline) return;
 
         const videoRect = video.getBoundingClientRect();
         const containerRect = videoContainer.getBoundingClientRect();
@@ -419,10 +497,10 @@ export default defineContentScript({
         const relativeLeft = videoRect.left - containerRect.left;
 
         // Update only the wrapper to match video size and position
-        wrapper.style.top = `${relativeTop}px`;
-        wrapper.style.left = `${relativeLeft}px`;
-        wrapper.style.width = `${video.offsetWidth}px`;
-        wrapper.style.height = `${video.offsetHeight}px`;
+        scrubWrapper.style.top = `${relativeTop}px`;
+        scrubWrapper.style.left = `${relativeLeft}px`;
+        scrubWrapper.style.width = `${video.offsetWidth}px`;
+        scrubWrapper.style.height = `${video.offsetHeight}px`;
       };
 
       // Update content width based on video duration
@@ -440,27 +518,17 @@ export default defineContentScript({
 
           scrubOverlayScrollContent.style.width = `${finalWidth}px`;
 
-          // Set initial scroll position right after width is applied
-          setTimeout(() => {
-            if (!scrubOverlay || !scrubOverlayScrollContent) return;
-
-            if (finalWidth <= 0) return;
-
+          // Set initial scroll position after overlay/content width is updated,
+          // so the user can scroll both left and right (not stuck at edge)
+          // and there's always space to scrub in either direction.
+          // This runs in rAF to ensure DOM/layout is ready.
+          requestAnimationFrame(() => {
             // Prevent scroll listener from interfering with initial position
             isSettingInitialScroll = true;
-            needsScrollSync = false;
 
-            // Set scroll position based on invert setting
-            if (invertHorizontalScroll) {
-              scrubOverlay.scrollLeft = 1; // Start at position 1 when inverted
-            } else {
-              scrubOverlay.scrollLeft = finalWidth - 1; // Start at end - 1 when not inverted
-            }
-
-            // Reset flag after setting
-            setTimeout(() => {
-              isSettingInitialScroll = false;
-            }, 50);
+            // Set scroll position
+            scrubOverlay.scrollLeft = 1;
+            isSettingInitialScroll = false;
 
             if (DEBUG) {
               console.log(
@@ -469,10 +537,11 @@ export default defineContentScript({
                   scrollLeft: scrubOverlay.scrollLeft,
                   maxScroll: finalWidth,
                   invertHorizontalScroll,
-                }
+                },
+                video
               );
             }
-          }, 500);
+          });
         }
       };
 
@@ -490,8 +559,11 @@ export default defineContentScript({
         // Don't process scroll events when setting initial position
         if (isSettingInitialScroll) return;
 
-        // Sync scroll position to current video time when user starts scrolling
-        if (needsScrollSync && !isUserScrubbing && scrubOverlay) {
+        const videoState = videoStates.get(video);
+        if (!videoState) return;
+
+        // Immediately sync scroll position to current video time when user starts scrolling
+        if (!videoState.isUserScrubbing && scrubOverlay) {
           const progress = video.currentTime / video.duration;
           const maxScroll =
             scrubOverlayScrollContent.offsetWidth - scrubOverlay.offsetWidth;
@@ -500,10 +572,18 @@ export default defineContentScript({
             ? progress * maxScroll
             : (1 - progress) * maxScroll;
           scrubOverlay.scrollLeft = targetScroll;
-          needsScrollSync = false;
+
+          if (DEBUG) {
+            console.log('🔄 Synced scroll position to current video time:', {
+              currentTime: video.currentTime,
+              progress,
+              targetScroll,
+              scrollLeft: scrubOverlay.scrollLeft,
+            });
+          }
         }
 
-        isUserScrubbing = true;
+        videoState.isUserScrubbing = true;
 
         const scrollLeft = scrubOverlay!.scrollLeft;
         const maxScroll =
@@ -531,8 +611,7 @@ export default defineContentScript({
 
         // Set flag to false after user stops scrubbing
         scrubTimeout = window.setTimeout(() => {
-          isUserScrubbing = false;
-          needsScrollSync = true; // Reset sync flag when user stops scrubbing
+          videoState.isUserScrubbing = false;
 
           // Handle timeline visibility after scrubbing ends
           if (scrubTimeline) {
@@ -563,7 +642,8 @@ export default defineContentScript({
         scrubTimeline.style.opacity = '1';
 
         // Update progress bar to show current video time (only if not scrubbing)
-        if (!isUserScrubbing) {
+        const videoState = videoStates.get(video);
+        if (videoState && !videoState.isUserScrubbing) {
           const progress = video.currentTime / video.duration;
           const progressBar = scrubTimeline.firstElementChild as HTMLElement;
           if (progressBar) {
@@ -574,7 +654,13 @@ export default defineContentScript({
 
       scrubOverlay.addEventListener('mouseleave', () => {
         isHovering = false;
-        if (!showTimelineOnHover || !scrubTimeline || isUserScrubbing) return;
+        const videoState = videoStates.get(video);
+        if (
+          !showTimelineOnHover ||
+          !scrubTimeline ||
+          (videoState && videoState.isUserScrubbing)
+        )
+          return;
 
         // Hide timeline when not hovering (unless user is scrubbing)
         scrubTimeline.style.opacity = '0';
@@ -582,11 +668,12 @@ export default defineContentScript({
 
       // Sync scroll position only on actual seek events (not during normal playback)
       video.addEventListener('seeked', () => {
+        const videoState = videoStates.get(video);
         if (
           !video.duration ||
           !scrubOverlayScrollContent ||
           !scrubOverlay ||
-          isUserScrubbing
+          (videoState && videoState.isUserScrubbing)
         )
           return;
 
@@ -599,7 +686,6 @@ export default defineContentScript({
           : (1 - progress) * maxScroll;
 
         scrubOverlay.scrollLeft = targetScroll;
-        needsScrollSync = true; // Reset sync flag when video is seeked
       });
 
       // Update overlay size on window resize
@@ -611,10 +697,11 @@ export default defineContentScript({
 
       // Update timeline progress during hover when video is playing
       video.addEventListener('timeupdate', () => {
+        const videoState = videoStates.get(video);
         if (
           !showTimelineOnHover ||
           !scrubTimeline ||
-          isUserScrubbing ||
+          (videoState && videoState.isUserScrubbing) ||
           !video.duration
         )
           return;
@@ -629,7 +716,13 @@ export default defineContentScript({
         }
       });
 
-      currentVideo = video;
+      videoStates.set(video, {
+        overlay: scrubOverlay,
+        scrollContent: scrubOverlayScrollContent,
+        timeline: scrubTimeline,
+        wrapper: scrubWrapper,
+        isUserScrubbing: false,
+      });
 
       if (DEBUG) console.log('✅ Scrub overlay created successfully');
     };
