@@ -144,17 +144,22 @@ const DomainListItem: React.FC<DomainListItemProps> = ({
             </span>
           </div>
 
-          {/* Delete Button (only for non-global) */}
+          {/* Action Buttons (only for non-global) */}
           {!isGlobal && onRemove ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onRemove(rule.domain)}
-              className="h-8 w-8 p-0 text-red-500 transition-transform hover:scale-110 hover:bg-red-100 dark:hover:bg-red-900/30"
-              title="Remove domain"
-            >
-              <Trash2Icon className="h-4 w-4" />
-            </Button>
+            <div className="flex items-center gap-1">
+              {/* Delete Button */}
+              {onRemove ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onRemove(rule.domain)}
+                  className="h-8 w-8 p-0 text-red-500 transition-transform hover:scale-110 hover:bg-red-100 dark:hover:bg-red-900/30"
+                  title="Remove domain"
+                >
+                  <Trash2Icon className="h-4 w-4" />
+                </Button>
+              ) : null}
+            </div>
           ) : null}
         </div>
 
@@ -264,6 +269,7 @@ const CardListItem: React.FC<CardListItemProps> = ({
 function PopupContent() {
   const { theme } = useTheme();
   const [isEnabled, setIsEnabled] = useState(true);
+  const [isDebugEnabled, setIsDebugEnabled] = useState(false);
   const [invertHorizontalScroll, setInvertHorizontalScroll] = useState(false);
   const [showTimelineOnHover, setShowTimelineOnHover] = useState(false);
   const [timelinePosition, setTimelinePosition] = useState<'top' | 'bottom'>(
@@ -284,6 +290,7 @@ function PopupContent() {
   // Check if current settings differ from defaults (excluding domains)
   const isAtDefaults =
     isEnabled === true &&
+    isDebugEnabled === false &&
     invertHorizontalScroll === false &&
     showTimelineOnHover === false &&
     timelinePosition === 'bottom' &&
@@ -327,6 +334,7 @@ function PopupContent() {
     chrome.storage.sync.get(
       [
         'isEnabled',
+        'isDebugEnabled',
         'invertHorizontalScroll',
         'showTimelineOnHover',
         'timelinePosition',
@@ -336,6 +344,7 @@ function PopupContent() {
       ],
       (result) => {
         setIsEnabled(result.isEnabled ?? true);
+        setIsDebugEnabled(result.isDebugEnabled ?? false);
         setInvertHorizontalScroll(result.invertHorizontalScroll ?? false);
         setShowTimelineOnHover(result.showTimelineOnHover ?? false);
         setTimelinePosition(result.timelinePosition ?? 'bottom');
@@ -378,6 +387,19 @@ function PopupContent() {
         chrome.tabs.sendMessage(tabs[0].id, {
           action: 'updateEnabled',
           isEnabled: checked,
+        });
+      }
+    });
+  };
+
+  const handleDebugToggle = (checked: boolean) => {
+    setIsDebugEnabled(checked);
+    chrome.storage.sync.set({ isDebugEnabled: checked });
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]?.id) {
+        chrome.tabs.sendMessage(tabs[0].id, {
+          action: 'updateDebug',
+          isDebugEnabled: checked,
         });
       }
     });
@@ -457,6 +479,7 @@ function PopupContent() {
   const handleResetDefaults = () => {
     const defaultSettings = {
       isEnabled: true,
+      isDebugEnabled: false,
       invertHorizontalScroll: false,
       showTimelineOnHover: false,
       timelinePosition: 'bottom' as const,
@@ -465,6 +488,7 @@ function PopupContent() {
     };
 
     setIsEnabled(defaultSettings.isEnabled);
+    setIsDebugEnabled(defaultSettings.isDebugEnabled);
     setInvertHorizontalScroll(defaultSettings.invertHorizontalScroll);
     setShowTimelineOnHover(defaultSettings.showTimelineOnHover);
     setTimelinePosition(defaultSettings.timelinePosition);
@@ -478,6 +502,10 @@ function PopupContent() {
         chrome.tabs.sendMessage(tabs[0].id, {
           action: 'updateEnabled',
           isEnabled: defaultSettings.isEnabled,
+        });
+        chrome.tabs.sendMessage(tabs[0].id, {
+          action: 'updateDebug',
+          isDebugEnabled: defaultSettings.isDebugEnabled,
         });
         chrome.tabs.sendMessage(tabs[0].id, {
           action: 'updateScrollInversion',
@@ -556,9 +584,15 @@ function PopupContent() {
                   alt="Media Flow Seek"
                   className="h-8 w-8"
                 />
-                <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                <a
+                  href="https://chromewebstore.google.com/detail/media-flow-seek/phhigkiikolopghmahejjlojejpocagg?authuser=0&hl=en"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xl font-bold text-slate-900 no-underline transition-colors duration-200 hover:text-sky-600 dark:text-white dark:hover:text-sky-400"
+                  title="View Media Flow Seek on Chrome Web Store"
+                >
                   Media Flow Seek
-                </h2>
+                </a>
               </div>
               <p className="text-sm text-slate-600 dark:text-slate-300">
                 Enhanced video controls & scrolling
@@ -572,18 +606,32 @@ function PopupContent() {
               {/* Extension Section */}
               <div className="flex flex-none flex-col">
                 <SectionTitle title="Extension" />
-                <CardListItem
-                  title="Enabled"
-                  description="Enable or disable the extension"
-                  components={{
-                    RightSlot: (
-                      <Switch
-                        checked={isEnabled}
-                        onCheckedChange={handleEnabledToggle}
-                      />
-                    ),
-                  }}
-                />
+                <div className="flex flex-col gap-4">
+                  <CardListItem
+                    title="Enabled"
+                    description="Enable or disable the extension"
+                    components={{
+                      RightSlot: (
+                        <Switch
+                          checked={isEnabled}
+                          onCheckedChange={handleEnabledToggle}
+                        />
+                      ),
+                    }}
+                  />
+                  <CardListItem
+                    title="Debug"
+                    description="Show debug patterns on video overlays"
+                    components={{
+                      RightSlot: (
+                        <Switch
+                          checked={isDebugEnabled}
+                          onCheckedChange={handleDebugToggle}
+                        />
+                      ),
+                    }}
+                  />
+                </div>
               </div>
 
               {/* Settings Section */}
@@ -738,7 +786,7 @@ function PopupContent() {
 
             {/* Quick Actions */}
             {currentDomain ? (
-              <div className="overflow-hidden rounded-2xl border border-slate-200/60 bg-gradient-to-br from-white/95 to-slate-50/95 p-5 shadow-lg backdrop-blur-sm dark:border-slate-700/60 dark:from-slate-800/95 dark:to-slate-900/95 dark:shadow-slate-900/20">
+              <div className="overflow-hidden rounded-2xl border border-slate-200/60 bg-gradient-to-br from-white/95 to-slate-50/95 p-5 pt-2 shadow-lg backdrop-blur-sm dark:border-slate-700/60 dark:from-slate-800/95 dark:to-slate-900/95 dark:shadow-slate-900/20">
                 {/* Domain Header */}
                 <div className="mb-4 text-center">
                   <div className="mb-2 inline-flex items-center gap-3 rounded-full bg-white/60 px-4 py-2 shadow-sm ring-1 ring-slate-200/40 dark:bg-slate-800/60 dark:ring-slate-700/40">
@@ -830,7 +878,7 @@ function PopupContent() {
           {/* Domains List */}
           <div className="flex-1 overflow-hidden">
             <GroupedVirtuoso
-              className="flex-1 [&_[data-testid='virtuoso-item-list']]:p-4 [&_[data-testid='virtuoso-top-item-list']]:px-4"
+              className="flex-1 [&_[data-testid='virtuoso-item-list']]:p-4 [&_[data-testid='virtuoso-item-list']]:!pb-3 [&_[data-testid='virtuoso-top-item-list']]:px-4"
               groupCounts={(() => {
                 const globalRule = domainRules.find(
                   (rule) => rule.domain === '*'
