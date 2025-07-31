@@ -15,7 +15,7 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-## [1.0.4] - 2025-01-23
+## [1.0.4] - 2025-07-30
 
 ### ✨ New Features
 
