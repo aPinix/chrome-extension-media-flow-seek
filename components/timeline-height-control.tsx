@@ -8,12 +8,12 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from './select';
-import { Slider } from './slider';
+} from './ui/select';
+import { Slider } from './ui/slider';
 
 type TimelineUnit = 'px' | '%';
 
-interface TimelineHeightControlProps {
+interface TimelineHeightControlPropsI {
   value: number;
   unit: TimelineUnit;
   onChange: (value: number) => void;
@@ -21,13 +21,13 @@ interface TimelineHeightControlProps {
   className?: string;
 }
 
-const TimelineHeightControl: React.FC<TimelineHeightControlProps> = ({
+const TimelineHeightControl = ({
   value,
   unit,
   onChange,
   onUnitChange,
   className,
-}) => {
+}: TimelineHeightControlPropsI) => {
   return (
     <div className={cn('flex items-center gap-3', className)}>
       <Slider

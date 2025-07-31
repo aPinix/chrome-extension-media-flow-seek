@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 
 ### 🐛 Bug Fixes
 
+- **Video Position**: Fixed video position when scrolling
 - **Video Tag Compatibility**: Extension now fully supports video elements with custom mouse interactions (hover, click-to-play/pause, etc.); scrubbing and overlays work seamlessly regardless of player mouse behavior
 
 ---
