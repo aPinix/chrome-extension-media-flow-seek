@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.5] - 2025-07-31
+
+### ✨ New Features
+
+- **Keyboard Event Handling**: Added keyboard event handling to restore scrub-wrapper elements when any key is pressed
+
+### 🐛 Bug Fixes
+
+- **Video Position**: Fixed video position when scrolling
+- **Video Tag Compatibility**: Extension now fully supports video elements with custom mouse interactions (hover, click-to-play/pause, etc.); scrubbing and overlays work seamlessly regardless of player mouse behavior
+
+---
+
 ## [1.0.4] - 2025-01-23
 
 ### ✨ New Features

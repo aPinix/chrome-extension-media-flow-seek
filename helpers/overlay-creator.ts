@@ -8,6 +8,8 @@ export class OverlayCreator {
   private settingsManager: SettingsManager;
   private videoStateManager: VideoStateManager;
   private updatingScrollVideos = new Map<HTMLVideoElement, boolean>();
+  private keyboardEventListenerAdded = false;
+  private pressedKeys = new Set<string>();
 
   constructor(
     settingsManager: SettingsManager,
@@ -15,6 +17,81 @@ export class OverlayCreator {
   ) {
     this.settingsManager = settingsManager;
     this.videoStateManager = videoStateManager;
+    this.setupKeyboardEventListener();
+  }
+
+  private setupKeyboardEventListener(): void {
+    if (this.keyboardEventListenerAdded) return;
+
+    document.addEventListener('keydown', this.handleKeyDown.bind(this));
+    document.addEventListener('keyup', this.handleKeyUp.bind(this));
+
+    // Handle focus loss - clear all pressed keys when window loses focus
+    window.addEventListener('blur', this.clearAllPressedKeys.bind(this));
+
+    // Handle visibility change - clear all pressed keys when tab becomes hidden
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        this.clearAllPressedKeys();
+      }
+    });
+
+    this.keyboardEventListenerAdded = true;
+  }
+
+  private handleKeyDown(event: KeyboardEvent): void {
+    // Track pressed keys
+    this.pressedKeys.add(event.code);
+
+    // Completely hide all scrub-wrapper elements when any key is pressed
+    // This prevents interference with default video controls
+    const scrubWrappers = document.querySelectorAll(
+      '.scrub-wrapper'
+    ) as NodeListOf<HTMLElement>;
+
+    scrubWrappers.forEach((wrapper) => {
+      wrapper.style.display = 'none';
+      wrapper.style.visibility = 'hidden';
+      wrapper.style.pointerEvents = 'none';
+    });
+
+    console.log('🎯 PRESSED KEYS:', this.pressedKeys.size);
+  }
+
+  private handleKeyUp(event: KeyboardEvent): void {
+    // Remove the released key from pressed keys
+    this.pressedKeys.delete(event.code);
+
+    console.log('🎯 PRESSED KEYS:', this.pressedKeys.size);
+
+    // If no keys are pressed, restore the scrub-wrapper elements
+    if (this.pressedKeys.size === 0) {
+      this.restoreScrubWrappers();
+    }
+  }
+
+  private clearAllPressedKeys(): void {
+    console.log(
+      '🎯 Clearing all pressed keys (was:',
+      this.pressedKeys.size,
+      ')'
+    );
+    this.pressedKeys.clear();
+    this.restoreScrubWrappers();
+  }
+
+  private restoreScrubWrappers(): void {
+    const scrubWrappers = document.querySelectorAll(
+      '.scrub-wrapper'
+    ) as NodeListOf<HTMLElement>;
+
+    console.log('🎯 Restoring scrub-wrapper elements:', scrubWrappers.length);
+
+    scrubWrappers.forEach((wrapper) => {
+      wrapper.style.display = '';
+      wrapper.style.visibility = '';
+      wrapper.style.pointerEvents = '';
+    });
   }
 
   createScrubOverlay(video: HTMLVideoElement): void {
@@ -414,6 +491,57 @@ export class OverlayCreator {
     ].forEach(forwardMouseEvent);
   }
 
+  /**
+   * Finds the actual visible container for a video element by looking for parent elements
+   * with similar dimensions (within margin) and overflow properties that clip content.
+   * This is useful for cases like YouTube Shorts where the video element is larger than its visible container.
+   */
+  private findVisibleVideoContainer(
+    video: HTMLVideoElement,
+    margin: number = 100
+  ): HTMLElement | null {
+    const videoRect = video.getBoundingClientRect();
+    const videoWidth = videoRect.width;
+    const videoHeight = videoRect.height;
+
+    let currentElement = video.parentElement;
+
+    while (currentElement && currentElement !== document.body) {
+      const elementRect = currentElement.getBoundingClientRect();
+      const elementWidth = elementRect.width;
+      const elementHeight = elementRect.height;
+
+      // Check if dimensions are similar (within margin)
+      const widthDiff = Math.abs(elementWidth - videoWidth);
+      const heightDiff = Math.abs(elementHeight - videoHeight);
+
+      if (widthDiff <= margin && heightDiff <= margin) {
+        const computedStyle = window.getComputedStyle(currentElement);
+        const overflow = computedStyle.overflow;
+        const overflowX = computedStyle.overflowX;
+        const overflowY = computedStyle.overflowY;
+
+        // Check for clipping properties
+        const hasClipping =
+          overflow === 'hidden' ||
+          overflowX === 'hidden' ||
+          overflowY === 'hidden' ||
+          overflow === 'clip' ||
+          overflowX === 'clip' ||
+          overflowY === 'clip' ||
+          computedStyle.clipPath !== 'none';
+
+        if (hasClipping) {
+          return currentElement;
+        }
+      }
+
+      currentElement = currentElement.parentElement;
+    }
+
+    return null;
+  }
+
   private createOverlaySizeUpdater(
     video: HTMLVideoElement,
     scrubWrapper: HTMLDivElement
@@ -421,17 +549,30 @@ export class OverlayCreator {
     return () => {
       if (!scrubWrapper || !video) return;
 
-      const videoRect = video.getBoundingClientRect();
+      // Try to find the actual visible container first
+      const visibleContainer = this.findVisibleVideoContainer(video);
+      const targetElement = visibleContainer || video;
+
+      const targetRect = targetElement.getBoundingClientRect();
       const videoContainer = video.parentElement || document.body;
       const containerRect = videoContainer.getBoundingClientRect();
-      const relativeTop = videoRect.top - containerRect.top;
-      const relativeLeft = videoRect.left - containerRect.left;
+      const relativeTop = targetRect.top - containerRect.top;
+      const relativeLeft = targetRect.left - containerRect.left;
 
-      // Update wrapper to match video size and position
+      // Update wrapper to match the target element size and position
       scrubWrapper.style.top = `${relativeTop}px`;
       scrubWrapper.style.left = `${relativeLeft}px`;
-      scrubWrapper.style.width = `${video.offsetWidth}px`;
-      scrubWrapper.style.height = `${video.offsetHeight}px`;
+      scrubWrapper.style.width = `${targetRect.width}px`;
+      scrubWrapper.style.height = `${targetRect.height}px`;
+
+      // Add debug logging if needed
+      if (this.settingsManager.isDebugEnabled() && visibleContainer) {
+        console.log('🎯 Using visible container instead of video element:', {
+          video: { width: video.offsetWidth, height: video.offsetHeight },
+          container: { width: targetRect.width, height: targetRect.height },
+          element: visibleContainer,
+        });
+      }
     };
   }
 
