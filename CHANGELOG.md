@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.7] - 2025-08-08
+
+### 🌟 New Features
+
+- Hotkey Toggle: Instantly enable/disable the extension with Cmd/Ctrl+Shift+V
+- Inline Feedback: Clean in-page notification when you toggle the extension
+
+---
+
 ## [1.0.6] - 2025-08-08
 
 ### 🐛 Bug Fixes

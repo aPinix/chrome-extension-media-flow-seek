@@ -1,4 +1,5 @@
 import { DOMUtils } from '@/helpers/dom-utils';
+import { NotificationHelper } from '@/helpers/notification-helper';
 import { SettingsManager } from '@/helpers/settings-manager';
 import { VideoStateManager } from '@/helpers/video-state';
 import { ChromeMessageT } from '@/types/content';
@@ -62,6 +63,10 @@ export class MessageHandler {
         this.handleUpdateDebug(message, sendResponse);
         break;
 
+      case 'SETTINGS_UPDATED':
+        this.handleSettingsUpdated(message, sendResponse);
+        break;
+
       default:
         sendResponse({ success: false, error: 'Unknown action' });
     }
@@ -99,6 +104,11 @@ export class MessageHandler {
       }
       setTimeout(() => checkForVideos(), 100);
     }
+
+    // Show notification for toggle; default to 'popup' unless specified
+    const source: 'hotkey' | 'popup' =
+      message.triggeredBy === 'hotkey' ? 'hotkey' : 'popup';
+    NotificationHelper.showToggleNotification(message.isEnabled, source);
 
     sendResponse({ success: true });
   }
@@ -268,6 +278,48 @@ export class MessageHandler {
       getDebugColorBackground,
       getDebugImageBackground
     );
+
+    sendResponse({ success: true });
+  }
+
+  private handleSettingsUpdated(
+    message: any,
+    sendResponse: (response: any) => void
+  ): void {
+    const { settingsManager, videoStateManager, checkForVideos } =
+      this.dependencies;
+
+    // Update the settings manager with the new enabled state
+    if (typeof message.isEnabled === 'boolean') {
+      settingsManager.updateSetting('isEnabled', message.isEnabled);
+
+      if (settingsManager.isDebugEnabled()) {
+        console.log(
+          '⌨️ Updated extension enabled from hotkey:',
+          message.isEnabled
+        );
+      }
+
+      if (!message.isEnabled) {
+        // Remove existing overlays when disabled
+        if (settingsManager.isDebugEnabled()) {
+          console.log('🚫 Extension disabled via hotkey, removing overlays');
+        }
+
+        DOMUtils.removeExistingScrubWrappers();
+        DOMUtils.removeOverlayAttributes();
+        videoStateManager.clear();
+      } else {
+        // Extension is enabled, check for videos again
+        if (settingsManager.isDebugEnabled()) {
+          console.log('✅ Extension enabled via hotkey, checking for videos');
+        }
+        setTimeout(() => checkForVideos(), 100);
+      }
+    }
+
+    // Show notification for hotkey toggle
+    NotificationHelper.showToggleNotification(message.isEnabled, 'hotkey');
 
     sendResponse({ success: true });
   }

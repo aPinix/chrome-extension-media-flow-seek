@@ -25,7 +25,8 @@ export const CardListItem = ({
       className={cn(
         'rounded-xl border border-slate-200/70 bg-white/80 p-4 shadow-md backdrop-blur-sm transition-all dark:border-slate-600/40 dark:bg-slate-800/60 dark:shadow-slate-900/30',
         onClick && 'cursor-pointer hover:shadow-lg dark:hover:bg-slate-800/80',
-        disabled && 'cursor-not-allowed opacity-50 dark:opacity-60'
+        disabled &&
+          'pointer-events-none cursor-not-allowed opacity-50 dark:opacity-60'
       )}
       onClick={onClick}
     >

@@ -1,3 +1,4 @@
+import { EXT_URL } from '@/config/variables.config';
 import { DOMUtils } from '@/helpers/dom-utils';
 import { getProgressColorSync } from '@/helpers/domains';
 import { getAppLogoBase64 } from '@/helpers/logo';
@@ -12,6 +13,7 @@ export class OverlayCreator {
   private keyboardEventListenerAdded = false;
   private pressedKeys = new Set<string>();
   private checkForVideos: () => void;
+  private isFastHideStyleInjected = false;
 
   constructor(
     settingsManager: SettingsManager,
@@ -44,21 +46,37 @@ export class OverlayCreator {
   }
 
   private handleKeyDown(event: KeyboardEvent): void {
-    // Track pressed keys
+    // Ignore auto-repeat keydown events to prevent repeated work
+    if (event.repeat) return;
+
+    // Track pressed keys and check if this is the first key
+    const wasEmpty = this.pressedKeys.size === 0;
     this.pressedKeys.add(event.code);
+
+    // Only run disable path on first key down transition
+    if (!wasEmpty) return;
 
     // Disable the extension when any key is pressed (same as popup disable)
     // This prevents interference with default video controls
     this.settingsManager.updateSetting('isEnabled', false);
 
     if (this.settingsManager.isDebugEnabled()) {
-      console.log('🚫 Extension disabled by key press, removing overlays');
+      console.log('🚫 Extension disabled by key press, fast-hiding overlays');
     }
 
-    // Remove existing overlays when disabled (same as popup disable logic)
-    DOMUtils.removeExistingScrubWrappers();
-    DOMUtils.removeOverlayAttributes();
-    this.videoStateManager.clear();
+    // 1) Instant visual hide via CSS so it feels immediate
+    this.fastHideOverlays();
+
+    // 2) Defer heavier DOM removals to the next frame to keep input-to-paint fast
+    requestAnimationFrame(() => {
+      DOMUtils.removeExistingScrubWrappers();
+      DOMUtils.removeOverlayAttributes();
+      this.videoStateManager.clear();
+
+      if (this.settingsManager.isDebugEnabled()) {
+        console.log('🧹 Overlays removed and state cleared (deferred)');
+      }
+    });
 
     if (this.settingsManager.isDebugEnabled()) {
       console.log(
@@ -85,6 +103,12 @@ export class OverlayCreator {
         console.log('✅ Extension enabled by key release, checking for videos');
       }
 
+      // Remove fast-hide artifacts so overlays can be recreated
+      document.documentElement.classList.remove('mfs-disabled');
+      const s = document.getElementById('mfs-fast-hide');
+      if (s) s.remove();
+      this.isFastHideStyleInjected = false;
+
       // Extension is enabled, check for videos again (same as popup enable logic)
       setTimeout(() => this.checkForVideos(), 100);
     }
@@ -105,8 +129,28 @@ export class OverlayCreator {
       console.log('✅ Extension enabled by focus change, checking for videos');
     }
 
+    // Remove fast-hide artifacts so overlays can be recreated
+    document.documentElement.classList.remove('mfs-disabled');
+    const s = document.getElementById('mfs-fast-hide');
+    if (s) s.remove();
+    this.isFastHideStyleInjected = false;
+
     // Extension is enabled, check for videos again (same as popup enable logic)
     setTimeout(() => this.checkForVideos(), 100);
+  }
+
+  private fastHideOverlays(): void {
+    // Add a lightweight class that CSS can key off if needed
+    document.documentElement.classList.add('mfs-disabled');
+
+    // Fallback: ensure scrub wrappers are immediately hidden without heavy DOM ops
+    if (!this.isFastHideStyleInjected) {
+      const style = document.createElement('style');
+      style.id = 'mfs-fast-hide';
+      style.textContent = `.scrub-wrapper { display: none !important; visibility: hidden !important; }`;
+      document.head.appendChild(style);
+      this.isFastHideStyleInjected = true;
+    }
   }
 
   private restoreScrubWrappers(): void {
@@ -288,6 +332,7 @@ export class OverlayCreator {
       overflow-y: hidden;
       border-radius: inherit;
       background-color: rgb(0 0 0 / 0);
+      pointer-events: auto;
       ${this.getDebugColorBackground()}
       scrollbar-width: none;
       -ms-overflow-style: none;
@@ -339,6 +384,7 @@ export class OverlayCreator {
       background: rgb(255 255 255 / 0.3);
       opacity: 0;
       transition: opacity 0.3s ease;
+      pointer-events: none;
     `;
     timeline.classList.add('scrub-timeline');
     return timeline;
@@ -398,6 +444,7 @@ export class OverlayCreator {
       left: ${relativeLeft}px;
       width: ${video.offsetWidth}px;
       height: ${video.offsetHeight}px;
+      pointer-events: none;
     `;
     scrubWrapper.classList.add('scrub-wrapper');
 
@@ -409,8 +456,7 @@ export class OverlayCreator {
 
   private createDebugIndicator(): HTMLAnchorElement {
     const debugIndicator = document.createElement('a');
-    debugIndicator.href =
-      'https://chromewebstore.google.com/detail/media-flow-seek/phhigkiikolopghmahejjlojejpocagg?authuser=0&hl=en';
+    debugIndicator.href = EXT_URL;
     debugIndicator.target = '_blank';
     debugIndicator.rel = 'noopener noreferrer';
     debugIndicator.title = 'View Media Flow Seek on Chrome Web Store';
@@ -433,6 +479,7 @@ export class OverlayCreator {
       gap: 6px;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
       border: 1px solid rgba(255, 255, 255, 0.1);
+      pointer-events: auto;
       text-decoration: none;
       transition: opacity 0.2s;
     `;

@@ -17,10 +17,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { EXT_URL } from '@/config/variables.config';
 import {
   DEFAULT_SETTINGS,
   loadPopupSettings,
-  type PopupSettings,
   saveSettings,
   sendMessageToCurrentTab,
 } from '@/helpers/popup-storage';
@@ -30,13 +30,14 @@ import {
   getCurrentDomain,
 } from '@/lib/popup-utils';
 import { cn } from '@/lib/utils';
+import { getExtensionVersion } from '@/lib/version';
 import {
   DomainConfigT,
   DomainRuleTypeE,
   DomainRuleTypeT,
 } from '@/types/domains';
 
-const SHOW_DEBUG_CARD = false;
+const SHOW_DEBUG_CARD = true;
 const YOUTUBE_ONLY = true;
 
 export function PopupContent() {
@@ -48,6 +49,7 @@ export function PopupContent() {
   const [timelinePosition, setTimelinePosition] = useState<'top' | 'bottom'>(
     'bottom'
   );
+  const [toggleShortcut, setToggleShortcut] = useState<string>('');
   const [domainRules, setDomainRules] = useState<DomainConfigT[]>([]);
   const [currentDomain, setCurrentDomain] = useState('');
   const [showDomainsView, setShowDomainsView] = useState(false);
@@ -72,8 +74,8 @@ export function PopupContent() {
     // Get current tab domain
     getCurrentDomain().then(setCurrentDomain);
 
-    // Load saved settings
-    loadPopupSettings().then((settings: PopupSettings) => {
+    const loadSettings = async () => {
+      const settings = await loadPopupSettings();
       setIsEnabled(settings.isEnabled);
       setIsDebugEnabled(settings.isDebugEnabled);
       setInvertHorizontalScroll(settings.invertHorizontalScroll);
@@ -82,7 +84,27 @@ export function PopupContent() {
       setTimelineHeight(settings.timelineHeight);
       setTimelineHeightUnit(settings.timelineHeightUnit);
       setDomainRules(settings.domainRules);
-    });
+    };
+
+    const loadShortcuts = async () => {
+      try {
+        const commands = await chrome.commands.getAll();
+        const toggleCommand = commands.find(
+          (cmd) => cmd.name === 'toggle-extension'
+        );
+        if (toggleCommand?.shortcut) {
+          setToggleShortcut(toggleCommand.shortcut);
+        } else {
+          setToggleShortcut('Not configured');
+        }
+      } catch (error) {
+        console.error('Failed to load keyboard shortcuts:', error);
+        setToggleShortcut('Not available');
+      }
+    };
+
+    loadSettings();
+    loadShortcuts();
   }, []);
 
   const updateDomainRules = (newRules: DomainConfigT[]) => {
@@ -254,23 +276,32 @@ export function PopupContent() {
           )}
         >
           {/* Fixed Header */}
-          <div className="flex-none border-b border-slate-200/60 bg-white/90 p-6 backdrop-blur-md dark:border-slate-600/50 dark:bg-slate-800/90">
-            <div className="text-center">
+          <div className="relative flex flex-none flex-col items-center border-b border-slate-200/60 bg-white/90 p-6 backdrop-blur-md dark:border-slate-600/50 dark:bg-slate-800/90">
+            <div className="inline-flex flex-col items-start text-center">
               <div className="mb-1 flex items-center justify-center gap-3">
                 <img
                   src="/icon/48.png"
                   alt="Media Flow Seek"
                   className="h-8 w-8"
                 />
-                <a
-                  href="https://chromewebstore.google.com/detail/media-flow-seek/phhigkiikolopghmahejjlojejpocagg?authuser=0&hl=en"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xl font-bold text-slate-900 no-underline transition-colors duration-200 hover:text-sky-600 dark:text-white dark:hover:text-sky-400"
-                  title="View Media Flow Seek on Chrome Web Store"
-                >
-                  Media Flow Seek
-                </a>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={EXT_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xl font-bold text-slate-900 no-underline transition-colors duration-200 hover:text-sky-600 dark:text-white dark:hover:text-sky-400"
+                    title="View Media Flow Seek on Chrome Web Store"
+                  >
+                    Media Flow Seek
+                  </a>
+
+                  {/* version */}
+                  {getExtensionVersion() ? (
+                    <span className="rounded-full bg-slate-200 px-2 py-1 text-xs font-medium text-slate-400 dark:bg-slate-700 dark:text-slate-300">
+                      v{getExtensionVersion()}
+                    </span>
+                  ) : null}
+                </div>
               </div>
               <p className="text-sm text-slate-600 dark:text-slate-300">
                 Enhanced video controls & scrolling
@@ -311,6 +342,39 @@ export function PopupContent() {
                       }}
                     />
                   ) : null}
+                </div>
+              </div>
+
+              {/* Keyboard Shortcuts Section */}
+              <div className="flex flex-none flex-col">
+                <SectionTitle title="Keyboard Shortcuts" />
+                <div className="flex flex-col gap-4">
+                  <CardListItem
+                    title="Toggle Extension"
+                    description={
+                      toggleShortcut === 'Not configured'
+                        ? 'Set up a keyboard shortcut to quickly toggle the extension'
+                        : toggleShortcut === 'Not available'
+                          ? 'Keyboard shortcuts not available'
+                          : `Press ${toggleShortcut} to toggle`
+                    }
+                    components={{
+                      RightSlot: (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            chrome.tabs.create({
+                              url: 'chrome://extensions/shortcuts',
+                            });
+                          }}
+                          className="h-8 bg-sky-50 px-3 text-xs font-medium text-sky-500 hover:bg-sky-100 hover:text-sky-700 dark:bg-sky-900 dark:text-sky-400 dark:hover:bg-sky-800 dark:hover:text-sky-300"
+                        >
+                          Configure
+                        </Button>
+                      ),
+                    }}
+                  />
                 </div>
               </div>
 

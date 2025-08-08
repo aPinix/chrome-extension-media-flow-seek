@@ -22,7 +22,7 @@ export default defineConfig({
       default_locale: 'en',
       description:
         'Control (Video, YouTube, Vimeo, ...) media playback with mouse scroll horizontally, even if the media or browser is not in focus.',
-      version: '1.0.6',
+      version: '1.0.7',
       author: 'aPinix',
       icons: {
         '16': 'icon/16.png',
@@ -35,11 +35,21 @@ export default defineConfig({
         // 'activeTab',
         'tabs',
         'storage',
-        // 'scripting',
+        'scripting',
+        // 'notifications',
         // 'contextMenus',
         // 'sidePanel',
       ],
       host_permissions: ['<all_urls>'],
+      commands: {
+        'toggle-extension': {
+          suggested_key: {
+            default: 'Ctrl+Shift+V',
+            mac: 'Command+Shift+V',
+          },
+          description: 'Toggle extension enabled/disabled',
+        },
+      },
     };
   },
 });
