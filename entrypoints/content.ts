@@ -11,10 +11,6 @@ export default defineContentScript({
     // Initialize managers
     const settingsManager = new SettingsManager();
     const videoStateManager = new VideoStateManager();
-    const overlayCreator = new OverlayCreator(
-      settingsManager,
-      videoStateManager
-    );
 
     // Debug utility functions
     const getDebugColorBackground = (): string => {
@@ -36,11 +32,6 @@ export default defineContentScript({
         : '';
     };
 
-    // Create overlay function that uses the overlay creator
-    const createScrubOverlay = (video: HTMLVideoElement): void => {
-      overlayCreator.createScrubOverlay(video);
-    };
-
     // Check for videos function
     const checkForVideos = (): void => {
       DOMUtils.checkForVideos({
@@ -48,6 +39,18 @@ export default defineContentScript({
         shouldRun: () => settingsManager.shouldRun(),
         createOverlay: createScrubOverlay,
       });
+    };
+
+    // Initialize overlay creator with checkForVideos function
+    const overlayCreator = new OverlayCreator(
+      settingsManager,
+      videoStateManager,
+      checkForVideos
+    );
+
+    // Create overlay function that uses the overlay creator
+    const createScrubOverlay = (video: HTMLVideoElement): void => {
+      overlayCreator.createScrubOverlay(video);
     };
 
     // Initialize message handler

@@ -22,7 +22,7 @@ export default defineConfig({
       default_locale: 'en',
       description:
         'Control (Video, YouTube, Vimeo, ...) media playback with mouse scroll horizontally, even if the media or browser is not in focus.',
-      version: '1.0.5',
+      version: '1.0.6',
       author: 'aPinix',
       icons: {
         '16': 'icon/16.png',

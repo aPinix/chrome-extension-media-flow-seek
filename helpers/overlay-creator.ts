@@ -1,3 +1,4 @@
+import { DOMUtils } from '@/helpers/dom-utils';
 import { getProgressColorSync } from '@/helpers/domains';
 import { getAppLogoBase64 } from '@/helpers/logo';
 import { SettingsManager } from '@/helpers/settings-manager';
@@ -10,13 +11,16 @@ export class OverlayCreator {
   private updatingScrollVideos = new Map<HTMLVideoElement, boolean>();
   private keyboardEventListenerAdded = false;
   private pressedKeys = new Set<string>();
+  private checkForVideos: () => void;
 
   constructor(
     settingsManager: SettingsManager,
-    videoStateManager: VideoStateManager
+    videoStateManager: VideoStateManager,
+    checkForVideos: () => void
   ) {
     this.settingsManager = settingsManager;
     this.videoStateManager = videoStateManager;
+    this.checkForVideos = checkForVideos;
     this.setupKeyboardEventListener();
   }
 
@@ -43,41 +47,66 @@ export class OverlayCreator {
     // Track pressed keys
     this.pressedKeys.add(event.code);
 
-    // Completely hide all scrub-wrapper elements when any key is pressed
+    // Disable the extension when any key is pressed (same as popup disable)
     // This prevents interference with default video controls
-    const scrubWrappers = document.querySelectorAll(
-      '.scrub-wrapper'
-    ) as NodeListOf<HTMLElement>;
+    this.settingsManager.updateSetting('isEnabled', false);
 
-    scrubWrappers.forEach((wrapper) => {
-      wrapper.style.display = 'none';
-      wrapper.style.visibility = 'hidden';
-      wrapper.style.pointerEvents = 'none';
-    });
+    if (this.settingsManager.isDebugEnabled()) {
+      console.log('🚫 Extension disabled by key press, removing overlays');
+    }
 
-    console.log('🎯 PRESSED KEYS:', this.pressedKeys.size);
+    // Remove existing overlays when disabled (same as popup disable logic)
+    DOMUtils.removeExistingScrubWrappers();
+    DOMUtils.removeOverlayAttributes();
+    this.videoStateManager.clear();
+
+    if (this.settingsManager.isDebugEnabled()) {
+      console.log(
+        '🎯 PRESSED KEYS:',
+        this.pressedKeys.size,
+        '- Extension disabled'
+      );
+    }
   }
 
   private handleKeyUp(event: KeyboardEvent): void {
     // Remove the released key from pressed keys
     this.pressedKeys.delete(event.code);
 
-    console.log('🎯 PRESSED KEYS:', this.pressedKeys.size);
+    if (this.settingsManager.isDebugEnabled()) {
+      console.log('🎯 PRESSED KEYS:', this.pressedKeys.size);
+    }
 
-    // If no keys are pressed, restore the scrub-wrapper elements
+    // If no keys are pressed, re-enable the extension (same as popup enable)
     if (this.pressedKeys.size === 0) {
-      this.restoreScrubWrappers();
+      this.settingsManager.updateSetting('isEnabled', true);
+
+      if (this.settingsManager.isDebugEnabled()) {
+        console.log('✅ Extension enabled by key release, checking for videos');
+      }
+
+      // Extension is enabled, check for videos again (same as popup enable logic)
+      setTimeout(() => this.checkForVideos(), 100);
     }
   }
 
   private clearAllPressedKeys(): void {
-    console.log(
-      '🎯 Clearing all pressed keys (was:',
-      this.pressedKeys.size,
-      ')'
-    );
+    if (this.settingsManager.isDebugEnabled()) {
+      console.log(
+        '🎯 Clearing all pressed keys (was:',
+        this.pressedKeys.size,
+        ')'
+      );
+    }
     this.pressedKeys.clear();
-    this.restoreScrubWrappers();
+    this.settingsManager.updateSetting('isEnabled', true);
+
+    if (this.settingsManager.isDebugEnabled()) {
+      console.log('✅ Extension enabled by focus change, checking for videos');
+    }
+
+    // Extension is enabled, check for videos again (same as popup enable logic)
+    setTimeout(() => this.checkForVideos(), 100);
   }
 
   private restoreScrubWrappers(): void {
@@ -85,7 +114,9 @@ export class OverlayCreator {
       '.scrub-wrapper'
     ) as NodeListOf<HTMLElement>;
 
-    console.log('🎯 Restoring scrub-wrapper elements:', scrubWrappers.length);
+    if (this.settingsManager.isDebugEnabled()) {
+      console.log('🎯 Restoring scrub-wrapper elements:', scrubWrappers.length);
+    }
 
     scrubWrappers.forEach((wrapper) => {
       wrapper.style.display = '';
@@ -257,7 +288,6 @@ export class OverlayCreator {
       overflow-y: hidden;
       border-radius: inherit;
       background-color: rgb(0 0 0 / 0);
-      pointer-events: auto;
       ${this.getDebugColorBackground()}
       scrollbar-width: none;
       -ms-overflow-style: none;
@@ -368,7 +398,6 @@ export class OverlayCreator {
       left: ${relativeLeft}px;
       width: ${video.offsetWidth}px;
       height: ${video.offsetHeight}px;
-      pointer-events: none;
     `;
     scrubWrapper.classList.add('scrub-wrapper');
 
@@ -404,7 +433,6 @@ export class OverlayCreator {
       gap: 6px;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
       border: 1px solid rgba(255, 255, 255, 0.1);
-      pointer-events: auto;
       text-decoration: none;
       transition: opacity 0.2s;
     `;

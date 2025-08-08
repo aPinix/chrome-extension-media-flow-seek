@@ -142,7 +142,6 @@ export class VideoStateManager {
           overflow-x: scroll;
           overflow-y: hidden;
           border-radius: inherit;
-          pointer-events: auto;
           scrollbar-width: none;
           -ms-overflow-style: none;
           ${getDebugColorBackground()}

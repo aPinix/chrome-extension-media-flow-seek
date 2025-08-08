@@ -6,6 +6,7 @@ import { CardListItem } from '@/components/popup/card-list-item';
 import { DomainListItem } from '@/components/popup/domain-list-item';
 import { SectionTitle } from '@/components/popup/section-title';
 import { useTheme } from '@/components/theme-provider';
+import { TimelineHeightControl } from '@/components/timeline-height-control';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -16,7 +17,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { TimelineHeightControl } from '@/components/timeline-height-control';
 import {
   DEFAULT_SETTINGS,
   loadPopupSettings,
