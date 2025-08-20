@@ -13,17 +13,28 @@ export type VideoStateT = {
 export type ContentSettingsT = {
   isEnabled: boolean;
   isDebugEnabled: boolean;
+  isBetaFeaturesEnabled: boolean;
   invertHorizontalScroll: boolean;
   showTimelineOnHover: boolean;
   timelinePosition: 'top' | 'bottom';
   timelineHeight: number;
   timelineHeightUnit: 'px' | '%';
+  actionArea: 'full' | 'top' | 'middle' | 'bottom';
+  actionAreaSize: number; // percentage for partial areas (top/middle/bottom)
   domainRules: Array<{
     domain: string;
     type: DomainRuleTypeT;
     enabled: boolean;
   }>;
 };
+
+export const ActionAreaE = {
+  Full: 'full',
+  Top: 'top',
+  Middle: 'middle',
+  Bottom: 'bottom',
+} as const;
+export type ActionAreaT = (typeof ActionAreaE)[keyof typeof ActionAreaE];
 
 export type ChromeMessageT = {
   action: string;

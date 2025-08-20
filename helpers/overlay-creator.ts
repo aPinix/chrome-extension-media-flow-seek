@@ -2,9 +2,13 @@ import { EXT_URL } from '@/config/variables.config';
 import { DOMUtils } from '@/helpers/dom-utils';
 import { getProgressColorSync } from '@/helpers/domains';
 import { getAppLogoBase64 } from '@/helpers/logo';
-import { SettingsManager } from '@/helpers/settings-manager';
-import { VideoStateManager } from '@/helpers/video-state';
-import { VideoStateT } from '@/types/content';
+import type { SettingsManager } from '@/helpers/settings-manager';
+import type { VideoStateManager } from '@/helpers/video-state';
+import {
+  ActionAreaE,
+  type ActionAreaT,
+  type VideoStateT,
+} from '@/types/content';
 
 export class OverlayCreator {
   private settingsManager: SettingsManager;
@@ -153,22 +157,6 @@ export class OverlayCreator {
     }
   }
 
-  private restoreScrubWrappers(): void {
-    const scrubWrappers = document.querySelectorAll(
-      '.scrub-wrapper'
-    ) as NodeListOf<HTMLElement>;
-
-    if (this.settingsManager.isDebugEnabled()) {
-      console.log('🎯 Restoring scrub-wrapper elements:', scrubWrappers.length);
-    }
-
-    scrubWrappers.forEach((wrapper) => {
-      wrapper.style.display = '';
-      wrapper.style.visibility = '';
-      wrapper.style.pointerEvents = '';
-    });
-  }
-
   createScrubOverlay(video: HTMLVideoElement): void {
     const debugMode = this.settingsManager.isDebugEnabled();
 
@@ -214,7 +202,11 @@ export class OverlayCreator {
     // Add elements to wrapper
     scrubWrapper.appendChild(scrubOverlay);
     scrubWrapper.appendChild(scrubTimeline);
-    scrubWrapper.appendChild(debugIndicator);
+
+    // Only add debug indicator to DOM if debug is enabled
+    if (this.settingsManager.isDebugEnabled()) {
+      scrubWrapper.appendChild(debugIndicator);
+    }
 
     // Insert wrapper into DOM
     this.insertWrapperIntoDOM(video, scrubWrapper);
@@ -228,11 +220,9 @@ export class OverlayCreator {
       video,
       scrubOverlayScrollContent,
       scrubOverlay,
-      () => isSettingInitialScroll,
       (value) => {
         isSettingInitialScroll = value;
-      },
-      debugMode
+      }
     );
 
     // Set initial width and setup metadata listener
@@ -411,7 +401,7 @@ export class OverlayCreator {
     debugIndicator: HTMLAnchorElement;
   } {
     const videoRect = video.getBoundingClientRect();
-    let videoContainer = video.parentElement || document.body;
+    const videoContainer = video.parentElement || document.body;
 
     // Make sure the container has relative positioning
     if (getComputedStyle(videoContainer).position === 'static') {
@@ -474,7 +464,7 @@ export class OverlayCreator {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       font-size: 11px;
       font-weight: 500;
-      display: ${this.settingsManager.isDebugEnabled() ? 'flex' : 'none'};
+      display: flex;
       align-items: center;
       gap: 6px;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
@@ -484,14 +474,6 @@ export class OverlayCreator {
       transition: opacity 0.2s;
     `;
     debugIndicator.classList.add('scrub-debug-indicator');
-
-    // Add hover effect
-    debugIndicator.addEventListener('mouseenter', () => {
-      debugIndicator.style.opacity = '0.7';
-    });
-    debugIndicator.addEventListener('mouseleave', () => {
-      debugIndicator.style.opacity = '1';
-    });
 
     // Add extension icon and debug text
     debugIndicator.innerHTML = `
@@ -555,14 +537,14 @@ export class OverlayCreator {
 
     // Forward common video interaction events
     [
-      'click',
-      'dblclick',
-      'contextmenu',
-      'mouseover',
-      'mousemove',
-      'mouseout',
-      'mouseenter',
-      'mouseleave',
+      // 'click',
+      // 'dblclick',
+      // 'contextmenu',
+      // 'mouseover',
+      // 'mousemove',
+      // 'mouseout',
+      // 'mouseenter',
+      // 'mouseleave',
     ].forEach(forwardMouseEvent);
   }
 
@@ -617,6 +599,39 @@ export class OverlayCreator {
     return null;
   }
 
+  /**
+   * Calculate overlay dimensions based on action area setting and size
+   * Single source of truth for action area positioning logic
+   */
+  private calculateActionAreaDimensions(
+    targetHeight: number,
+    actionArea: ActionAreaT
+  ): { top: number; height: number } {
+    const actionAreaSize = this.settingsManager.getActionAreaSize();
+    const sizeRatio = actionAreaSize / 100; // Convert percentage to ratio
+
+    switch (actionArea) {
+      case ActionAreaE.Top:
+        return { top: 0, height: targetHeight * sizeRatio };
+      case ActionAreaE.Middle:
+        const middleHeight = targetHeight * sizeRatio;
+        return {
+          top: (targetHeight - middleHeight) / 2,
+          height: middleHeight,
+        };
+      case ActionAreaE.Bottom:
+        const bottomHeight = targetHeight * sizeRatio;
+        return {
+          top: targetHeight - bottomHeight,
+          height: bottomHeight,
+        };
+      case ActionAreaE.Full:
+        return { top: 0, height: targetHeight };
+      default:
+        return { top: 0, height: targetHeight };
+    }
+  }
+
   private createOverlaySizeUpdater(
     video: HTMLVideoElement,
     scrubWrapper: HTMLDivElement
@@ -634,102 +649,222 @@ export class OverlayCreator {
       const relativeTop = targetRect.top - containerRect.top;
       const relativeLeft = targetRect.left - containerRect.left;
 
-      // Update wrapper to match the target element size and position
+      // Always position wrapper to match the full video area
       scrubWrapper.style.top = `${relativeTop}px`;
       scrubWrapper.style.left = `${relativeLeft}px`;
       scrubWrapper.style.width = `${targetRect.width}px`;
       scrubWrapper.style.height = `${targetRect.height}px`;
 
+      // Get the scrub-overlay element within this wrapper
+      const scrubOverlay = scrubWrapper.querySelector(
+        '.scrub-overlay'
+      ) as HTMLDivElement;
+      if (!scrubOverlay) return;
+
+      // Get the action area setting to determine which part should be active
+      const actionArea = this.settingsManager.getActionArea();
+
+      // Calculate overlay dimensions using centralized logic
+      const { top: overlayTop, height: overlayHeight } =
+        this.calculateActionAreaDimensions(targetRect.height, actionArea);
+
+      // Update the scrub-overlay to match the calculated area
+      scrubOverlay.style.top = `${overlayTop}px`;
+      scrubOverlay.style.left = '0px';
+      scrubOverlay.style.width = `${targetRect.width}px`;
+      scrubOverlay.style.height = `${overlayHeight}px`;
+
       // Add debug logging if needed
-      if (this.settingsManager.isDebugEnabled() && visibleContainer) {
-        console.log('🎯 Using visible container instead of video element:', {
-          video: { width: video.offsetWidth, height: video.offsetHeight },
-          container: { width: targetRect.width, height: targetRect.height },
-          element: visibleContainer,
-        });
+      if (this.settingsManager.isDebugEnabled()) {
+        if (visibleContainer) {
+          console.log('🎯 Using visible container instead of video element:', {
+            video: { width: video.offsetWidth, height: video.offsetHeight },
+            container: { width: targetRect.width, height: targetRect.height },
+            element: visibleContainer,
+          });
+        }
+        if (actionArea !== 'full') {
+          console.log('🎯 Action area applied to scrub-overlay:', {
+            actionArea,
+            originalHeight: targetRect.height,
+            overlayHeight,
+            overlayTop,
+          });
+        }
       }
     };
+  }
+
+  // Method to update all existing overlays when action area changes
+  // Uses the same approach as keydown/keyup: remove then recreate
+  updateAllOverlaysForActionArea(): void {
+    const debugMode = this.settingsManager.isDebugEnabled();
+
+    // Always log ActionArea changes for debugging
+    if (debugMode) {
+      console.log('🔄 ActionArea changed - removing and recreating overlays');
+    }
+
+    // Step 1: Remove overlays immediately
+    // Fast hide first for immediate visual feedback
+    this.fastHideOverlays();
+
+    // Remove DOM elements and clear state
+    requestAnimationFrame(() => {
+      DOMUtils.removeExistingScrubWrappers();
+      DOMUtils.removeOverlayAttributes();
+      this.videoStateManager.clear();
+
+      if (debugMode) {
+        console.log('🚫 Overlays removed for ActionArea change');
+      }
+
+      // Step 2: Recreate overlays with new ActionArea (same as keyup)
+      // Remove fast-hide artifacts
+      document.documentElement.classList.remove('mfs-disabled');
+      const s = document.getElementById('mfs-fast-hide');
+      if (s) s.remove();
+      this.isFastHideStyleInjected = false;
+
+      // Recreate overlays with new ActionArea settings
+      setTimeout(() => {
+        if (debugMode) {
+          console.log('✅ Recreating overlays with new ActionArea');
+        }
+        this.checkForVideos();
+
+        // Step 3: Flash the newly created overlays with the new action area
+        setTimeout(() => {
+          this.flashOverlaysBlue();
+        }, 50); // Small delay to ensure overlays are fully created
+      }, 100);
+    });
+  }
+
+  private flashOverlaysBlue(): void {
+    const debugMode = this.settingsManager.isDebugEnabled();
+
+    if (debugMode) {
+      console.log('💙 Flashing overlays blue for action area change feedback');
+    }
+
+    // Find all existing scrub overlays
+    const overlays = document.querySelectorAll('[data-video-id]');
+
+    overlays.forEach((overlay) => {
+      if (overlay instanceof HTMLElement) {
+        // Store original background
+        const originalBackground = overlay.style.backgroundColor;
+
+        // Flash blue with slower, smoother animation
+        overlay.style.backgroundColor = 'rgba(59, 130, 246, 0.4)'; // blue-500 with 40% opacity (slightly more visible)
+        overlay.style.transition =
+          'background-color 0.4s cubic-bezier(0.4, 0, 0.6, 1)'; // Slower with smooth easing
+
+        // Restore original background after flash
+        setTimeout(() => {
+          overlay.style.backgroundColor = originalBackground;
+          // Keep the same smooth transition for fade out
+          overlay.style.transition =
+            'background-color 0.5s cubic-bezier(0.4, 0, 0.6, 1)';
+
+          // Remove transition after restoration to avoid interfering with other animations
+          setTimeout(() => {
+            overlay.style.transition = '';
+          }, 500);
+        }, 400); // Hold the blue color longer
+      }
+    });
   }
 
   private createContentWidthUpdater(
     video: HTMLVideoElement,
     scrollContent: HTMLDivElement,
     overlay: HTMLDivElement,
-    getIsSettingInitialScroll: () => boolean,
-    setIsSettingInitialScroll: (value: boolean) => void,
-    debugMode: boolean
+    setIsSettingInitialScroll: (value: boolean) => void
   ): () => void {
+    let syncInterval: number | null = null;
+
     return () => {
-      if (video.duration && scrollContent && overlay) {
+      if (!scrollContent || !overlay) return;
+
+      const baseWidth = video.offsetWidth || 800; // Fallback width if video not loaded
+      let finalWidth = baseWidth * 3; // Default minimum scrollable width
+
+      // Check if we have a valid duration
+      const hasValidDuration =
+        video.duration &&
+        !isNaN(video.duration) &&
+        isFinite(video.duration) &&
+        video.duration > 0;
+
+      if (hasValidDuration) {
         // Make content width proportional to video duration
-        const baseWidth = video.offsetWidth;
         const durationMinutes = video.duration / 60;
         const contentWidth = Math.max(baseWidth, baseWidth * durationMinutes);
         const minScrollableWidth = baseWidth * 3;
-        const finalWidth = Math.max(contentWidth, minScrollableWidth);
+        finalWidth = Math.max(contentWidth, minScrollableWidth);
+      } else {
+        // For videos without duration (live streams, not loaded yet, etc.)
+        // Use a more generous default width to ensure scrollability
+        const fallbackWidth = baseWidth * 5; // More generous fallback
+        finalWidth = Math.max(finalWidth, fallbackWidth);
 
-        scrollContent.style.width = `${finalWidth}px`;
-
-        // Sync scroll position with video position
-        const checkOverlayReady = () => {
-          if (video.duration && video.currentTime) {
-            setIsSettingInitialScroll(true);
-
-            // if (debugMode) {
-            //   console.log(
-            //     '🔧 Setting isSettingInitialScroll = true before sync'
-            //   );
-            // }
-
-            const progress = video.currentTime / video.duration;
-            const maxScroll = scrollContent.offsetWidth - overlay.offsetWidth;
-
-            // Apply inversion when setting scroll position
-            const targetScroll =
-              this.settingsManager.shouldInvertHorizontalScroll()
-                ? progress * maxScroll
-                : (1 - progress) * maxScroll;
-
-            // if (debugMode) {
-            //   console.log(
-            //     '🎯 About to set overlay.scrollLeft to:',
-            //     targetScroll
-            //   );
-            // }
-
-            overlay.scrollLeft = targetScroll;
-
-            // Keep the flag set until next frame to ensure scroll event is ignored
-            requestAnimationFrame(() => {
-              setIsSettingInitialScroll(false);
-              // if (debugMode) {
-              //   console.log(
-              //     '🔧 Reset isSettingInitialScroll = false after sync'
-              //   );
-              // }
-            });
-
-            // if (debugMode) {
-            //   console.log(
-            //     '✅ Synced scroll position to video after width update:',
-            //     {
-            //       currentTime: video.currentTime,
-            //       progress,
-            //       targetScroll,
-            //       scrollLeft: overlay.scrollLeft,
-            //       invertHorizontalScroll:
-            //         this.settingsManager.shouldInvertHorizontalScroll(),
-            //     },
-            //     video,
-            //     overlay,
-            //     scrollContent
-            //   );
-            // }
+        // Try to get duration again after a delay
+        setTimeout(() => {
+          if (video.duration && video.duration > 0) {
+            // Recursively call this updater when duration becomes available
+            const updater = this.createContentWidthUpdater(
+              video,
+              scrollContent,
+              overlay,
+              setIsSettingInitialScroll
+            );
+            updater();
           }
-        };
+        }, 1000);
+      }
 
-        // sync scroll position every 500ms
-        setInterval(checkOverlayReady, 500);
+      scrollContent.style.width = `${finalWidth}px`;
+
+      // Clear existing sync interval to avoid duplicates
+      if (syncInterval) {
+        clearInterval(syncInterval);
+        syncInterval = null;
+      }
+
+      // Sync scroll position with video position
+      const checkOverlayReady = () => {
+        const currentHasValidDuration =
+          video.duration &&
+          !isNaN(video.duration) &&
+          isFinite(video.duration) &&
+          video.duration > 0;
+
+        if (currentHasValidDuration && video.currentTime !== undefined) {
+          setIsSettingInitialScroll(true);
+
+          const progress = video.currentTime / video.duration;
+          const maxScroll = scrollContent.offsetWidth - overlay.offsetWidth;
+
+          // Apply inversion when setting scroll position
+          const targetScroll =
+            this.settingsManager.shouldInvertHorizontalScroll()
+              ? progress * maxScroll
+              : (1 - progress) * maxScroll;
+
+          overlay.scrollLeft = targetScroll;
+
+          // Keep the flag set until next frame to ensure scroll event is ignored
+          requestAnimationFrame(() => {
+            setIsSettingInitialScroll(false);
+          });
+        }
+      };
+
+      // Only start sync interval if we have valid duration or if this is a retry
+      if (hasValidDuration || video.currentTime !== undefined) {
+        syncInterval = window.setInterval(checkOverlayReady, 500);
       }
     };
   }

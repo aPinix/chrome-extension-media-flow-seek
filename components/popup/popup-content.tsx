@@ -1,21 +1,34 @@
 import { useEffect, useState } from 'react';
-import { CheckIcon, ChevronLeft, GlobeIcon, XIcon } from 'lucide-react';
+import {
+  BugIcon,
+  CheckIcon,
+  ChevronLeft,
+  EyeIcon,
+  EyeOffIcon,
+  GithubIcon,
+  GlobeIcon,
+  KeyboardIcon,
+  LinkedinIcon,
+  PanelBottomDashedIcon,
+  PlayIcon,
+  PowerIcon,
+  RotateCcwIcon,
+  RotateCwIcon,
+  SquareDashedIcon,
+  TwitterIcon,
+  XIcon,
+} from 'lucide-react';
 import { GroupedVirtuoso } from 'react-virtuoso';
 
+import { ActionAreaSizeControl } from '@/components/action-area-size-control';
 import { CardListItem } from '@/components/popup/card-list-item';
 import { DomainListItem } from '@/components/popup/domain-list-item';
 import { SectionTitle } from '@/components/popup/section-title';
+import { TimelineSettings } from '@/components/settings/timeline-settings';
 import { useTheme } from '@/components/theme-provider';
-import { TimelineHeightControl } from '@/components/timeline-height-control';
 import { Button } from '@/components/ui/button';
+import { CardDescription } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { EXT_URL } from '@/config/variables.config';
 import {
@@ -31,19 +44,23 @@ import {
 } from '@/lib/popup-utils';
 import { cn } from '@/lib/utils';
 import { getExtensionVersion } from '@/lib/version';
+import { ActionAreaE, type ActionAreaT } from '@/types/content';
 import {
-  DomainConfigT,
+  type DomainConfigT,
   DomainRuleTypeE,
-  DomainRuleTypeT,
+  type DomainRuleTypeT,
 } from '@/types/domains';
+import { ShortcutHotkeyStateE } from '@/types/shortcut';
 
-const SHOW_DEBUG_CARD = true;
-const YOUTUBE_ONLY = true;
+import { VideoPlayerPreview } from '../video-player-preview';
+
+import { CardListItemWrapper } from './card-list-item-wrapper';
 
 export function PopupContent() {
   const { theme } = useTheme();
   const [isEnabled, setIsEnabled] = useState(true);
   const [isDebugEnabled, setIsDebugEnabled] = useState(false);
+  const [isBetaFeaturesEnabled, setIsBetaFeaturesEnabled] = useState(false);
   const [invertHorizontalScroll, setInvertHorizontalScroll] = useState(false);
   const [showTimelineOnHover, setShowTimelineOnHover] = useState(false);
   const [timelinePosition, setTimelinePosition] = useState<'top' | 'bottom'>(
@@ -59,6 +76,8 @@ export function PopupContent() {
   const [timelineHeightUnit, setTimelineHeightUnit] = useState<'px' | '%'>(
     'px'
   );
+  const [actionArea, setActionArea] = useState<ActionAreaT>(ActionAreaE.Full);
+  const [actionAreaSize, setActionAreaSize] = useState<number>(30);
 
   // Check if current settings differ from defaults (excluding domains)
   const isAtDefaults = checkIsAtDefaults(
@@ -67,8 +86,27 @@ export function PopupContent() {
     invertHorizontalScroll,
     showTimelineOnHover,
     timelinePosition,
-    timelineHeight
+    timelineHeight,
+    timelineHeightUnit,
+    domainRules,
+    actionArea,
+    actionAreaSize
   );
+
+  // Check if extension settings are at defaults
+  const isExtensionAtDefaults =
+    isEnabled === DEFAULT_SETTINGS.isEnabled &&
+    isDebugEnabled === DEFAULT_SETTINGS.isDebugEnabled;
+
+  // Check if settings are at defaults
+  const isSettingsAtDefaults =
+    invertHorizontalScroll === DEFAULT_SETTINGS.invertHorizontalScroll &&
+    showTimelineOnHover === DEFAULT_SETTINGS.showTimelineOnHover &&
+    timelinePosition === DEFAULT_SETTINGS.timelinePosition &&
+    timelineHeight === DEFAULT_SETTINGS.timelineHeight &&
+    timelineHeightUnit === DEFAULT_SETTINGS.timelineHeightUnit &&
+    actionArea === DEFAULT_SETTINGS.actionArea &&
+    actionAreaSize === DEFAULT_SETTINGS.actionAreaSize;
 
   useEffect(() => {
     // Get current tab domain
@@ -78,12 +116,15 @@ export function PopupContent() {
       const settings = await loadPopupSettings();
       setIsEnabled(settings.isEnabled);
       setIsDebugEnabled(settings.isDebugEnabled);
+      setIsBetaFeaturesEnabled(settings.isBetaFeaturesEnabled);
       setInvertHorizontalScroll(settings.invertHorizontalScroll);
       setShowTimelineOnHover(settings.showTimelineOnHover);
       setTimelinePosition(settings.timelinePosition);
       setTimelineHeight(settings.timelineHeight);
       setTimelineHeightUnit(settings.timelineHeightUnit);
       setDomainRules(settings.domainRules);
+      setActionArea(settings.actionArea || 'full');
+      setActionAreaSize(settings.actionAreaSize || 30);
     };
 
     const loadShortcuts = async () => {
@@ -95,11 +136,11 @@ export function PopupContent() {
         if (toggleCommand?.shortcut) {
           setToggleShortcut(toggleCommand.shortcut);
         } else {
-          setToggleShortcut('Not configured');
+          setToggleShortcut(ShortcutHotkeyStateE.NotConfigured);
         }
       } catch (error) {
         console.error('Failed to load keyboard shortcuts:', error);
-        setToggleShortcut('Not available');
+        setToggleShortcut(ShortcutHotkeyStateE.NotAvailable);
       }
     };
 
@@ -131,6 +172,15 @@ export function PopupContent() {
     sendMessageToCurrentTab({
       action: 'updateDebug',
       isDebugEnabled: checked,
+    });
+  };
+
+  const handleBetaFeaturesToggle = (checked: boolean) => {
+    setIsBetaFeaturesEnabled(checked);
+    saveSettings({ isBetaFeaturesEnabled: checked });
+    sendMessageToCurrentTab({
+      action: 'updateBetaFeatures',
+      isBetaFeaturesEnabled: checked,
     });
   };
 
@@ -185,18 +235,96 @@ export function PopupContent() {
     });
   };
 
-  const handleResetDefaults = () => {
+  const cycleActionArea = () => {
+    const order: ActionAreaT[] = [
+      ActionAreaE.Full,
+      ActionAreaE.Top,
+      ActionAreaE.Middle,
+      ActionAreaE.Bottom,
+    ];
+    const currentIndex = order.indexOf(actionArea);
+    const next = order[(currentIndex + 1) % order.length];
+    applyActionArea(next);
+  };
+
+  const actionAreaLabelMap: Record<ActionAreaT, string> = {
+    [ActionAreaE.Full]: 'Full',
+    [ActionAreaE.Top]: 'Top',
+    [ActionAreaE.Middle]: 'Middle',
+    [ActionAreaE.Bottom]: 'Bottom',
+  };
+
+  const applyActionArea = (newActionArea: ActionAreaT) => {
+    setActionArea(newActionArea);
+    saveSettings({
+      isEnabled,
+      isDebugEnabled,
+      invertHorizontalScroll,
+      showTimelineOnHover,
+      timelinePosition,
+      timelineHeight,
+      timelineHeightUnit,
+      domainRules,
+      actionArea: newActionArea,
+      actionAreaSize,
+    });
+    sendMessageToCurrentTab({
+      type: 'SETTINGS_UPDATED',
+      settings: {
+        isEnabled,
+        isDebugEnabled,
+        invertHorizontalScroll,
+        showTimelineOnHover,
+        timelinePosition,
+        timelineHeight,
+        timelineHeightUnit,
+        actionArea: newActionArea,
+        actionAreaSize,
+      },
+    });
+  };
+
+  const handleActionAreaSizeChange = (newSize: number) => {
+    setActionAreaSize(newSize);
+    saveSettings({
+      isEnabled,
+      isDebugEnabled,
+      invertHorizontalScroll,
+      showTimelineOnHover,
+      timelinePosition,
+      timelineHeight,
+      timelineHeightUnit,
+      domainRules,
+      actionArea,
+      actionAreaSize: newSize,
+    });
+    sendMessageToCurrentTab({
+      type: 'SETTINGS_UPDATED',
+      settings: {
+        isEnabled,
+        isDebugEnabled,
+        invertHorizontalScroll,
+        showTimelineOnHover,
+        timelinePosition,
+        timelineHeight,
+        timelineHeightUnit,
+        actionArea,
+        actionAreaSize: newSize,
+      },
+    });
+  };
+
+  const handleResetExtensionDefaults = () => {
     const defaultSettings = DEFAULT_SETTINGS;
 
     setIsEnabled(defaultSettings.isEnabled);
     setIsDebugEnabled(defaultSettings.isDebugEnabled);
-    setInvertHorizontalScroll(defaultSettings.invertHorizontalScroll);
-    setShowTimelineOnHover(defaultSettings.showTimelineOnHover);
-    setTimelinePosition(defaultSettings.timelinePosition);
-    setTimelineHeight(defaultSettings.timelineHeight);
-    setTimelineHeightUnit(defaultSettings.timelineHeightUnit);
 
-    saveSettings(defaultSettings);
+    // Save only extension-related settings
+    saveSettings({
+      isEnabled: defaultSettings.isEnabled,
+      isDebugEnabled: defaultSettings.isDebugEnabled,
+    });
 
     sendMessageToCurrentTab({
       action: 'updateEnabled',
@@ -206,6 +334,30 @@ export function PopupContent() {
       action: 'updateDebug',
       isDebugEnabled: defaultSettings.isDebugEnabled,
     });
+  };
+
+  const handleResetSettingsDefaults = () => {
+    const defaultSettings = DEFAULT_SETTINGS;
+
+    setInvertHorizontalScroll(defaultSettings.invertHorizontalScroll);
+    setShowTimelineOnHover(defaultSettings.showTimelineOnHover);
+    setTimelinePosition(defaultSettings.timelinePosition);
+    setTimelineHeight(defaultSettings.timelineHeight);
+    setTimelineHeightUnit(defaultSettings.timelineHeightUnit);
+    setActionArea(defaultSettings.actionArea);
+    setActionAreaSize(defaultSettings.actionAreaSize);
+
+    // Save only settings-related values
+    saveSettings({
+      invertHorizontalScroll: defaultSettings.invertHorizontalScroll,
+      showTimelineOnHover: defaultSettings.showTimelineOnHover,
+      timelinePosition: defaultSettings.timelinePosition,
+      timelineHeight: defaultSettings.timelineHeight,
+      timelineHeightUnit: defaultSettings.timelineHeightUnit,
+      actionArea: defaultSettings.actionArea,
+      actionAreaSize: defaultSettings.actionAreaSize,
+    });
+
     sendMessageToCurrentTab({
       action: 'updateScrollInversion',
       invertHorizontalScroll: defaultSettings.invertHorizontalScroll,
@@ -276,20 +428,21 @@ export function PopupContent() {
           )}
         >
           {/* Fixed Header */}
-          <div className="relative flex flex-none flex-col items-center border-b border-slate-200/60 bg-white/90 p-6 backdrop-blur-md dark:border-slate-600/50 dark:bg-slate-800/90">
-            <div className="inline-flex flex-col items-start text-center">
+          <div className="fixed top-0 z-50 flex w-full flex-none flex-col items-center overflow-hidden border-b border-slate-200/60 bg-white/80 p-6 backdrop-blur-[20px] backdrop-saturate-[180%] dark:border-slate-600/50 dark:bg-slate-800/80">
+            <img
+              src="/icon/128.png"
+              alt="Media Flow Seek"
+              className="perspective-[1000] rotate-x-[25deg] rotate-z-[-5deg] rotate-y-[-25deg] absolute left-[-30px] top-[-30px] h-[128px] w-[128px] transform-gpu opacity-40 dark:opacity-50"
+            />
+
+            <div className="z-10 ml-14 inline-flex flex-col items-start text-center">
               <div className="mb-1 flex items-center justify-center gap-3">
-                <img
-                  src="/icon/48.png"
-                  alt="Media Flow Seek"
-                  className="h-8 w-8"
-                />
                 <div className="flex items-center gap-2">
                   <a
                     href={EXT_URL}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-xl font-bold text-slate-900 no-underline transition-colors duration-200 hover:text-sky-600 dark:text-white dark:hover:text-sky-400"
+                    className="hover:text-brand-600 dark:hover:text-brand-400 text-xl font-bold text-slate-900 no-underline transition-colors duration-200 dark:text-white"
                     title="View Media Flow Seek on Chrome Web Store"
                   >
                     Media Flow Seek
@@ -297,28 +450,53 @@ export function PopupContent() {
 
                   {/* version */}
                   {getExtensionVersion() ? (
-                    <span className="rounded-full bg-slate-200 px-2 py-1 text-xs font-medium text-slate-400 dark:bg-slate-700 dark:text-slate-300">
+                    <span
+                      className={cn(
+                        'rounded-full border px-2 py-1 text-xs font-medium',
+                        'border-brand-400 bg-brand-300/60 text-brand-500',
+                        'dark:border-brand-500 dark:bg-brand-700/60 dark:text-brand-100'
+                      )}
+                    >
                       v{getExtensionVersion()}
                     </span>
                   ) : null}
                 </div>
               </div>
-              <p className="text-sm text-slate-600 dark:text-slate-300">
+
+              <p className="text-sm text-slate-500 dark:text-slate-400">
                 Enhanced video controls & scrolling
               </p>
             </div>
           </div>
 
           {/* Scrollable Content */}
-          <ScrollArea className="flex-1 overflow-hidden">
-            <div className="flex flex-col gap-6 p-6">
+          <ScrollArea className="flex-1 overflow-hidden [&_[data-slot='scroll-area-viewport']]:relative">
+            <div className="flex flex-1 flex-col gap-6 p-6 pb-[80px] pt-[120px]">
               {/* Extension Section */}
               <div className="flex flex-none flex-col">
-                <SectionTitle title="Extension" />
-                <div className="flex flex-col gap-4">
+                <SectionTitle title="Extension">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={isExtensionAtDefaults}
+                    onClick={handleResetExtensionDefaults}
+                    className={cn(
+                      'h-7 px-3 text-xs font-medium transition-all',
+                      isExtensionAtDefaults
+                        ? 'text-slate-400 dark:text-slate-500'
+                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800/50 dark:hover:text-slate-300'
+                    )}
+                  >
+                    Reset Default
+                  </Button>
+                </SectionTitle>
+                <CardListItemWrapper>
                   <CardListItem
-                    title="Enabled"
-                    description="Enable or disable the extension"
+                    title="Enable Extension"
+                    icon={PowerIcon}
+                    disabledSoft={!isEnabled}
+                    classNameIcon={isEnabled ? '!text-brand-400' : ''}
+                    description="Turn video seeking on/off"
                     components={{
                       RightSlot: (
                         <Switch
@@ -328,35 +506,50 @@ export function PopupContent() {
                       ),
                     }}
                   />
-                  {SHOW_DEBUG_CARD ? (
-                    <CardListItem
-                      title="Debug"
-                      description="Show debug patterns on video overlays"
-                      components={{
-                        RightSlot: (
-                          <Switch
-                            checked={isDebugEnabled}
-                            onCheckedChange={handleDebugToggle}
-                          />
-                        ),
-                      }}
-                    />
-                  ) : null}
-                </div>
+
+                  <CardListItem
+                    title="Debug"
+                    icon={BugIcon}
+                    classNameIcon={isDebugEnabled ? '!text-red-500' : ''}
+                    description="Highlight video elements"
+                    components={{
+                      RightSlot: (
+                        <Switch
+                          checked={isDebugEnabled}
+                          onCheckedChange={handleDebugToggle}
+                        />
+                      ),
+                    }}
+                  />
+
+                  {/* <CardListItem
+                    title="Beta Features"
+                    description="Enable beta features (unlock domains)"
+                    components={{
+                      RightSlot: (
+                        <Switch
+                          checked={isBetaFeaturesEnabled}
+                          onCheckedChange={handleBetaFeaturesToggle}
+                        />
+                      ),
+                    }}
+                  /> */}
+                </CardListItemWrapper>
               </div>
 
               {/* Keyboard Shortcuts Section */}
               <div className="flex flex-none flex-col">
                 <SectionTitle title="Keyboard Shortcuts" />
-                <div className="flex flex-col gap-4">
+                <CardListItemWrapper>
                   <CardListItem
                     title="Toggle Extension"
+                    icon={KeyboardIcon}
                     description={
-                      toggleShortcut === 'Not configured'
+                      toggleShortcut === ShortcutHotkeyStateE.NotConfigured
                         ? 'Set up a keyboard shortcut to quickly toggle the extension'
-                        : toggleShortcut === 'Not available'
+                        : toggleShortcut === ShortcutHotkeyStateE.NotAvailable
                           ? 'Keyboard shortcuts not available'
-                          : `Press ${toggleShortcut} to toggle`
+                          : `Press (${toggleShortcut}) to toggle`
                     }
                     components={{
                       RightSlot: (
@@ -368,14 +561,18 @@ export function PopupContent() {
                               url: 'chrome://extensions/shortcuts',
                             });
                           }}
-                          className="h-8 bg-sky-50 px-3 text-xs font-medium text-sky-500 hover:bg-sky-100 hover:text-sky-700 dark:bg-sky-900 dark:text-sky-400 dark:hover:bg-sky-800 dark:hover:text-sky-300"
+                          className={cn(
+                            'h-8 px-3 text-xs font-medium',
+                            'bg-brand-50 text-brand-500 hover:bg-brand-100',
+                            'dark:bg-brand-600 dark:text-brand-50 dark:hover:bg-brand-700'
+                          )}
                         >
                           Configure
                         </Button>
                       ),
                     }}
                   />
-                </div>
+                </CardListItemWrapper>
               </div>
 
               {/* Settings Section */}
@@ -384,11 +581,11 @@ export function PopupContent() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    disabled={isAtDefaults}
-                    onClick={handleResetDefaults}
+                    disabled={isSettingsAtDefaults}
+                    onClick={handleResetSettingsDefaults}
                     className={cn(
                       'h-7 px-3 text-xs font-medium transition-all',
-                      isAtDefaults
+                      isSettingsAtDefaults
                         ? 'text-slate-400 dark:text-slate-500'
                         : 'text-slate-600 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800/50 dark:hover:text-slate-300'
                     )}
@@ -397,15 +594,103 @@ export function PopupContent() {
                   </Button>
                 </SectionTitle>
 
-                <div
-                  className={cn(
-                    'flex flex-col gap-4',
-                    !isEnabled && 'pointer-events-none opacity-50'
-                  )}
+                <CardListItemWrapper
+                  className={cn(!isEnabled && 'pointer-events-none opacity-50')}
                 >
+                  {/* Action Area using CardListItem with BottomSlot preview */}
                   <CardListItem
-                    title="Invert horizontal scroll"
-                    description="Reverse scroll direction for better control"
+                    title="Action Area"
+                    icon={SquareDashedIcon}
+                    description="Choose which video area responds to scroll"
+                    classNameContentBottom="flex flex-col items-center"
+                    components={{
+                      BottomSlot: (
+                        <div
+                          className={cn(
+                            'flex w-full flex-col gap-4 transition-all',
+                            actionArea !== ActionAreaE.Full &&
+                              'rounded-3xl bg-slate-100 p-4 dark:bg-slate-800'
+                          )}
+                        >
+                          <button
+                            type="button"
+                            className="relative z-10 aspect-[16/9] cursor-pointer overflow-hidden rounded-lg border bg-slate-100 dark:bg-slate-600"
+                            onClick={cycleActionArea}
+                            aria-label="Cycle action area selection"
+                          >
+                            <VideoPlayerPreview />
+
+                            {/* Active area highlight - using dynamic sizing */}
+                            <div
+                              style={{
+                                height:
+                                  actionArea !== ActionAreaE.Full
+                                    ? `${actionAreaSize}%`
+                                    : undefined,
+                                top:
+                                  actionArea === ActionAreaE.Top
+                                    ? 0
+                                    : actionArea === ActionAreaE.Middle
+                                      ? `${(100 - actionAreaSize) / 2}%`
+                                      : actionArea === ActionAreaE.Bottom
+                                        ? `${100 - actionAreaSize}%`
+                                        : undefined,
+                              }}
+                              className={cn(
+                                'bg-brand-400/70 dark:border-brand-300 dark:bg-brand-600/70 transition-discrete absolute border duration-300 ease-in-out',
+                                actionArea === ActionAreaE.Full &&
+                                  'inset-0 h-full rounded-lg',
+                                actionArea === ActionAreaE.Top &&
+                                  'inset-x-0 top-0 h-1/2 rounded-t-lg',
+                                actionArea === ActionAreaE.Middle &&
+                                  'inset-x-0 top-1/4 h-1/2 rounded',
+                                actionArea === ActionAreaE.Bottom &&
+                                  'inset-x-0 top-1/2 h-1/2 rounded-b-lg'
+                              )}
+                            >
+                              <div className="flex h-full flex-col items-center justify-center">
+                                <span className="select-none text-xl font-semibold text-white">
+                                  {actionAreaLabelMap[actionArea]}
+                                </span>
+                                <span className="text-2xs select-none font-semibold text-white/40">
+                                  (Click me to change)
+                                </span>
+                              </div>
+                            </div>
+                          </button>
+
+                          {/* Action Area Size Control - only show for partial areas */}
+                          <div
+                            className={cn(
+                              'space-y-2 transition-all duration-300 ease-in-out',
+                              actionArea !== ActionAreaE.Full
+                                ? 'max-h-[100px] translate-y-0 scale-100 opacity-100'
+                                : 'scale-85 pointer-events-none max-h-0 -translate-y-5 overflow-hidden opacity-0'
+                            )}
+                          >
+                            <CardDescription className="text-800 text-center text-xs dark:text-white">
+                              Area Size
+                            </CardDescription>
+                            <ActionAreaSizeControl
+                              value={actionAreaSize}
+                              onChange={handleActionAreaSizeChange}
+                            />
+                          </div>
+                        </div>
+                      ),
+                    }}
+                  />
+
+                  <CardListItem
+                    title="Invert Scroll"
+                    icon={RotateCcwIcon}
+                    iconToggle={RotateCwIcon}
+                    iconIsToggled={invertHorizontalScroll}
+                    classNameIcon={cn(
+                      'transition-all duration-700 ease-out',
+                      invertHorizontalScroll && 'rotate-180 scale-110'
+                    )}
+                    description="Change scroll sirection"
                     components={{
                       RightSlot: (
                         <Switch
@@ -417,8 +702,11 @@ export function PopupContent() {
                   />
 
                   <CardListItem
-                    title="Show timeline on hover"
-                    description="Display progress bar when hovering over videos"
+                    title="Show Timeline on Hover"
+                    icon={EyeIcon}
+                    iconToggle={EyeOffIcon}
+                    iconIsToggled={!showTimelineOnHover}
+                    description="Show progress bar when hovering over videos"
                     components={{
                       RightSlot: (
                         <Switch
@@ -430,84 +718,85 @@ export function PopupContent() {
                   />
 
                   <CardListItem
-                    title="Timeline position"
-                    description="Choose where to display the progress bar"
-                    components={{
-                      RightSlot: (
-                        <Select
-                          value={timelinePosition}
-                          onValueChange={handleTimelinePositionChange}
-                        >
-                          <SelectTrigger className="w-24">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="top">Top</SelectItem>
-                            <SelectItem value="bottom">Bottom</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      ),
-                    }}
-                  />
-
-                  <CardListItem
-                    title="Timeline height"
-                    description="Adjust the height of the progress bar"
+                    title="Timeline Settings"
+                    icon={PanelBottomDashedIcon}
+                    description="Adjust position and height of the progress bar"
                     components={{
                       BottomSlot: (
-                        <TimelineHeightControl
-                          value={timelineHeight}
+                        <TimelineSettings
+                          position={timelinePosition}
+                          onPositionChange={handleTimelinePositionChange}
+                          height={timelineHeight}
                           unit={timelineHeightUnit}
-                          onChange={handleTimelineHeightChange}
+                          onHeightChange={handleTimelineHeightChange}
                           onUnitChange={handleTimelineHeightUnitChange}
                         />
                       ),
                     }}
                   />
-                </div>
+                </CardListItemWrapper>
               </div>
 
               {/* Domains Section */}
               <div className="flex flex-1 flex-col">
                 <SectionTitle title="Domains" />
-                <CardListItem
-                  title="Domain Management"
-                  disabled={YOUTUBE_ONLY}
-                  description={
-                    YOUTUBE_ONLY
-                      ? 'YouTube only (for now)'
-                      : 'Manage where the extension works'
-                  }
-                  onClick={() =>
-                    YOUTUBE_ONLY ? null : setShowDomainsView(true)
-                  }
-                />
+                <CardListItemWrapper>
+                  <CardListItem
+                    title="Domain Management"
+                    disabled={!isBetaFeaturesEnabled}
+                    description={
+                      !isBetaFeaturesEnabled
+                        ? 'YouTube only (for now)'
+                        : 'Manage where the extension works'
+                    }
+                    onClick={() =>
+                      !isBetaFeaturesEnabled ? null : setShowDomainsView(true)
+                    }
+                  />
+                </CardListItemWrapper>
               </div>
             </div>
           </ScrollArea>
 
           {/* Fixed Footer */}
-          <div className="flex-none border-t border-slate-200/60 bg-white/90 p-4 backdrop-blur-md dark:border-slate-600/50 dark:bg-slate-800/90">
-            <div className="text-center text-xs text-slate-600 dark:text-slate-300">
-              Made with ❤️ by{' '}
-              <a
-                href="https://www.linkedin.com/in/pinix/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-medium text-sky-600 transition-all duration-200 hover:text-sky-700 hover:underline dark:text-sky-400 dark:hover:text-sky-300"
-              >
-                aPinix
-              </a>{' '}
-              (
-              <a
-                href="https://github.com/aPinix"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-medium text-sky-600 transition-all duration-200 hover:text-sky-700 hover:underline dark:text-sky-400 dark:hover:text-sky-300"
-              >
-                GitHub
-              </a>
-              )
+          <div className="fixed bottom-0 z-50 flex w-full flex-none border-t border-slate-200/60 bg-white/80 px-6 py-4 backdrop-blur-[20px] backdrop-saturate-[180%] dark:border-slate-600/50 dark:bg-slate-800/80">
+            <div className="flex w-full items-center gap-2">
+              <div className="text-center text-xs text-slate-600 dark:text-slate-300">
+                Made with ❤️ by{' '}
+                <span className="font-medium text-slate-800 dark:text-slate-200">
+                  aPinix
+                </span>
+              </div>
+
+              <div className="ml-auto flex items-center gap-3">
+                <a
+                  href="https://x.com/apinix"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-brand hover:fill-brand fill-slate-400 text-slate-400 transition-colors duration-200"
+                  title="Follow on Twitter/X"
+                >
+                  <TwitterIcon className="h-4 w-4 fill-inherit text-inherit" />
+                </a>
+                <a
+                  href="https://github.com/aPinix"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-brand hover:fill-brand fill-slate-400 text-slate-400 transition-colors duration-200"
+                  title="View on GitHub"
+                >
+                  <GithubIcon className="h-4 w-4 fill-inherit text-inherit" />
+                </a>
+                <a
+                  href="https://www.linkedin.com/in/pinix/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-brand hover:fill-brand fill-slate-400 text-slate-400 transition-colors duration-200"
+                  title="Connect on LinkedIn"
+                >
+                  <LinkedinIcon className="h-4 w-4 fill-inherit text-inherit" />
+                </a>
+              </div>
             </div>
           </div>
         </div>

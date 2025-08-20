@@ -57,6 +57,7 @@ export default defineContentScript({
     const messageHandler = new MessageHandler({
       settingsManager,
       videoStateManager,
+      overlayCreator,
       checkForVideos,
       getDebugColorBackground,
       getDebugImageBackground,

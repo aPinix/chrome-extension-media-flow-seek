@@ -1,14 +1,8 @@
 import * as React from 'react';
 
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { cn } from '@/lib/utils';
 
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from './ui/select';
 import { Slider } from './ui/slider';
 
 type TimelineUnit = 'px' | '%';
@@ -37,22 +31,25 @@ const TimelineHeightControl = ({
         max={100}
         className="flex-1"
       />
-      <span className="w-12 font-mono text-xs text-slate-700 dark:text-slate-300">
+      <span className="font-mono text-xs text-slate-700 dark:text-slate-300">
         {value}
         {unit}
       </span>
-      <Select
+
+      <ToggleGroup
+        type="single"
         value={unit}
-        onValueChange={(newUnit) => onUnitChange(newUnit as TimelineUnit)}
+        onValueChange={(value) => value && onUnitChange(value as TimelineUnit)}
+        variant="outline"
+        size="sm"
       >
-        <SelectTrigger className="w-16">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="px">px</SelectItem>
-          <SelectItem value="%">%</SelectItem>
-        </SelectContent>
-      </Select>
+        <ToggleGroupItem value="px" className="flex-none shrink">
+          px
+        </ToggleGroupItem>
+        <ToggleGroupItem value="%" className="flex-none shrink">
+          %
+        </ToggleGroupItem>
+      </ToggleGroup>
     </div>
   );
 };

@@ -1,12 +1,14 @@
 import { DOMUtils } from '@/helpers/dom-utils';
 import { NotificationHelper } from '@/helpers/notification-helper';
-import { SettingsManager } from '@/helpers/settings-manager';
-import { VideoStateManager } from '@/helpers/video-state';
-import { ChromeMessageT } from '@/types/content';
+import type { OverlayCreator } from '@/helpers/overlay-creator';
+import type { SettingsManager } from '@/helpers/settings-manager';
+import type { VideoStateManager } from '@/helpers/video-state';
+import type { ChromeMessageT } from '@/types/content';
 
 export interface MessageHandlerDependencies {
   settingsManager: SettingsManager;
   videoStateManager: VideoStateManager;
+  overlayCreator: OverlayCreator;
   checkForVideos: () => void;
   getDebugColorBackground: () => string;
   getDebugImageBackground: () => string;
@@ -34,7 +36,14 @@ export class MessageHandler {
     const { settingsManager, videoStateManager, checkForVideos } =
       this.dependencies;
 
-    switch (message.action) {
+    // Handle both action and type for backward compatibility
+    const messageType = message.action || message.type;
+
+    if (settingsManager.isDebugEnabled()) {
+      console.log('📨 Received message:', { messageType, message });
+    }
+
+    switch (messageType) {
       case 'updateEnabled':
         this.handleUpdateEnabled(message, sendResponse);
         break;
@@ -63,11 +72,18 @@ export class MessageHandler {
         this.handleUpdateDebug(message, sendResponse);
         break;
 
+      case 'updateBetaFeatures':
+        this.handleUpdateBetaFeatures(message, sendResponse);
+        break;
+
       case 'SETTINGS_UPDATED':
         this.handleSettingsUpdated(message, sendResponse);
         break;
 
       default:
+        if (settingsManager.isDebugEnabled()) {
+          console.log('❌ Unknown message type:', messageType, message);
+        }
         sendResponse({ success: false, error: 'Unknown action' });
     }
   }
@@ -282,6 +298,37 @@ export class MessageHandler {
     sendResponse({ success: true });
   }
 
+  private handleUpdateBetaFeatures(
+    message: ChromeMessageT,
+    sendResponse: (response: any) => void
+  ): void {
+    const { settingsManager, videoStateManager, checkForVideos } =
+      this.dependencies;
+
+    settingsManager.updateSetting(
+      'isBetaFeaturesEnabled',
+      message.isBetaFeaturesEnabled
+    );
+
+    if (settingsManager.isDebugEnabled()) {
+      console.log(
+        '📤 Updated beta features enabled from popup:',
+        message.isBetaFeaturesEnabled
+      );
+    }
+
+    // Check if extension should run with new beta features setting
+    if (!settingsManager.shouldRun()) {
+      // Remove all overlays if extension should not run on current domain
+      videoStateManager.clear();
+    } else {
+      // Re-check for videos to ensure overlays are created if needed
+      checkForVideos();
+    }
+
+    sendResponse({ success: true });
+  }
+
   private handleSettingsUpdated(
     message: any,
     sendResponse: (response: any) => void
@@ -289,9 +336,13 @@ export class MessageHandler {
     const { settingsManager, videoStateManager, checkForVideos } =
       this.dependencies;
 
-    // Update the settings manager with the new enabled state
-    if (typeof message.isEnabled === 'boolean') {
+    let shouldUpdateOverlays = false;
+    let wasHotkeyToggle = false;
+
+    // Handle hotkey toggle (legacy support)
+    if (typeof message.isEnabled === 'boolean' && !message.settings) {
       settingsManager.updateSetting('isEnabled', message.isEnabled);
+      wasHotkeyToggle = true;
 
       if (settingsManager.isDebugEnabled()) {
         console.log(
@@ -318,8 +369,85 @@ export class MessageHandler {
       }
     }
 
-    // Show notification for hotkey toggle
-    NotificationHelper.showToggleNotification(message.isEnabled, 'hotkey');
+    // Handle full settings update from popup
+    if (message.settings) {
+      const settings = message.settings;
+
+      // Update all settings in the settings manager
+      if (typeof settings.isEnabled === 'boolean') {
+        settingsManager.updateSetting('isEnabled', settings.isEnabled);
+      }
+      if (typeof settings.isDebugEnabled === 'boolean') {
+        settingsManager.updateSetting(
+          'isDebugEnabled',
+          settings.isDebugEnabled
+        );
+      }
+      if (typeof settings.invertHorizontalScroll === 'boolean') {
+        settingsManager.updateSetting(
+          'invertHorizontalScroll',
+          settings.invertHorizontalScroll
+        );
+      }
+      if (typeof settings.showTimelineOnHover === 'boolean') {
+        settingsManager.updateSetting(
+          'showTimelineOnHover',
+          settings.showTimelineOnHover
+        );
+      }
+      if (settings.timelinePosition) {
+        settingsManager.updateSetting(
+          'timelinePosition',
+          settings.timelinePosition
+        );
+      }
+      if (typeof settings.timelineHeight === 'number') {
+        settingsManager.updateSetting(
+          'timelineHeight',
+          settings.timelineHeight
+        );
+      }
+      if (settings.timelineHeightUnit) {
+        settingsManager.updateSetting(
+          'timelineHeightUnit',
+          settings.timelineHeightUnit
+        );
+      }
+      if (settings.actionArea) {
+        settingsManager.updateSetting('actionArea', settings.actionArea);
+        shouldUpdateOverlays = true; // Action area changes require overlay updates
+      }
+      if (typeof settings.actionAreaSize === 'number') {
+        settingsManager.updateSetting(
+          'actionAreaSize',
+          settings.actionAreaSize
+        );
+        shouldUpdateOverlays = true; // Action area size changes require overlay updates
+      }
+
+      if (settingsManager.isDebugEnabled()) {
+        console.log('🔧 Settings updated from popup:', settings);
+        if (settings.actionArea) {
+          console.log('🎯 Action area changed to:', settings.actionArea);
+        }
+      }
+
+      // If extension is enabled and we need to update overlays
+      if (settingsManager.isEnabled() && shouldUpdateOverlays) {
+        if (settingsManager.isDebugEnabled()) {
+          console.log('🔄 Updating existing overlays for action area change');
+        }
+
+        // Update all existing overlays immediately for action area changes
+        const { overlayCreator } = this.dependencies;
+        overlayCreator.updateAllOverlaysForActionArea();
+      }
+    }
+
+    // Show notification for hotkey toggle only
+    if (wasHotkeyToggle) {
+      NotificationHelper.showToggleNotification(message.isEnabled, 'hotkey');
+    }
 
     sendResponse({ success: true });
   }

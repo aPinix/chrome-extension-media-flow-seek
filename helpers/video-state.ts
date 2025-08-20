@@ -101,9 +101,17 @@ export class VideoStateManager {
     getDebugImageBackground: () => string
   ): void {
     this.videoStates.forEach((state) => {
-      // Update debug indicator visibility
-      if (state.debugIndicator) {
-        state.debugIndicator.style.display = debugMode ? 'flex' : 'none';
+      // Add/remove debug indicator from DOM
+      if (debugMode) {
+        // Add to DOM if not already there
+        if (!state.debugIndicator.parentElement) {
+          state.wrapper.appendChild(state.debugIndicator);
+        }
+      } else {
+        // Remove from DOM if present
+        if (state.debugIndicator.parentElement) {
+          state.debugIndicator.remove();
+        }
       }
 
       // Update debug background pattern on scroll content

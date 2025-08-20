@@ -1,4 +1,4 @@
-import { getNotificationFunctionString } from '../helpers/notification-shared';
+import { createNotificationFunction } from '../helpers/notification-shared';
 
 export default defineBackground(() => {
   // Listen for command shortcuts
@@ -50,12 +50,8 @@ export default defineBackground(() => {
             // If no content script, inject notification directly
             await chrome.scripting.executeScript({
               target: { tabId: activeTab.id },
-              func: (enabled: boolean, notificationFuncString: string) => {
-                // Create the notification function from the shared code
-                const showNotification = eval(`(${notificationFuncString})`);
-                showNotification(enabled, 'hotkey');
-              },
-              args: [newEnabled, getNotificationFunctionString()],
+              func: createNotificationFunction(),
+              args: [newEnabled, 'hotkey'],
             });
           }
         }

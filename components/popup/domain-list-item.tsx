@@ -56,8 +56,7 @@ export const DomainListItem = ({
           'flex flex-col gap-3 rounded-xl border p-3 shadow-sm backdrop-blur-sm transition-all hover:shadow-md',
           rule.type === DomainRuleTypeE.Whitelist
             ? 'border-green-200 bg-green-50/80 dark:border-green-800/50 dark:bg-green-900/20'
-            : 'border-red-200 bg-red-50/80 dark:border-red-800/50 dark:bg-red-900/20',
-          !isGlobal && !rule.enabled && 'opacity-50'
+            : 'border-red-200 bg-red-50/80 dark:border-red-800/50 dark:bg-red-900/20'
         )}
       >
         {/* Top Row: Switch, Favicon, Title, Delete Button */}
@@ -71,7 +70,12 @@ export const DomainListItem = ({
           ) : null}
 
           {/* Domain Favicon */}
-          <div className="flex-shrink-0">
+          <div
+            className={cn(
+              'flex-shrink-0',
+              !isGlobal && !rule.enabled && 'opacity-50'
+            )}
+          >
             <div className="relative flex h-8 w-8 items-center justify-center rounded-lg bg-slate-200 dark:bg-slate-800/50">
               {isGlobal ? (
                 <GlobeIcon className="h-5 w-5 text-slate-600 dark:text-slate-400" />

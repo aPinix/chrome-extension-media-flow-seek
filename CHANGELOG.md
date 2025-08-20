@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.9] - 2025-08-12
+
+### 🐛 Bug Fixes
+
+- **Mouse Event Forwarding**: Fixed issue where extension would temporarily disable when any mouse event was triggered, ensuring consistent functionality during mouse interactions
+
+## [1.0.8] - 2025-08-11
+
+### 🌟 New Features
+
+- **Action Area**:
+  - New setting to define which part of the video responds to scroll gestures.
+  - Choose between `Full`, `Top`, `Middle`, or `Bottom` of the video player.
+  - Customize the size of the `Top`, `Middle`, and `Bottom` action areas with a slider control.
+- **Timeline Customization**:
+  - New settings to control the timeline's appearance.
+  - Adjust the timeline's `position` to either the `top` or `bottom` of the video.
+  - Control the timeline's `height` using either pixels (`px`) or percentage (`%`).
+
 ## [1.0.7] - 2025-08-08
 
 ### 🌟 New Features

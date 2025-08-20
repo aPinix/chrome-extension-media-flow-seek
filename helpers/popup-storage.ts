@@ -4,22 +4,28 @@ import { DomainConfigT } from '@/types/domains';
 export type PopupSettings = {
   isEnabled: boolean;
   isDebugEnabled: boolean;
+  isBetaFeaturesEnabled: boolean;
   invertHorizontalScroll: boolean;
   showTimelineOnHover: boolean;
   timelinePosition: 'top' | 'bottom';
   timelineHeight: number;
   timelineHeightUnit: 'px' | '%';
+  actionArea: 'full' | 'top' | 'middle' | 'bottom';
+  actionAreaSize: number;
   domainRules: DomainConfigT[];
 };
 
 export const DEFAULT_SETTINGS: Omit<PopupSettings, 'domainRules'> = {
   isEnabled: true,
   isDebugEnabled: false,
+  isBetaFeaturesEnabled: false,
   invertHorizontalScroll: false,
   showTimelineOnHover: false,
   timelinePosition: 'bottom',
   timelineHeight: 6,
   timelineHeightUnit: 'px',
+  actionArea: 'full',
+  actionAreaSize: 30,
 };
 
 export const mergeDomainRules = (
@@ -45,11 +51,14 @@ export const loadPopupSettings = (): Promise<PopupSettings> => {
       [
         'isEnabled',
         'isDebugEnabled',
+        'isBetaFeaturesEnabled',
         'invertHorizontalScroll',
         'showTimelineOnHover',
         'timelinePosition',
         'timelineHeight',
         'timelineHeightUnit',
+        'actionArea',
+        'actionAreaSize',
         'domainRules',
       ],
       (result) => {
@@ -67,6 +76,9 @@ export const loadPopupSettings = (): Promise<PopupSettings> => {
           isEnabled: result.isEnabled ?? DEFAULT_SETTINGS.isEnabled,
           isDebugEnabled:
             result.isDebugEnabled ?? DEFAULT_SETTINGS.isDebugEnabled,
+          isBetaFeaturesEnabled:
+            result.isBetaFeaturesEnabled ??
+            DEFAULT_SETTINGS.isBetaFeaturesEnabled,
           invertHorizontalScroll:
             result.invertHorizontalScroll ??
             DEFAULT_SETTINGS.invertHorizontalScroll,
@@ -78,6 +90,9 @@ export const loadPopupSettings = (): Promise<PopupSettings> => {
             result.timelineHeight ?? DEFAULT_SETTINGS.timelineHeight,
           timelineHeightUnit:
             result.timelineHeightUnit ?? DEFAULT_SETTINGS.timelineHeightUnit,
+          actionArea: result.actionArea ?? DEFAULT_SETTINGS.actionArea,
+          actionAreaSize:
+            result.actionAreaSize ?? DEFAULT_SETTINGS.actionAreaSize,
           domainRules: finalRules,
         });
       }

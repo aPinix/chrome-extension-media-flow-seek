@@ -24,7 +24,11 @@ export const checkIsAtDefaults = (
   invertHorizontalScroll: boolean,
   showTimelineOnHover: boolean,
   timelinePosition: 'top' | 'bottom',
-  timelineHeight: number
+  timelineHeight: number,
+  timelineHeightUnit: 'px' | '%',
+  domainRules: DomainConfigT[],
+  actionArea: 'full' | 'top' | 'middle' | 'bottom',
+  actionAreaSize: number
 ): boolean => {
   return (
     isEnabled === true &&
@@ -32,7 +36,10 @@ export const checkIsAtDefaults = (
     invertHorizontalScroll === false &&
     showTimelineOnHover === false &&
     timelinePosition === 'bottom' &&
-    timelineHeight === 6
+    timelineHeight === 6 &&
+    timelineHeightUnit === 'px' &&
+    actionArea === 'full' &&
+    actionAreaSize === 30
   );
 };
 

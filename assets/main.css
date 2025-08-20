@@ -4,6 +4,21 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  /* custom colors - brand-tinted grays */
+  --color-brand: oklch(0.5033 0.2255 304.0351);
+  --color-brand-50: oklch(0.9162 0.0404 313.2401);
+  --color-brand-100: oklch(0.8333 0.0791 312.313);
+  --color-brand-200: oklch(0.7504 0.1194 310.7102);
+  --color-brand-300: oklch(0.6672 0.1568 309.4489);
+  --color-brand-400: oklch(0.5857 0.1937 307.3797);
+  --color-brand-500: oklch(0.5033 0.2255 304.0351);
+  --color-brand-600: oklch(0.4419 0.1885 304.7696);
+  --color-brand-700: oklch(0.381 0.1524 305.7851);
+  --color-brand-800: oklch(0.3203 0.1155 306.3074);
+  --color-brand-900: oklch(0.2589 0.0774 307.7873);
+  --color-brand-950: oklch(0.1978 0.04 309.8169);
+
+  /* app */
   --text-2xs: 0.625rem; /* 10px */
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -50,7 +65,7 @@
   --card-foreground: oklch(0.141 0.005 285.823);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.141 0.005 285.823);
-  --primary: oklch(0.623 0.214 259.815);
+  --primary: oklch(from var(--color-brand) l c h);
   --primary-foreground: oklch(0.97 0.014 254.604);
   --secondary: oklch(0.967 0.001 286.375);
   --secondary-foreground: oklch(0.21 0.006 285.885);
@@ -84,7 +99,7 @@
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.21 0.006 285.885);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.546 0.245 262.881);
+  --primary: oklch(from var(--color-brand) l c h);
   --primary-foreground: oklch(0.379 0.146 265.522);
   --secondary: oklch(0.274 0.006 286.033);
   --secondary-foreground: oklch(0.985 0 0);
@@ -118,4 +133,39 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Timeline progress animation */
+@keyframes timeline-progress {
+  0% {
+    width: 52%;
+  }
+  12.5% {
+    width: 23%;
+  }
+  25% {
+    width: 8%;
+  }
+  37.5% {
+    width: 45%;
+  }
+  50% {
+    width: 67%;
+  }
+  62.5% {
+    width: 31%;
+  }
+  75% {
+    width: 89%;
+  }
+  87.5% {
+    width: 14%;
+  }
+  100% {
+    width: 52%;
+  }
+}
+
+.timeline-progress-animate {
+  animation: timeline-progress 30s ease-in-out infinite;
 }

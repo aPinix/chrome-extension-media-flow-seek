@@ -1,17 +1,12 @@
 import { getDefaultDomainRules } from '@/helpers/domains';
+import { DEFAULT_SETTINGS } from '@/helpers/popup-storage';
 import { ContentSettingsT } from '@/types/content';
 import { DomainConfigT, DomainRuleTypeE } from '@/types/domains';
 
 export class SettingsManager {
   private settings: ContentSettingsT;
   private readonly defaultSettings: ContentSettingsT = {
-    isEnabled: true,
-    isDebugEnabled: false,
-    invertHorizontalScroll: false,
-    showTimelineOnHover: false,
-    timelinePosition: 'bottom',
-    timelineHeight: 6,
-    timelineHeightUnit: 'px',
+    ...DEFAULT_SETTINGS,
     domainRules: getDefaultDomainRules(),
   };
 
@@ -25,11 +20,14 @@ export class SettingsManager {
         [
           'isEnabled',
           'isDebugEnabled',
+          'isBetaFeaturesEnabled',
           'invertHorizontalScroll',
           'showTimelineOnHover',
           'timelinePosition',
           'timelineHeight',
           'timelineHeightUnit',
+          'actionArea',
+          'actionAreaSize',
           'domainRules',
         ],
         (result) => {
@@ -37,6 +35,9 @@ export class SettingsManager {
             isEnabled: result.isEnabled ?? this.defaultSettings.isEnabled,
             isDebugEnabled:
               result.isDebugEnabled ?? this.defaultSettings.isDebugEnabled,
+            isBetaFeaturesEnabled:
+              result.isBetaFeaturesEnabled ??
+              this.defaultSettings.isBetaFeaturesEnabled,
             invertHorizontalScroll:
               result.invertHorizontalScroll ??
               this.defaultSettings.invertHorizontalScroll,
@@ -50,6 +51,9 @@ export class SettingsManager {
             timelineHeightUnit:
               result.timelineHeightUnit ??
               this.defaultSettings.timelineHeightUnit,
+            actionArea: result.actionArea ?? this.defaultSettings.actionArea,
+            actionAreaSize:
+              result.actionAreaSize ?? this.defaultSettings.actionAreaSize,
             domainRules: result.domainRules
               ? this.mergeDomainRules(result.domainRules)
               : this.defaultSettings.domainRules,
@@ -80,6 +84,10 @@ export class SettingsManager {
     return this.settings.isDebugEnabled;
   }
 
+  isBetaFeaturesEnabled(): boolean {
+    return this.settings.isBetaFeaturesEnabled;
+  }
+
   shouldInvertHorizontalScroll(): boolean {
     return this.settings.invertHorizontalScroll;
   }
@@ -100,6 +108,14 @@ export class SettingsManager {
     return this.settings.timelineHeightUnit;
   }
 
+  getActionArea(): 'full' | 'top' | 'middle' | 'bottom' {
+    return this.settings.actionArea;
+  }
+
+  getActionAreaSize(): number {
+    return this.settings.actionAreaSize;
+  }
+
   getDomainRules(): DomainConfigT[] {
     return this.settings.domainRules;
   }
@@ -109,6 +125,15 @@ export class SettingsManager {
     if (!this.settings.isEnabled) return false;
 
     const currentHostname = window.location.hostname.toLowerCase();
+
+    // When beta features are disabled, only allow YouTube
+    if (!this.settings.isBetaFeaturesEnabled) {
+      const isYouTube =
+        currentHostname === 'youtube.com' ||
+        currentHostname.endsWith('.youtube.com');
+      return isYouTube;
+    }
+
     let shouldRunDomain = false;
 
     // Filter enabled rules, but always include global rule
