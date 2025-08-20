@@ -495,7 +495,9 @@ export function PopupContent() {
                     title="Enable Extension"
                     icon={PowerIcon}
                     disabledSoft={!isEnabled}
-                    classNameIcon={isEnabled ? '!text-brand-400' : ''}
+                    classNameIcon={
+                      isEnabled ? '!text-brand-400 filter-[saturate(2)]' : ''
+                    }
                     description="Turn video seeking on/off"
                     components={{
                       RightSlot: (
