@@ -9,7 +9,6 @@
         "@tailwindcss/postcss": "^4.3.3",
         "@tailwindcss/vite": "^4.3.3",
         "class-variance-authority": "^0.7.1",
-        "clsx": "^2.1.1",
         "cnfast": "^0.1.0",
         "i18next": "^26.3.6",
         "i18next-resources-to-backend": "^1.2.3",
@@ -20,7 +19,6 @@
         "react-dom": "^19.2.8",
         "react-i18next": "^17.0.11",
         "shadcn": "^4.18.0",
-        "tailwind-merge": "^3.6.0",
         "tailwindcss": "^4.3.3",
       },
       "devDependencies": {
