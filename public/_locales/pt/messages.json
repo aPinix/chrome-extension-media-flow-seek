@@ -1,8 +1,8 @@
 {
   "extName": {
-    "message": "Media Flow Seek"
+    "message": "Better Video Controls for YouTube, Instagram, TikTok & More"
   },
   "extDescription": {
-    "message": "Controle a reprodução de mídia (Vídeo, YouTube, Vimeo, ...) com rolagem horizontal do mouse, mesmo que a mídia ou o navegador não estejam em foco."
+    "message": "Controle vídeos no YouTube, Instagram, TikTok e mais. Role horizontalmente para avançar ou recuar, mesmo com outra janela ativa."
   }
 }

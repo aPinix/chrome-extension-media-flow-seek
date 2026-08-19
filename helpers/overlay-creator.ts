@@ -1,7 +1,24 @@
 import { EXT_URL } from '@/config/variables.config';
 import { DOMUtils } from '@/helpers/dom-utils';
-import { getProgressColorSync } from '@/helpers/domains';
+import {
+  getProgressColor,
+  getProgressColorSync,
+} from '@/helpers/favicon-color';
 import { getAppLogoBase64 } from '@/helpers/logo';
+import {
+  DeferredMediaSeek,
+  getMediaProgress,
+  getMediaSeekRange,
+  getMediaSeekTarget,
+  MEDIA_SEEK_SETTLE_DELAY_MS,
+} from '@/helpers/media';
+import {
+  getPlayerLayerWheelDeltaPixels,
+  getScrollSpeedMultiplier,
+  getWheelDeltaPixels,
+  hasScrollSpeedHotkey,
+  isScrollSpeedHotkeyCode,
+} from '@/helpers/scroll-speed';
 import type { SettingsManager } from '@/helpers/settings-manager';
 import type { VideoStateManager } from '@/helpers/video-state';
 import {
@@ -10,14 +27,104 @@ import {
   type VideoStateT,
 } from '@/types/content';
 
+const MIN_INTERACTIVE_TIMELINE_HEIGHT_PX = 10;
+const VIDEO_DRAG_START_THRESHOLD_PX = 5;
+const VOLUME_DRAG_START_THRESHOLD_PX = 3;
+const VOLUME_CONTROL_WIDTH_PX = 28;
+const VOLUME_EDGE_GAP_PX = 8;
+const VOLUME_KEY_STEP = 0.05;
+const VOLUME_WHEEL_SENSITIVITY = 0.001;
+const VOLUME_PERSIST_DELAY_MS = 120;
+const MEDIA_VOLUME_STORAGE_PREFIX = 'mfs-media-volume:';
+const PAGE_DIALOG_SELECTOR = [
+  'dialog[open]',
+  '[role="dialog" i]',
+  '[role="alertdialog" i]',
+  '[aria-modal="true" i]',
+  '[popover]',
+].join(',');
+const EXTENSION_UI_SELECTOR = [
+  '.scrub-wrapper',
+  '.scrub-timeline',
+  '.mfs-media-controls',
+  '.mfs-seek-speed-label',
+  '.scrub-debug-indicator',
+].join(',');
+const SITE_INTERACTIVE_SELECTOR = [
+  'button',
+  'input',
+  'select',
+  'textarea',
+  'summary',
+  '[contenteditable="true"]',
+  '[role="button" i]',
+  '[role="checkbox" i]',
+  '[role="combobox" i]',
+  '[role="link" i]',
+  '[role="menuitem" i]',
+  '[role="option" i]',
+  '[role="radio" i]',
+  '[role="slider" i]',
+  '[role="switch" i]',
+  '[role="tab" i]',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
+const PLAYER_SINGLE_CLICK_DELAY_MS = 220;
+const WHEEL_HOVER_LEASE_MS = 1500;
+const SEEK_SPEED_LABEL_DISMISS_DELAY_MS = 700;
+const DEFAULT_TIMELINE_PROGRESS_BACKGROUND = 'rgb(255 255 255 / 0.3)';
+const SETTINGS_LAYOUT_TRANSITION_MS = 320;
+const ACTION_AREA_PREVIEW_MS = 1200;
+const ACTION_AREA_PREVIEW_BACKGROUND = 'rgb(126 34 206 / 0.4)';
+type StoredMediaVolumeT = {
+  muted: boolean;
+  volume: number;
+};
+const isPlaybackToggleHotkey = (event: KeyboardEvent): boolean =>
+  event.code === 'Space' ||
+  event.key === ' ' ||
+  event.code === 'KeyK' ||
+  event.key.toLowerCase() === 'k' ||
+  event.code === 'MediaPlayPause' ||
+  event.key === 'MediaPlayPause';
+const PLAYBACK_PLAY_ICON_MASK = `url("data:image/svg+xml,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M8.4 4.6C7.35 3.93 6 4.68 6 5.93v12.14c0 1.25 1.35 2 2.4 1.33l9.54-6.07a1.58 1.58 0 0 0 0-2.66L8.4 4.6Z" fill="white"/></svg>'
+)}")`;
+const PLAYBACK_PAUSE_ICON_MASK = `url("data:image/svg+xml,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="5" y="4" width="5" height="16" rx="1.75" fill="white"/><rect x="14" y="4" width="5" height="16" rx="1.75" fill="white"/></svg>'
+)}")`;
+
+const getColorizedTimelineBackground = (color: string): string => {
+  const rgbMatch = color.match(/^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/i);
+  if (rgbMatch) {
+    return `rgb(${rgbMatch[1]} ${rgbMatch[2]} ${rgbMatch[3]} / 0.8)`;
+  }
+
+  const hexMatch = color.match(/^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i);
+  if (hexMatch) {
+    return `rgb(${Number.parseInt(hexMatch[1] ?? '', 16)} ${Number.parseInt(hexMatch[2] ?? '', 16)} ${Number.parseInt(hexMatch[3] ?? '', 16)} / 0.8)`;
+  }
+
+  return color;
+};
+
 export class OverlayCreator {
   private settingsManager: SettingsManager;
   private videoStateManager: VideoStateManager;
-  private updatingScrollVideos = new Map<HTMLVideoElement, boolean>();
   private keyboardEventListenerAdded = false;
   private pressedKeys = new Set<string>();
   private checkForVideos: () => void;
   private isFastHideStyleInjected = false;
+  private styledDocuments = new WeakSet<Document>();
+  private hoverTrackedDocuments = new WeakSet<Document>();
+  private dialogGuardedDocuments = new WeakSet<Document>();
+  private timelinePreviewTimeouts = new WeakMap<HTMLDivElement, number>();
+  private timelineLayoutTimeouts = new WeakMap<HTMLDivElement, number>();
+  private actionAreaPreviewTimeouts = new WeakMap<HTMLDivElement, number>();
+  private actionAreaOriginalBackgrounds = new WeakMap<HTMLDivElement, string>();
+  private actionAreaOriginalTransitions = new WeakMap<HTMLDivElement, string>();
+  private mediaVolumePreferences = new Map<string, StoredMediaVolumeT>();
+  private nextVideoId = 1;
 
   constructor(
     settingsManager: SettingsManager,
@@ -50,6 +157,22 @@ export class OverlayCreator {
   }
 
   private handleKeyDown(event: KeyboardEvent): void {
+    // Playback hotkeys belong to the page player. Tearing down and rebuilding
+    // the overlay during the same key gesture can expose native controls
+    // halfway through the event and make one press toggle playback repeatedly.
+    if (isPlaybackToggleHotkey(event)) return;
+
+    // Ctrl and Alt remain available while the overlay is active so they can
+    // modify the speed of the next wheel gesture.
+    if (
+      isScrollSpeedHotkeyCode(
+        event.code,
+        this.settingsManager.getFastScrollHotkey(),
+        this.settingsManager.getSlowScrollHotkey()
+      )
+    )
+      return;
+
     // Ignore auto-repeat keydown events to prevent repeated work
     if (event.repeat) return;
 
@@ -92,6 +215,17 @@ export class OverlayCreator {
   }
 
   private handleKeyUp(event: KeyboardEvent): void {
+    if (isPlaybackToggleHotkey(event)) return;
+
+    if (
+      isScrollSpeedHotkeyCode(
+        event.code,
+        this.settingsManager.getFastScrollHotkey(),
+        this.settingsManager.getSlowScrollHotkey()
+      )
+    )
+      return;
+
     // Remove the released key from pressed keys
     this.pressedKeys.delete(event.code);
 
@@ -151,7 +285,15 @@ export class OverlayCreator {
     if (!this.isFastHideStyleInjected) {
       const style = document.createElement('style');
       style.id = 'mfs-fast-hide';
-      style.textContent = `.scrub-wrapper { display: none !important; visibility: hidden !important; }`;
+      style.textContent = `
+        .scrub-wrapper,
+        .scrub-timeline[data-mfs-portaled="true"],
+        .mfs-media-controls[data-mfs-portaled="true"],
+        .mfs-seek-speed-label[data-mfs-portaled="true"] {
+          display: none !important;
+          visibility: hidden !important;
+        }
+      `;
       document.head.appendChild(style);
       this.isFastHideStyleInjected = true;
     }
@@ -169,39 +311,51 @@ export class OverlayCreator {
     if (existingOverlay) {
       if (debugMode) console.log('🗑️ Removing existing overlay');
       this.videoStateManager.delete(video);
-      this.updatingScrollVideos.delete(video); // Clean up scroll update flag
     }
 
-    // Track hover state for timeline display
-    let isHovering = false;
     let scrubTimeout: number | null = null;
     let isSettingInitialScroll = false;
 
+    const deferredSeek = new DeferredMediaSeek(
+      video,
+      MEDIA_SEEK_SETTLE_DELAY_MS,
+      (error) => {
+        if (debugMode) {
+          console.warn('Unable to seek this video source:', error);
+        }
+      }
+    );
+
+    const ownerDocument = video.ownerDocument;
+    const ownerWindow = ownerDocument.defaultView ?? window;
+
     // Create overlay div
-    const scrubOverlay = this.createOverlayElement();
+    const scrubOverlay = this.createOverlayElement(ownerDocument);
     const videoId = this.generateVideoId(video);
     scrubOverlay.setAttribute('data-video-id', videoId);
 
-    // Forward mouse events
-    this.setupMouseEventForwarding(scrubOverlay, video, debugMode);
-
     // Create content div
-    const scrubOverlayScrollContent = this.createScrollContentElement();
+    const scrubOverlayScrollContent =
+      this.createScrollContentElement(ownerDocument);
     scrubOverlay.appendChild(scrubOverlayScrollContent);
 
     // Create timeline bar
-    const scrubTimeline = this.createTimelineElement(video);
+    const scrubTimeline = this.createTimelineElement(ownerDocument);
     const scrubTimelineProgressIndicator =
-      this.createProgressIndicatorElement(video);
+      this.createProgressIndicatorElement(ownerDocument);
     scrubTimeline.appendChild(scrubTimelineProgressIndicator);
 
     // Create and position wrapper
     const { scrubWrapper, debugIndicator } =
       this.createWrapperAndDebugIndicator(video, videoId);
+    const mediaControls = this.createMediaControlsElement(ownerDocument);
+    const seekSpeedLabel = this.createSeekSpeedLabel(ownerDocument);
 
     // Add elements to wrapper
     scrubWrapper.appendChild(scrubOverlay);
     scrubWrapper.appendChild(scrubTimeline);
+    scrubWrapper.appendChild(mediaControls);
+    scrubWrapper.appendChild(seekSpeedLabel);
 
     // Only add debug indicator to DOM if debug is enabled
     if (this.settingsManager.isDebugEnabled()) {
@@ -211,11 +365,77 @@ export class OverlayCreator {
     // Insert wrapper into DOM
     this.insertWrapperIntoDOM(video, scrubWrapper);
 
+    // Store state before setting scroll positions, which can asynchronously
+    // dispatch scroll events in some browser engines.
+    const videoState: VideoStateT = {
+      overlay: scrubOverlay,
+      scrollContent: scrubOverlayScrollContent,
+      timeline: scrubTimeline,
+      wrapper: scrubWrapper,
+      debugIndicator: debugIndicator,
+      mediaControls,
+      isHovering: false,
+      isPointerHovering: false,
+      isWheelHovering: false,
+      isUserScrubbing: false,
+    };
+    this.videoStateManager.set(video, videoState);
+    this.setupDocumentDialogGuard(ownerDocument);
+    this.updateDocumentDialogGuard(ownerDocument);
+
+    // Register whole-video drag handling before click handling so a completed
+    // drag can suppress the synthetic click that browsers dispatch afterward.
+    const videoDraggingController = this.setupVideoDraggingSeeking(
+      video,
+      scrubOverlay,
+      scrubTimeline,
+      videoState,
+      deferredSeek,
+      debugMode
+    );
+    videoState.cancelVideoDragging = videoDraggingController.cancel;
+
+    // Preserve essential playback interaction when native/custom controls are
+    // hidden and this transparent overlay becomes the click target.
+    const playbackController = this.setupPlayerClickHandling(
+      scrubOverlay,
+      video,
+      debugMode,
+      () => videoState.isHovering
+    );
+    videoState.syncPlaybackFeedback = playbackController.sync;
+    playbackController.sync();
+
+    const mediaControlsController = this.setupMediaControls(
+      mediaControls,
+      video,
+      debugMode
+    );
+    videoState.syncMediaControls = mediaControlsController.sync;
+    mediaControlsController.sync();
+
+    this.updateVideoControlsForVideo(video, videoState);
+    this.setupDocumentHoverTracking(ownerDocument);
+
+    const timelineSeekingController = this.setupTimelineSeeking(
+      video,
+      scrubTimeline,
+      videoState,
+      deferredSeek,
+      debugMode
+    );
+    videoState.cancelTimelineSeeking = timelineSeekingController.cancel;
+
     // Setup overlay functionality
     const updateOverlaySize = this.createOverlaySizeUpdater(
       video,
       scrubWrapper
     );
+    const updateOverlayAndTimeline = () => {
+      updateOverlaySize();
+      this.updateTimelineInteractivityForVideo(video, scrubTimeline);
+      this.updateMediaControlsPlacement(video, videoState);
+    };
     const updateContentWidth = this.createContentWidthUpdater(
       video,
       scrubOverlayScrollContent,
@@ -225,16 +445,28 @@ export class OverlayCreator {
       }
     );
 
-    // Set initial width and setup metadata listener
+    // Set initial dimensions and keep them current when a player changes source.
+    updateOverlayAndTimeline();
     updateContentWidth();
+    const updateTimelineInteractivity = () => {
+      this.updateTimelineInteractivityForVideo(video, scrubTimeline);
+      this.updateVideoDraggingForVideo(video, videoState);
+      this.updateVideoControlsForVideo(video, videoState);
+    };
+    updateTimelineInteractivity();
     video.addEventListener('loadedmetadata', updateContentWidth);
+    video.addEventListener('durationchange', updateContentWidth);
+    video.addEventListener('loadedmetadata', updateTimelineInteractivity);
+    video.addEventListener('durationchange', updateTimelineInteractivity);
+    video.addEventListener('progress', updateTimelineInteractivity);
 
     // Setup scroll handling
-    this.setupScrollHandling(
+    const scrollCleanup = this.setupScrollHandling(
       video,
       scrubOverlay,
       scrubOverlayScrollContent,
       scrubTimeline,
+      seekSpeedLabel,
       () => isSettingInitialScroll,
       (value) => {
         isSettingInitialScroll = value;
@@ -243,50 +475,96 @@ export class OverlayCreator {
         scrubTimeout = timeout;
       },
       () => scrubTimeout,
-      () => isHovering,
+      () => videoState.isHovering,
+      (time) => deferredSeek.schedule(time),
       debugMode
     );
 
-    // Setup hover events
-    this.setupHoverEvents(
+    // Setup video sync events
+    const videoSyncCleanup = this.setupVideoSyncEvents(
       video,
       scrubOverlay,
-      scrubTimeline,
-      () => isHovering,
+      scrubOverlayScrollContent,
       (value) => {
-        isHovering = value;
+        isSettingInitialScroll = value;
       }
     );
 
-    // Setup video sync events
-    this.setupVideoSyncEvents(video, scrubOverlay, scrubOverlayScrollContent);
-
     // Setup resize handling
-    window.addEventListener('resize', updateOverlaySize);
-    const resizeObserver = new ResizeObserver(updateOverlaySize);
+    ownerWindow.addEventListener('resize', updateOverlayAndTimeline);
+    const resizeObserver = new ResizeObserver(updateOverlayAndTimeline);
     resizeObserver.observe(video);
 
-    // Setup timeline progress updates during playback
-    this.setupTimelineProgressUpdates(video, scrubTimeline);
+    let timelineLayoutFrame: number | null = null;
+    const scheduleTimelineLayoutUpdate = () => {
+      if (timelineLayoutFrame !== null) return;
 
-    // Store state
-    const videoState: VideoStateT = {
-      overlay: scrubOverlay,
-      scrollContent: scrubOverlayScrollContent,
-      timeline: scrubTimeline,
-      wrapper: scrubWrapper,
-      debugIndicator: debugIndicator,
-      isUserScrubbing: false,
+      timelineLayoutFrame = ownerWindow.requestAnimationFrame(() => {
+        timelineLayoutFrame = null;
+        this.updateTimelineInteractivityForVideo(video, scrubTimeline);
+        this.updateMediaControlsPlacement(video, videoState);
+      });
     };
+    ownerDocument.addEventListener('scroll', scheduleTimelineLayoutUpdate, {
+      capture: true,
+      passive: true,
+    });
+    ownerDocument.addEventListener(
+      'fullscreenchange',
+      updateOverlayAndTimeline
+    );
 
-    this.videoStateManager.set(video, videoState);
+    // Setup timeline progress updates during playback
+    const timelineCleanup = this.setupTimelineProgressUpdates(
+      video,
+      scrubTimeline
+    );
+
+    videoState.syncCleanup = () => {
+      video.removeEventListener('loadedmetadata', updateContentWidth);
+      video.removeEventListener('durationchange', updateContentWidth);
+      video.removeEventListener('loadedmetadata', updateTimelineInteractivity);
+      video.removeEventListener('durationchange', updateTimelineInteractivity);
+      video.removeEventListener('progress', updateTimelineInteractivity);
+      ownerWindow.removeEventListener('resize', updateOverlayAndTimeline);
+      ownerDocument.removeEventListener(
+        'scroll',
+        scheduleTimelineLayoutUpdate,
+        true
+      );
+      ownerDocument.removeEventListener(
+        'fullscreenchange',
+        updateOverlayAndTimeline
+      );
+      if (timelineLayoutFrame !== null) {
+        ownerWindow.cancelAnimationFrame(timelineLayoutFrame);
+      }
+      resizeObserver.disconnect();
+      videoSyncCleanup();
+      timelineCleanup();
+      timelineSeekingController.cleanup();
+      videoDraggingController.cleanup();
+      playbackController.cleanup();
+      mediaControlsController.cleanup();
+      scrollCleanup();
+      deferredSeek.cancel();
+      if (scrubTimeout) ownerWindow.clearTimeout(scrubTimeout);
+      if (videoState.wheelHoverTimeout !== undefined) {
+        ownerWindow.clearTimeout(videoState.wheelHoverTimeout);
+        videoState.wheelHoverTimeout = undefined;
+      }
+    };
 
     if (debugMode) console.log('✅ Scrub overlay created successfully');
   }
 
   private generateVideoId(video: HTMLVideoElement): string {
-    const index = Array.from(document.querySelectorAll('video')).indexOf(video);
-    return `video-${index}-${video.src || video.currentSrc || 'unknown'}`;
+    const existingId = video.getAttribute('data-media-flow-seek-id');
+    if (existingId) return existingId;
+
+    const id = `media-flow-seek-${this.nextVideoId++}`;
+    video.setAttribute('data-media-flow-seek-id', id);
+    return id;
   }
 
   private getDebugColorBackground(): string {
@@ -310,8 +588,8 @@ export class OverlayCreator {
       : '';
   }
 
-  private createOverlayElement(): HTMLDivElement {
-    const scrubOverlay = document.createElement('div');
+  private createOverlayElement(ownerDocument: Document): HTMLDivElement {
+    const scrubOverlay = ownerDocument.createElement('div');
     scrubOverlay.style.cssText = `
       width: 100%;
       height: 100%;
@@ -328,21 +606,479 @@ export class OverlayCreator {
       -ms-overflow-style: none;
     `;
 
-    // Add WebKit scrollbar hiding styles
-    const style = document.createElement('style');
-    style.textContent = `
-      .scrub-overlay::-webkit-scrollbar {
-        display: none;
-      }
-    `;
-    document.head.appendChild(style);
+    // Add WebKit scrollbar hiding styles once per frame document.
+    if (!this.styledDocuments.has(ownerDocument)) {
+      const style = ownerDocument.createElement('style');
+      style.textContent = `
+        .scrub-overlay::-webkit-scrollbar {
+          display: none;
+        }
+
+        .mfs-video-dragging,
+        .mfs-video-dragging * {
+          cursor: pointer !important;
+          user-select: none !important;
+        }
+
+        .mfs-seek-speed-label {
+          all: initial;
+          position: absolute;
+          left: 50%;
+          bottom: 12px;
+          z-index: 2147483646 !important;
+          display: block;
+          color: white;
+          text-shadow: 0 1px 3px rgb(0 0 0 / 0.8), 0 2px 8px rgb(0 0 0 / 0.45);
+          opacity: 0;
+          transform: translate(-50%, 4px);
+          transition: opacity 120ms ease, transform 120ms ease;
+          pointer-events: none;
+          user-select: none;
+          white-space: nowrap;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          font-size: 11px;
+          font-weight: 600;
+          line-height: 14px;
+          letter-spacing: 0.01em;
+        }
+
+        .mfs-seek-speed-label[data-mfs-visible="true"] {
+          opacity: 1;
+          transform: translate(-50%, 0);
+        }
+
+        .mfs-seek-speed-label[data-mfs-portaled="true"] {
+          bottom: auto;
+          transform: translate(-50%, calc(-100% + 4px));
+        }
+
+        .mfs-seek-speed-label[data-mfs-portaled="true"][data-mfs-visible="true"] {
+          transform: translate(-50%, -100%);
+        }
+
+        .mfs-media-controls {
+          all: initial;
+          width: ${VOLUME_CONTROL_WIDTH_PX}px;
+          height: min(86px, calc(100% - 16px));
+          position: absolute;
+          right: ${VOLUME_EDGE_GAP_PX}px;
+          top: 50%;
+          z-index: 2147483647 !important;
+          display: block;
+          box-sizing: border-box;
+          overflow: hidden;
+          border: 0;
+          border-radius: 999px;
+          background: rgb(255 255 255 / 0.2);
+          color: white;
+          box-shadow: none;
+          opacity: 0;
+          transform: translateY(calc(-50% + 4px));
+          transition: opacity 140ms ease, transform 140ms ease;
+          -webkit-backdrop-filter: blur(8px) saturate(140%);
+          backdrop-filter: blur(8px) saturate(140%);
+          pointer-events: none;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+
+        .mfs-media-controls[hidden] {
+          display: none !important;
+        }
+
+        .mfs-media-controls[data-mfs-visible="true"],
+        .mfs-media-controls:focus-within {
+          opacity: 1;
+          transform: translateY(-50%);
+          pointer-events: auto !important;
+        }
+
+        .mfs-volume-pill {
+          all: unset;
+          width: 100%;
+          height: 100%;
+          position: relative;
+          display: block;
+          box-sizing: border-box;
+          overflow: hidden;
+          border-radius: inherit;
+          color: inherit;
+          cursor: pointer;
+          touch-action: none;
+          user-select: none;
+        }
+
+        .mfs-volume-pill::after {
+          content: '';
+          position: absolute;
+          top: 0;
+          right: 0;
+          bottom: 0;
+          left: 0;
+          z-index: 2;
+          border-radius: 999px;
+        }
+
+        .mfs-volume-pill:focus-visible {
+          outline: 2px solid white;
+          outline-offset: -4px;
+        }
+
+        .mfs-volume-pill[data-mfs-dragging="true"] {
+          cursor: ns-resize;
+        }
+
+        .mfs-volume-fill {
+          width: 100%;
+          height: var(--mfs-volume, 100%);
+          position: absolute;
+          right: 0;
+          bottom: 0;
+          left: 0;
+          z-index: 0;
+          background: rgb(255 255 255 / 0.3);
+          border-radius: 0;
+          box-shadow: none;
+          transition: height 120ms ease-out;
+          -webkit-backdrop-filter: blur(8px) saturate(140%);
+          backdrop-filter: blur(8px) saturate(140%);
+          pointer-events: none;
+        }
+
+        .mfs-volume-pill[data-mfs-dragging="true"] .mfs-volume-fill {
+          transition: none;
+        }
+
+        .mfs-volume-icon {
+          width: 16px;
+          height: 16px;
+          position: absolute;
+          right: 6px;
+          bottom: 8px;
+          z-index: 3;
+          display: block;
+          color: white;
+          filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.35));
+          pointer-events: none;
+        }
+
+        .mfs-volume-icon path {
+          fill: none;
+          stroke: currentColor;
+          stroke-width: 2;
+          stroke-linecap: round;
+          stroke-linejoin: round;
+        }
+
+        .mfs-volume-icon-speaker {
+          fill: currentColor !important;
+          stroke: none !important;
+        }
+
+        .mfs-volume-icon-wave,
+        .mfs-volume-icon-muted {
+          opacity: 0;
+          transform: scaleX(0.35);
+          transform-box: fill-box;
+          transform-origin: left center;
+          transition:
+            opacity 140ms ease,
+            transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        .mfs-volume-pill[data-mfs-volume-level="low"] .mfs-volume-icon-wave-one,
+        .mfs-volume-pill[data-mfs-volume-level="medium"] .mfs-volume-icon-wave-one,
+        .mfs-volume-pill[data-mfs-volume-level="medium"] .mfs-volume-icon-wave-two,
+        .mfs-volume-pill[data-mfs-volume-level="high"] .mfs-volume-icon-wave {
+          opacity: 1;
+          transform: scaleX(1);
+        }
+
+        .mfs-volume-icon-muted {
+          stroke-dasharray: 24;
+          stroke-dashoffset: 24;
+          transform: none;
+          transition:
+            opacity 100ms ease,
+            stroke-dashoffset 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        .mfs-volume-pill[data-mfs-volume-level="muted"] .mfs-volume-icon-muted {
+          opacity: 1;
+          stroke-dashoffset: 0;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .mfs-volume-icon-wave,
+          .mfs-volume-icon-muted {
+            transition: none;
+          }
+        }
+
+        @media (hover: none), (pointer: coarse) {
+          .mfs-media-controls[data-mfs-active="true"] {
+            opacity: 1;
+            transform: translateY(-50%);
+            pointer-events: auto !important;
+          }
+        }
+
+        .mfs-playback-feedback {
+          width: 112px;
+          height: 112px;
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          z-index: 2147483646;
+          display: grid;
+          place-items: center;
+          border: 0;
+          background: transparent;
+          color: white;
+          pointer-events: none;
+          animation: mfs-playback-feedback 650ms ease-out forwards;
+        }
+
+        .mfs-playback-feedback svg {
+          width: 96px;
+          height: 96px;
+          fill: currentColor;
+          opacity: 0.9;
+        }
+
+        .mfs-playback-feedback svg,
+        .mfs-playback-feedback::before {
+          filter:
+            drop-shadow(0 2px 4px rgb(0 0 0 / 0.72))
+            drop-shadow(0 10px 22px rgb(0 0 0 / 0.42));
+        }
+
+        @supports (
+          ((backdrop-filter: blur(1px)) and (mask-image: linear-gradient(black, black))) or
+          ((-webkit-backdrop-filter: blur(1px)) and (-webkit-mask-image: linear-gradient(black, black)))
+        ) {
+          .mfs-playback-feedback[data-mfs-playback-feedback="play"] {
+            --mfs-playback-icon-mask: ${PLAYBACK_PLAY_ICON_MASK};
+          }
+
+          .mfs-playback-feedback[data-mfs-playback-feedback="pause"] {
+            --mfs-playback-icon-mask: ${PLAYBACK_PAUSE_ICON_MASK};
+          }
+
+          .mfs-playback-feedback::before {
+            content: '';
+            width: 96px;
+            height: 96px;
+            position: absolute;
+            inset: 8px;
+            background: rgb(255 255 255 / 0.8);
+            -webkit-backdrop-filter: saturate(180%) blur(20px);
+            backdrop-filter: saturate(180%) blur(20px);
+            -webkit-mask: var(--mfs-playback-icon-mask) center / contain no-repeat;
+            mask: var(--mfs-playback-icon-mask) center / contain no-repeat;
+          }
+
+          .mfs-playback-feedback svg {
+            visibility: hidden;
+          }
+        }
+
+        .mfs-playback-feedback[data-mfs-persistent="true"] {
+          animation: mfs-playback-feedback-persistent 220ms ease-out both;
+        }
+
+        @keyframes mfs-playback-feedback {
+          0% {
+            opacity: 0;
+            transform: translate(-50%, -50%) scale(0.78);
+          }
+          18% {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1);
+          }
+          72% {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1);
+          }
+          100% {
+            opacity: 0;
+            transform: translate(-50%, -50%) scale(1.08);
+          }
+        }
+
+        @keyframes mfs-playback-feedback-persistent {
+          from {
+            opacity: 0;
+            transform: translate(-50%, -50%) scale(0.86);
+          }
+          to {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1);
+          }
+        }
+
+        .scrub-debug-indicator {
+          width: auto;
+          height: auto;
+          position: absolute;
+          top: 8px;
+          right: 8px;
+          z-index: 9999;
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          padding: 8px 10px 8px 8px;
+          box-sizing: border-box;
+          border: 1px solid rgb(255 255 255 / 0.4);
+          border-radius: 9999px;
+          background: rgb(255 255 255 / 0.8);
+          color: rgb(15 23 42);
+          box-shadow:
+            0 2px 4px rgb(15 23 42 / 0.06),
+            0 12px 30px -10px rgb(15 23 42 / 0.22),
+            0 24px 60px -24px rgb(15 23 42 / 0.28),
+            inset 0 1px 0 rgb(255 255 255 / 0.72),
+            inset 0 0 0 1px rgb(15 23 42 / 0.035);
+          -webkit-backdrop-filter: saturate(180%) blur(20px);
+          backdrop-filter: saturate(180%) blur(20px);
+          pointer-events: auto;
+          white-space: nowrap;
+          text-decoration: none;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        .scrub-debug-indicator-logo-container {
+          width: 24px;
+          height: 24px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
+        .scrub-debug-indicator-logo {
+          width: 16px;
+          height: 16px;
+          object-fit: contain;
+        }
+
+        .scrub-debug-indicator-text {
+          display: flex;
+          flex-direction: column;
+          gap: 1px;
+        }
+
+        .scrub-debug-indicator-title {
+          font-size: 10px;
+          font-weight: 600;
+          line-height: 1.2;
+        }
+
+        .scrub-debug-indicator-subtitle {
+          font-size: 9px;
+          line-height: 1.2;
+          opacity: 0.62;
+        }
+
+        @media (prefers-color-scheme: dark) {
+          .scrub-debug-indicator {
+            border-color: rgb(255 255 255 / 0.14);
+            background: rgb(51 51 51 / 0.8);
+            color: rgb(248 250 252);
+            box-shadow:
+              0 2px 6px rgb(0 0 0 / 0.22),
+              0 16px 36px -12px rgb(0 0 0 / 0.55),
+              0 28px 70px -28px rgb(0 0 0 / 0.65),
+              inset 0 1px 0 rgb(255 255 255 / 0.12),
+              inset 0 0 0 1px rgb(0 0 0 / 0.12);
+          }
+        }
+
+        @media (max-width: 480px) {
+          .scrub-debug-indicator {
+            padding: 7px 11px 7px 7px;
+          }
+
+          .scrub-debug-indicator-logo-container {
+            width: 22px;
+            height: 22px;
+          }
+
+          .scrub-debug-indicator-logo {
+            width: 15px;
+            height: 15px;
+          }
+
+          .scrub-debug-indicator-title {
+            font-size: 10px;
+          }
+
+          .scrub-debug-indicator-subtitle {
+            font-size: 9px;
+          }
+        }
+
+        video[data-mfs-hide-controls="true"]::-webkit-media-controls,
+        video[data-mfs-hide-controls="true"]::-webkit-media-controls-enclosure,
+        video[data-mfs-hide-controls="true"]::-webkit-media-controls-panel {
+          display: none !important;
+        }
+
+        [data-mfs-hide-controls-container="true"] .ytp-chrome-bottom,
+        [data-mfs-hide-controls-container="true"] .ytp-chrome-top,
+        [data-mfs-hide-controls-container="true"] .ytp-gradient-bottom,
+        [data-mfs-hide-controls-container="true"] .ytp-gradient-top,
+        [data-mfs-hide-controls-container="true"] .ytp-bezel,
+        [data-mfs-hide-controls-container="true"] .ytp-large-play-button,
+        [data-mfs-hide-controls-container="true"] .vp-controls,
+        [data-mfs-hide-controls-container="true"] .vp-sidedock,
+        [data-mfs-hide-controls-container="true"] [data-a-target="player-controls"],
+        [data-mfs-hide-controls-container="true"] .PlayerControlsNeo__layout,
+        [data-mfs-hide-controls-container="true"] button[data-a-target="player-overlay-play-button"],
+        [data-mfs-hide-controls-container="true"] [class*="DivVolumeControlContainer"],
+        [data-mfs-hide-controls-container="true"][data-mfs-tiktok-player="true"] [class*="DivMediaCardOverlayBottom"],
+        [data-mfs-hide-controls-container="true"][data-mfs-tiktok-player="true"] [class*="DivCreatorInfoContainer"],
+        [data-mfs-hide-controls-container="true"][data-mfs-tiktok-player="true"] [class*="DivMediaCardDescriptionContainer"],
+        [data-mfs-hide-controls-container="true"][data-mfs-tiktok-player="true"] [data-e2e="video-desc"],
+        [data-mfs-hide-controls-container="true"][data-mfs-tiktok-player="true"] [data-e2e="video-author-uniqueid"],
+        [data-mfs-hide-controls-container="true"][data-mfs-tiktok-player="true"] [data-e2e="video-author-nickname"],
+        [data-mfs-hide-controls-container="true"][data-mfs-tiktok-player="true"] [data-e2e="video-music"],
+        [data-mfs-hide-controls-container="true"] :is(button, [role="button"])[aria-label="volume" i]:not([data-mfs-action]),
+        [data-mfs-hide-controls-container="true"] :is(button, [role="button"])[aria-label="mute" i]:not([data-mfs-action]),
+        [data-mfs-hide-controls-container="true"] :is(button, [role="button"])[aria-label="unmute" i]:not([data-mfs-action]),
+        [data-mfs-hide-controls-container="true"] :is(button, [role="button"])[aria-label*="play" i]:not([data-mfs-action]),
+        [data-mfs-hide-controls-container="true"] :is(button, [role="button"])[aria-label*="pause" i]:not([data-mfs-action]),
+        [data-mfs-hide-controls-container="true"] :is(button, [role="button"])[title*="play" i]:not([data-mfs-action]),
+        [data-mfs-hide-controls-container="true"] :is(button, [role="button"])[title*="pause" i]:not([data-mfs-action]),
+        [data-mfs-hide-controls-container="true"].responsive_menu_ignore_touch > .scrub-wrapper + div {
+          opacity: 0 !important;
+          visibility: hidden !important;
+          pointer-events: none !important;
+        }
+
+        [data-mfs-instagram-chrome="true"] {
+          opacity: 0 !important;
+          visibility: hidden !important;
+          pointer-events: none !important;
+        }
+
+        html[data-mfs-page-dialog-open="true"] .scrub-wrapper,
+        html[data-mfs-page-dialog-open="true"] .scrub-timeline[data-mfs-portaled="true"],
+        html[data-mfs-page-dialog-open="true"] .mfs-media-controls[data-mfs-portaled="true"],
+        html[data-mfs-page-dialog-open="true"] .mfs-seek-speed-label[data-mfs-portaled="true"] {
+          visibility: hidden !important;
+          pointer-events: none !important;
+        }
+      `;
+      (ownerDocument.head ?? ownerDocument.documentElement).appendChild(style);
+      this.styledDocuments.add(ownerDocument);
+    }
     scrubOverlay.classList.add('scrub-overlay');
 
     return scrubOverlay;
   }
 
-  private createScrollContentElement(): HTMLDivElement {
-    const scrollContent = document.createElement('div');
+  private createScrollContentElement(ownerDocument: Document): HTMLDivElement {
+    const scrollContent = ownerDocument.createElement('div');
     scrollContent.style.cssText = `
       height: 100%;
       min-width: 100%;
@@ -353,8 +1089,8 @@ export class OverlayCreator {
     return scrollContent;
   }
 
-  private createTimelineElement(video: HTMLVideoElement): HTMLDivElement {
-    const timeline = document.createElement('div');
+  private createTimelineElement(ownerDocument: Document): HTMLDivElement {
+    const timeline = ownerDocument.createElement('div');
     const heightValue =
       this.settingsManager.getTimelineHeightUnit() === '%'
         ? `${this.settingsManager.getTimelineHeight()}%`
@@ -371,7 +1107,9 @@ export class OverlayCreator {
       position: absolute;
       left: 0px;
       top: ${topPosition};
-      background: rgb(255 255 255 / 0.3);
+      background: rgb(255 255 255 / 0.2);
+      -webkit-backdrop-filter: blur(8px) saturate(140%);
+      backdrop-filter: blur(8px) saturate(140%);
       opacity: 0;
       transition: opacity 0.3s ease;
       pointer-events: none;
@@ -380,31 +1118,831 @@ export class OverlayCreator {
     return timeline;
   }
 
+  private createSeekSpeedLabel(ownerDocument: Document): HTMLDivElement {
+    const label = ownerDocument.createElement('div');
+    label.className = 'mfs-seek-speed-label';
+    label.dataset.mfsVisible = 'false';
+    label.setAttribute('role', 'status');
+    label.setAttribute('aria-live', 'polite');
+    label.setAttribute('aria-atomic', 'true');
+    return label;
+  }
+
+  private updateTimelineInteractivityForVideo(
+    video: HTMLVideoElement,
+    timeline: HTMLDivElement
+  ): boolean {
+    const isInteractive =
+      this.settingsManager.isTimelineSeekingEnabled() &&
+      getMediaSeekRange(video) !== null;
+
+    const state = this.videoStateManager.get(video);
+    if (state?.timeline === timeline) {
+      this.updateTimelinePlacement(video, state, isInteractive);
+    }
+
+    const isPageDialogOpen =
+      video.ownerDocument.documentElement.dataset.mfsPageDialogOpen === 'true';
+    timeline.style.pointerEvents =
+      isInteractive && !isPageDialogOpen ? 'auto' : 'none';
+    timeline.style.cursor = isInteractive ? 'pointer' : '';
+    timeline.style.touchAction = isInteractive ? 'none' : '';
+    timeline.style.userSelect = isInteractive ? 'none' : '';
+    timeline.style.zIndex = isInteractive ? '2147483645' : '';
+    timeline.dataset.mfsInteractive = String(isInteractive);
+    timeline
+      .querySelectorAll<HTMLElement>(
+        '.scrub-timeline-handle, .scrub-timeline-handle-indicator'
+      )
+      .forEach((handle) => {
+        handle.style.display = isInteractive ? 'none' : '';
+      });
+
+    return isInteractive;
+  }
+
+  private updateTimelinePlacement(
+    video: HTMLVideoElement,
+    state: VideoStateT,
+    isInteractive: boolean
+  ): void {
+    const { timeline, wrapper } = state;
+    const height = this.settingsManager.getTimelineHeight();
+    const unit = this.settingsManager.getTimelineHeightUnit();
+    const position = this.settingsManager.getTimelinePosition();
+    const wrapperRect = wrapper.getBoundingClientRect();
+    const configuredHeightInPixels =
+      unit === '%' ? (wrapperRect.height * height) / 100 : height;
+    const heightInPixels =
+      isInteractive &&
+      configuredHeightInPixels < MIN_INTERACTIVE_TIMELINE_HEIGHT_PX
+        ? Math.min(MIN_INTERACTIVE_TIMELINE_HEIGHT_PX, wrapperRect.height)
+        : configuredHeightInPixels;
+
+    this.updateTimelineCornerClipping(
+      video,
+      timeline,
+      position,
+      heightInPixels >= wrapperRect.height
+    );
+
+    if (!isInteractive) {
+      if (timeline.parentElement !== wrapper) wrapper.appendChild(timeline);
+
+      const heightValue = unit === '%' ? `${height}%` : `${height}px`;
+      timeline.style.position = 'absolute';
+      timeline.style.left = '0px';
+      timeline.style.width = '100%';
+      timeline.style.height = heightValue;
+      timeline.style.top =
+        position === 'top' ? '0px' : `calc(100% - ${heightValue})`;
+      delete timeline.dataset.mfsPortaled;
+      return;
+    }
+
+    const ownerDocument = video.ownerDocument;
+    const ownerWindow = ownerDocument.defaultView ?? window;
+    const fullscreenElement = ownerDocument.fullscreenElement;
+    const portalHost =
+      fullscreenElement?.contains(video) || fullscreenElement?.contains(wrapper)
+        ? fullscreenElement
+        : ownerDocument.documentElement;
+
+    if (timeline.parentElement !== portalHost) portalHost.appendChild(timeline);
+
+    const targetTop =
+      position === 'top'
+        ? wrapperRect.top
+        : wrapperRect.bottom - heightInPixels;
+    let portalLeft = wrapperRect.left + ownerWindow.scrollX;
+    let portalTop = targetTop + ownerWindow.scrollY;
+
+    if (portalHost !== ownerDocument.documentElement) {
+      const portalRect = portalHost.getBoundingClientRect();
+      portalLeft =
+        wrapperRect.left -
+        portalRect.left +
+        portalHost.scrollLeft -
+        portalHost.clientLeft;
+      portalTop =
+        targetTop -
+        portalRect.top +
+        portalHost.scrollTop -
+        portalHost.clientTop;
+    }
+
+    // Keep the portaled timeline in the same scrollable coordinate space as
+    // the video. Fixed elements stay pinned to the viewport during elastic
+    // overscroll while the page content (and video) is displaced.
+    timeline.style.position = 'absolute';
+    timeline.style.left = `${portalLeft}px`;
+    timeline.style.width = `${wrapperRect.width}px`;
+    timeline.style.height = `${heightInPixels}px`;
+    timeline.style.top = `${portalTop}px`;
+    timeline.dataset.mfsPortaled = 'true';
+  }
+
+  private updateTimelineCornerClipping(
+    video: HTMLVideoElement,
+    timeline: HTMLDivElement,
+    position: 'top' | 'bottom',
+    fillsVideoHeight: boolean
+  ): void {
+    const geometrySource = this.findVisibleVideoContainer(video) ?? video;
+    const targetElement = this.findEffectiveBorderRadiusSource(
+      video,
+      geometrySource
+    );
+    const ownerWindow = video.ownerDocument.defaultView ?? window;
+    const targetStyle = ownerWindow.getComputedStyle(targetElement);
+    const [topLeftRadius, topRightRadius, bottomRightRadius, bottomLeftRadius] =
+      this.getBorderRadiusValues(targetStyle);
+    const showTopCorners = fillsVideoHeight || position === 'top';
+    const showBottomCorners = fillsVideoHeight || position === 'bottom';
+
+    timeline.style.overflow = 'hidden';
+    timeline.style.borderTopLeftRadius = showTopCorners ? topLeftRadius : '0px';
+    timeline.style.borderTopRightRadius = showTopCorners
+      ? topRightRadius
+      : '0px';
+    timeline.style.borderBottomRightRadius = showBottomCorners
+      ? bottomRightRadius
+      : '0px';
+    timeline.style.borderBottomLeftRadius = showBottomCorners
+      ? bottomLeftRadius
+      : '0px';
+  }
+
+  private findEffectiveBorderRadiusSource(
+    video: HTMLVideoElement,
+    geometrySource: HTMLElement
+  ): HTMLElement {
+    const ownerWindow = video.ownerDocument.defaultView ?? window;
+    const referenceRect = geometrySource.getBoundingClientRect();
+    const horizontalTolerance = Math.max(4, referenceRect.width * 0.05);
+    const verticalTolerance = Math.max(4, referenceRect.height * 0.05);
+    let bestElement = geometrySource;
+    let bestEdgeDelta = Number.POSITIVE_INFINITY;
+    let bestRadiusMagnitude = 0;
+    let currentElement: HTMLElement | null = video;
+
+    for (let depth = 0; currentElement && depth < 16; depth += 1) {
+      const rect = currentElement.getBoundingClientRect();
+      const leftDelta = Math.abs(rect.left - referenceRect.left);
+      const rightDelta = Math.abs(rect.right - referenceRect.right);
+      const topDelta = Math.abs(rect.top - referenceRect.top);
+      const bottomDelta = Math.abs(rect.bottom - referenceRect.bottom);
+      const matchesVisibleGeometry =
+        rect.width > 0 &&
+        rect.height > 0 &&
+        leftDelta <= horizontalTolerance &&
+        rightDelta <= horizontalTolerance &&
+        topDelta <= verticalTolerance &&
+        bottomDelta <= verticalTolerance;
+
+      if (matchesVisibleGeometry) {
+        const style = ownerWindow.getComputedStyle(currentElement);
+        const radiusMagnitude = this.getBorderRadiusMagnitude(style);
+        const edgeDelta = leftDelta + rightDelta + topDelta + bottomDelta;
+        const isCloserMatch = edgeDelta < bestEdgeDelta - 0.5;
+        const isSameMatchWithLargerRadius =
+          Math.abs(edgeDelta - bestEdgeDelta) <= 0.5 &&
+          radiusMagnitude > bestRadiusMagnitude;
+
+        if (
+          radiusMagnitude > 0 &&
+          (currentElement === video || this.hasVisualClipping(style)) &&
+          (isCloserMatch || isSameMatchWithLargerRadius)
+        ) {
+          bestElement = currentElement;
+          bestEdgeDelta = edgeDelta;
+          bestRadiusMagnitude = radiusMagnitude;
+        }
+      }
+
+      currentElement = this.getComposedParentElement(
+        currentElement,
+        ownerWindow
+      );
+    }
+
+    return bestElement;
+  }
+
+  private getBorderRadiusMagnitude(style: CSSStyleDeclaration): number {
+    return this.getBorderRadiusValues(style).reduce((total, value) => {
+      const components = value.match(/-?\d*\.?\d+/g);
+      if (!components) return total;
+
+      return (
+        total +
+        components.reduce((sum, component) => {
+          const numericValue = Number.parseFloat(component);
+          return sum + (Number.isFinite(numericValue) ? numericValue : 0);
+        }, 0)
+      );
+    }, 0);
+  }
+
+  private getBorderRadiusValues(
+    style: CSSStyleDeclaration
+  ): [string, string, string, string] {
+    const cornerValues: [string, string, string, string] = [
+      style.borderTopLeftRadius,
+      style.borderTopRightRadius,
+      style.borderBottomRightRadius,
+      style.borderBottomLeftRadius,
+    ];
+    const cornerMagnitude = cornerValues.reduce((total, value) => {
+      const components = value.match(/-?\d*\.?\d+/g);
+      if (!components) return total;
+      return total + components.reduce((sum, value) => sum + Number(value), 0);
+    }, 0);
+
+    // JSDOM reports zeroed longhands for an inline border-radius shorthand.
+    // Real browsers expand the shorthand, but this fallback also protects
+    // unusual player styles that expose only the shorthand value.
+    if (cornerMagnitude === 0 && style.borderRadius) {
+      return [
+        style.borderRadius,
+        style.borderRadius,
+        style.borderRadius,
+        style.borderRadius,
+      ];
+    }
+
+    return cornerValues;
+  }
+
+  private hasVisualClipping(style: CSSStyleDeclaration): boolean {
+    const hasNonEmptyValue = (value: string): boolean =>
+      value !== '' && value !== 'none';
+    const clipsOverflow = [
+      style.overflow,
+      style.overflowX,
+      style.overflowY,
+    ].some((value) => value === 'hidden' || value === 'clip');
+    const webkitMaskImage = style.getPropertyValue('-webkit-mask-image');
+    const hasMask =
+      hasNonEmptyValue(style.maskImage) || hasNonEmptyValue(webkitMaskImage);
+
+    return (
+      clipsOverflow ||
+      hasNonEmptyValue(style.clipPath) ||
+      hasMask ||
+      style.contain.split(/\s+/).includes('paint')
+    );
+  }
+
+  private getComposedParentElement(
+    element: HTMLElement,
+    ownerWindow: Window & typeof globalThis
+  ): HTMLElement | null {
+    if (element.parentElement) return element.parentElement;
+
+    const root = element.getRootNode() as ShadowRoot;
+    return root.host instanceof ownerWindow.HTMLElement ? root.host : null;
+  }
+
+  private applySeekTargetAtClientX(
+    video: HTMLVideoElement,
+    timeline: HTMLDivElement,
+    clientX: number,
+    trackRect: Pick<DOMRect, 'left' | 'width'>,
+    deferredSeek: DeferredMediaSeek,
+    debugMode: boolean,
+    source: 'timeline' | 'video'
+  ): boolean {
+    const range = getMediaSeekRange(video);
+    if (!range) return false;
+
+    const target = getMediaSeekTarget(
+      range,
+      clientX,
+      trackRect.left,
+      trackRect.width
+    );
+    if (!target) return false;
+
+    timeline.style.opacity = '1';
+    const progressBar = timeline.firstElementChild as HTMLElement | null;
+    if (progressBar) {
+      progressBar.style.width = `${target.progress * 100}%`;
+    }
+    deferredSeek.schedule(target.time);
+
+    if (debugMode) {
+      console.log(`🖱️ ${source} seek target:`, target.time);
+    }
+
+    return true;
+  }
+
+  private setupTimelineSeeking(
+    video: HTMLVideoElement,
+    timeline: HTMLDivElement,
+    videoState: VideoStateT,
+    deferredSeek: DeferredMediaSeek,
+    debugMode: boolean
+  ): { cancel: () => void; cleanup: () => void } {
+    let activePointerId: number | null = null;
+
+    const applyPointerTarget = (event: PointerEvent): boolean => {
+      const rect = timeline.getBoundingClientRect();
+      return this.applySeekTargetAtClientX(
+        video,
+        timeline,
+        event.clientX,
+        rect,
+        deferredSeek,
+        debugMode,
+        'timeline'
+      );
+    };
+
+    const releasePointer = (pointerId: number): void => {
+      try {
+        if (
+          typeof timeline.hasPointerCapture === 'function' &&
+          timeline.hasPointerCapture(pointerId)
+        ) {
+          timeline.releasePointerCapture(pointerId);
+        }
+      } catch (error) {
+        if (debugMode) {
+          console.warn('Unable to release timeline pointer capture:', error);
+        }
+      }
+    };
+
+    const finishScrubbing = (commitPendingSeek: boolean): void => {
+      if (activePointerId === null) return;
+
+      const pointerId = activePointerId;
+      activePointerId = null;
+      if (commitPendingSeek) deferredSeek.commit();
+      releasePointer(pointerId);
+      videoState.isUserScrubbing = false;
+      this.updateTimelineInteractivityForVideo(video, timeline);
+      this.updateTimelineHoverState(video, videoState, videoState.isHovering);
+    };
+
+    const handlePointerDown = (event: PointerEvent): void => {
+      if (
+        !this.settingsManager.isTimelineSeekingEnabled() ||
+        event.isPrimary === false ||
+        (event.pointerType === 'mouse' && event.button !== 0) ||
+        activePointerId !== null
+      )
+        return;
+
+      if (!applyPointerTarget(event)) {
+        this.updateTimelineInteractivityForVideo(video, timeline);
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      activePointerId = event.pointerId;
+      videoState.isUserScrubbing = true;
+      timeline.style.cursor = 'grabbing';
+
+      try {
+        timeline.setPointerCapture?.(event.pointerId);
+      } catch (error) {
+        if (debugMode) {
+          console.warn('Unable to capture timeline pointer:', error);
+        }
+      }
+    };
+
+    const handlePointerMove = (event: PointerEvent): void => {
+      if (event.pointerId !== activePointerId) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      applyPointerTarget(event);
+    };
+
+    const handlePointerUp = (event: PointerEvent): void => {
+      if (event.pointerId !== activePointerId) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      applyPointerTarget(event);
+      finishScrubbing(true);
+    };
+
+    const handlePointerCancel = (event: PointerEvent): void => {
+      if (event.pointerId !== activePointerId) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      finishScrubbing(true);
+    };
+
+    const handleLostPointerCapture = (event: PointerEvent): void => {
+      if (event.pointerId === activePointerId) finishScrubbing(true);
+    };
+
+    const handleClick = (event: MouseEvent): void => {
+      if (
+        this.settingsManager.isTimelineSeekingEnabled() &&
+        getMediaSeekRange(video)
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+
+    timeline.addEventListener('pointerdown', handlePointerDown);
+    timeline.addEventListener('pointermove', handlePointerMove);
+    timeline.addEventListener('pointerup', handlePointerUp);
+    timeline.addEventListener('pointercancel', handlePointerCancel);
+    timeline.addEventListener('lostpointercapture', handleLostPointerCapture);
+    timeline.addEventListener('click', handleClick);
+
+    return {
+      cancel: () => finishScrubbing(true),
+      cleanup: () => {
+        if (activePointerId !== null) {
+          const pointerId = activePointerId;
+          activePointerId = null;
+          releasePointer(pointerId);
+          videoState.isUserScrubbing = false;
+        }
+        timeline.removeEventListener('pointerdown', handlePointerDown);
+        timeline.removeEventListener('pointermove', handlePointerMove);
+        timeline.removeEventListener('pointerup', handlePointerUp);
+        timeline.removeEventListener('pointercancel', handlePointerCancel);
+        timeline.removeEventListener(
+          'lostpointercapture',
+          handleLostPointerCapture
+        );
+        timeline.removeEventListener('click', handleClick);
+      },
+    };
+  }
+
+  private setupVideoDraggingSeeking(
+    video: HTMLVideoElement,
+    overlay: HTMLDivElement,
+    timeline: HTMLDivElement,
+    videoState: VideoStateT,
+    deferredSeek: DeferredMediaSeek,
+    debugMode: boolean
+  ): { cancel: () => void; cleanup: () => void } {
+    const ownerDocument = video.ownerDocument;
+    const ownerWindow = ownerDocument.defaultView ?? window;
+    let candidatePointer:
+      | { id: number; startX: number; startY: number }
+      | undefined;
+    let activePointerId: number | null = null;
+    let suppressNextClick = false;
+    let suppressClickTimeout: number | null = null;
+
+    const canDragVideo = (): boolean =>
+      (this.settingsManager.shouldDragVideoToSeek?.() ?? false) &&
+      getMediaSeekRange(video) !== null;
+
+    const isExcludedTarget = (event: Event): boolean =>
+      event
+        .composedPath()
+        .some(
+          (target) =>
+            target instanceof ownerWindow.Element &&
+            target.matches(
+              '.scrub-timeline, .scrub-timeline *, .mfs-media-controls, .mfs-media-controls *, .scrub-debug-indicator, .scrub-debug-indicator *, a, button, input, select, textarea, [role="button"], [role="slider"], [contenteditable="true"]'
+            )
+        );
+
+    const isInsideVideo = (clientX: number, clientY: number): boolean => {
+      const rect = videoState.wrapper.getBoundingClientRect();
+      return (
+        videoState.wrapper.isConnected &&
+        rect.width > 0 &&
+        rect.height > 0 &&
+        clientX >= rect.left &&
+        clientX <= rect.right &&
+        clientY >= rect.top &&
+        clientY <= rect.bottom
+      );
+    };
+
+    const applyPointerTarget = (event: PointerEvent): boolean => {
+      const rect = videoState.wrapper.getBoundingClientRect();
+      return this.applySeekTargetAtClientX(
+        video,
+        timeline,
+        event.clientX,
+        rect,
+        deferredSeek,
+        debugMode,
+        'video'
+      );
+    };
+
+    const releasePointer = (pointerId: number): void => {
+      try {
+        if (
+          typeof overlay.hasPointerCapture === 'function' &&
+          overlay.hasPointerCapture(pointerId)
+        ) {
+          overlay.releasePointerCapture(pointerId);
+        }
+      } catch (error) {
+        if (debugMode) {
+          console.warn('Unable to release video drag pointer capture:', error);
+        }
+      }
+    };
+
+    const queueClickSuppressionReset = (): void => {
+      if (suppressClickTimeout !== null) {
+        ownerWindow.clearTimeout(suppressClickTimeout);
+      }
+      suppressClickTimeout = ownerWindow.setTimeout(() => {
+        suppressNextClick = false;
+        suppressClickTimeout = null;
+      }, 0);
+    };
+
+    const finishDragging = (commitPendingSeek: boolean): void => {
+      candidatePointer = undefined;
+      if (activePointerId === null) return;
+
+      const pointerId = activePointerId;
+      activePointerId = null;
+      if (commitPendingSeek) deferredSeek.commit();
+      releasePointer(pointerId);
+      videoState.isVideoDragging = false;
+      videoState.isUserScrubbing = false;
+      ownerDocument.documentElement.classList.remove('mfs-video-dragging');
+      this.updateVideoDraggingForVideo(video, videoState);
+      this.updateTimelineHoverState(video, videoState, videoState.isHovering);
+    };
+
+    const handlePointerDown = (event: PointerEvent): void => {
+      if (candidatePointer && candidatePointer.id !== event.pointerId) {
+        candidatePointer = undefined;
+      }
+      if (
+        !canDragVideo() ||
+        event.isPrimary === false ||
+        (event.pointerType === 'mouse' && event.button !== 0) ||
+        activePointerId !== null ||
+        candidatePointer ||
+        isExcludedTarget(event) ||
+        !isInsideVideo(event.clientX, event.clientY)
+      )
+        return;
+
+      candidatePointer = {
+        id: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+      };
+    };
+
+    const handlePointerMove = (event: PointerEvent): void => {
+      if (event.pointerId === activePointerId) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        applyPointerTarget(event);
+        return;
+      }
+
+      if (event.pointerId !== candidatePointer?.id) return;
+      if (!canDragVideo()) {
+        candidatePointer = undefined;
+        return;
+      }
+
+      const horizontalDistance = Math.abs(
+        event.clientX - candidatePointer.startX
+      );
+      const verticalDistance = Math.abs(
+        event.clientY - candidatePointer.startY
+      );
+
+      // Preserve vertical page/player gestures. A drag becomes seek input only
+      // after intentional, predominantly horizontal movement.
+      if (
+        verticalDistance >= VIDEO_DRAG_START_THRESHOLD_PX &&
+        verticalDistance > horizontalDistance
+      ) {
+        candidatePointer = undefined;
+        return;
+      }
+      if (
+        horizontalDistance < VIDEO_DRAG_START_THRESHOLD_PX ||
+        horizontalDistance < verticalDistance
+      )
+        return;
+
+      activePointerId = event.pointerId;
+      candidatePointer = undefined;
+      videoState.isVideoDragging = true;
+      videoState.isUserScrubbing = true;
+      suppressNextClick = true;
+      ownerDocument.documentElement.classList.add('mfs-video-dragging');
+      this.updateVideoDraggingForVideo(video, videoState);
+
+      try {
+        overlay.setPointerCapture?.(event.pointerId);
+      } catch (error) {
+        if (debugMode) {
+          console.warn('Unable to capture video drag pointer:', error);
+        }
+      }
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      applyPointerTarget(event);
+    };
+
+    const handlePointerUp = (event: PointerEvent): void => {
+      if (event.pointerId === candidatePointer?.id) {
+        candidatePointer = undefined;
+        return;
+      }
+      if (event.pointerId !== activePointerId) return;
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      applyPointerTarget(event);
+      finishDragging(true);
+      queueClickSuppressionReset();
+    };
+
+    const handlePointerCancel = (event: PointerEvent): void => {
+      if (event.pointerId === candidatePointer?.id) {
+        candidatePointer = undefined;
+        return;
+      }
+      if (event.pointerId !== activePointerId) return;
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      finishDragging(true);
+      queueClickSuppressionReset();
+    };
+
+    const handleLostPointerCapture = (event: PointerEvent): void => {
+      if (event.pointerId !== activePointerId) return;
+      suppressNextClick = true;
+      finishDragging(true);
+      queueClickSuppressionReset();
+    };
+
+    const handleClick = (event: MouseEvent): void => {
+      if (!suppressNextClick) return;
+
+      suppressNextClick = false;
+      if (suppressClickTimeout !== null) {
+        ownerWindow.clearTimeout(suppressClickTimeout);
+        suppressClickTimeout = null;
+      }
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+
+    const handleWindowBlur = (): void => {
+      candidatePointer = undefined;
+      finishDragging(true);
+    };
+
+    ownerDocument.addEventListener('pointerdown', handlePointerDown, true);
+    ownerDocument.addEventListener('pointermove', handlePointerMove, true);
+    ownerDocument.addEventListener('pointerup', handlePointerUp, true);
+    ownerDocument.addEventListener('pointercancel', handlePointerCancel, true);
+    ownerDocument.addEventListener('click', handleClick, true);
+    overlay.addEventListener('lostpointercapture', handleLostPointerCapture);
+    ownerWindow.addEventListener('blur', handleWindowBlur);
+
+    return {
+      cancel: () => finishDragging(true),
+      cleanup: () => {
+        finishDragging(false);
+        candidatePointer = undefined;
+        suppressNextClick = false;
+        if (suppressClickTimeout !== null) {
+          ownerWindow.clearTimeout(suppressClickTimeout);
+          suppressClickTimeout = null;
+        }
+        ownerDocument.removeEventListener(
+          'pointerdown',
+          handlePointerDown,
+          true
+        );
+        ownerDocument.removeEventListener(
+          'pointermove',
+          handlePointerMove,
+          true
+        );
+        ownerDocument.removeEventListener('pointerup', handlePointerUp, true);
+        ownerDocument.removeEventListener(
+          'pointercancel',
+          handlePointerCancel,
+          true
+        );
+        ownerDocument.removeEventListener('click', handleClick, true);
+        overlay.removeEventListener(
+          'lostpointercapture',
+          handleLostPointerCapture
+        );
+        ownerWindow.removeEventListener('blur', handleWindowBlur);
+      },
+    };
+  }
+
   private createProgressIndicatorElement(
-    video: HTMLVideoElement
+    ownerDocument: Document
   ): HTMLDivElement {
-    const progressIndicator = document.createElement('div');
+    const progressIndicator = ownerDocument.createElement('div');
+    const handle = ownerDocument.createElement('div');
+    const handleIndicator = ownerDocument.createElement('div');
     progressIndicator.style.cssText = `
       width: 0%;
       height: 100%;
-      background-color: rgb(from ${getProgressColorSync(window.location.hostname)} r g b / 0.8);
+      position: relative;
+      overflow: visible;
+      background-color: ${DEFAULT_TIMELINE_PROGRESS_BACKGROUND};
+      -webkit-backdrop-filter: blur(8px) saturate(140%);
+      backdrop-filter: blur(8px) saturate(140%);
     `;
     progressIndicator.classList.add('scrub-timeline-progress-indicator');
+    this.updateProgressIndicatorColor(progressIndicator);
+
+    handle.style.cssText = `
+      width: 12px;
+      height: 12px;
+      position: absolute;
+      top: 50%;
+      right: 0px;
+      transform: translate(50%, -50%);
+      pointer-events: none;
+    `;
+    handle.classList.add('scrub-timeline-handle');
+    handle.setAttribute('aria-hidden', 'true');
+
+    handleIndicator.style.cssText = `
+      width: 3px;
+      height: 100%;
+      position: absolute;
+      top: 0px;
+      right: 0px;
+      transform: translateX(50%);
+      background-color: white;
+      pointer-events: none;
+    `;
+    handleIndicator.classList.add('scrub-timeline-handle-indicator');
+    progressIndicator.appendChild(handle);
+    progressIndicator.appendChild(handleIndicator);
+
     return progressIndicator;
+  }
+
+  private updateProgressIndicatorColor(progressIndicator: HTMLElement): void {
+    if (!this.settingsManager.shouldColorizeTimeline()) {
+      progressIndicator.style.backgroundColor =
+        DEFAULT_TIMELINE_PROGRESS_BACKGROUND;
+      return;
+    }
+
+    void getProgressColor(progressIndicator.ownerDocument).then((color) => {
+      if (this.settingsManager.shouldColorizeTimeline()) {
+        progressIndicator.style.backgroundColor =
+          getColorizedTimelineBackground(color);
+      }
+    });
+  }
+
+  updateTimelineColorization(): void {
+    this.videoStateManager.forEach((state) => {
+      const progressIndicator = state.timeline.querySelector<HTMLElement>(
+        '.scrub-timeline-progress-indicator'
+      );
+      if (progressIndicator) {
+        this.updateProgressIndicatorColor(progressIndicator);
+      }
+    });
   }
 
   private createWrapperAndDebugIndicator(
     video: HTMLVideoElement,
-    videoId: string
+    _videoId: string
   ): {
     scrubWrapper: HTMLDivElement;
     debugIndicator: HTMLAnchorElement;
   } {
+    const ownerDocument = video.ownerDocument;
+    const ownerWindow = ownerDocument.defaultView ?? window;
     const videoRect = video.getBoundingClientRect();
-    const videoContainer = video.parentElement || document.body;
+    const videoContainer = this.findOverlayHost(video);
 
     // Make sure the container has relative positioning
-    if (getComputedStyle(videoContainer).position === 'static') {
+    if (ownerWindow.getComputedStyle(videoContainer).position === 'static') {
       videoContainer.style.position = 'relative';
     }
 
@@ -413,21 +1951,8 @@ export class OverlayCreator {
     const relativeTop = videoRect.top - containerRect.top;
     const relativeLeft = videoRect.left - containerRect.left;
 
-    // Remove existing scrub wrapper for this specific video if it exists
-    const existingScrubWrapper = Array.from(
-      videoContainer.querySelectorAll('.scrub-wrapper')
-    ).find((wrapper) => {
-      const overlayInWrapper = wrapper.querySelector(
-        `[data-video-id="${videoId}"]`
-      );
-      return overlayInWrapper !== null;
-    });
-    if (existingScrubWrapper) {
-      existingScrubWrapper.remove();
-    }
-
     // Create scrub wrapper div
-    const scrubWrapper = document.createElement('div');
+    const scrubWrapper = ownerDocument.createElement('div');
     scrubWrapper.style.cssText = `
       position: absolute;
       top: ${relativeTop}px;
@@ -439,113 +1964,691 @@ export class OverlayCreator {
     scrubWrapper.classList.add('scrub-wrapper');
 
     // Create debug indicator
-    const debugIndicator = this.createDebugIndicator();
+    const debugIndicator = this.createDebugIndicator(ownerDocument);
 
     return { scrubWrapper, debugIndicator };
   }
 
-  private createDebugIndicator(): HTMLAnchorElement {
-    const debugIndicator = document.createElement('a');
+  private createDebugIndicator(ownerDocument: Document): HTMLAnchorElement {
+    const debugIndicator = ownerDocument.createElement('a');
     debugIndicator.href = EXT_URL;
     debugIndicator.target = '_blank';
     debugIndicator.rel = 'noopener noreferrer';
-    debugIndicator.title = 'View Media Flow Seek on Chrome Web Store';
-    debugIndicator.style.cssText = `
-      width: auto;
-      height: auto;
-      position: absolute;
-      top: 8px;
-      right: 8px;
-      z-index: 9999;
-      background: rgba(0, 0, 0, 0.8);
-      color: white;
-      padding: 8px 12px;
-      border-radius: 8px;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      font-size: 11px;
-      font-weight: 500;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      pointer-events: auto;
-      text-decoration: none;
-      transition: opacity 0.2s;
-    `;
+    debugIndicator.title = 'View Better Video Controls on Chrome Web Store';
     debugIndicator.classList.add('scrub-debug-indicator');
 
     // Add extension icon and debug text
     debugIndicator.innerHTML = `
-      <img
-        src="${getAppLogoBase64()}"
-        alt="Extension Icon"
-        style="width: 14px; height: 14px; opacity: 0.9;"
-      />
-      <div style="display: flex; flex-direction: column; gap: 1px;">
-        <div style="color: #fff; font-weight: 600; font-size: 10px;">Media Flow Seek (Extension)</div>
-        <div style="color: #ccc; font-size: 9px; line-height: 1.2;">Debug mode enabled</div>
+      <span class="scrub-debug-indicator-logo-container">
+        <img
+          class="scrub-debug-indicator-logo"
+          src="${getAppLogoBase64()}"
+          alt="BetterVideo"
+        />
+      </span>
+      <div class="scrub-debug-indicator-text">
+        <span class="scrub-debug-indicator-title">BetterVideo (Extension)</span>
+        <span class="scrub-debug-indicator-subtitle">Debug mode enabled</span>
       </div>
     `;
 
     return debugIndicator;
   }
 
+  private createMediaControlsElement(ownerDocument: Document): HTMLDivElement {
+    const controls = ownerDocument.createElement('div');
+    controls.className = 'mfs-media-controls';
+    controls.hidden = true;
+    controls.setAttribute('role', 'group');
+    controls.setAttribute('aria-label', 'Volume control');
+    controls.innerHTML = `
+      <button
+        class="mfs-volume-pill"
+        type="button"
+        data-mfs-action="volume"
+        aria-label="Volume"
+        title="Drag or scroll to adjust volume; click to mute"
+      >
+        <span class="mfs-volume-fill" aria-hidden="true"></span>
+        <svg
+          class="mfs-volume-icon"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+        >
+          <path class="mfs-volume-icon-speaker" d="M3 10v4a1 1 0 0 0 1 1h2.6l3.7 3.7A1 1 0 0 0 12 18V6a1 1 0 0 0-1.7-.7L6.6 9H4a1 1 0 0 0-1 1Z"></path>
+          <path class="mfs-volume-icon-wave mfs-volume-icon-wave-one" d="M14 9.5c2 1.5 2 3.5 0 5"></path>
+          <path class="mfs-volume-icon-wave mfs-volume-icon-wave-two" d="M16.5 7.5c3.5 2.5 3.5 6.5 0 9"></path>
+          <path class="mfs-volume-icon-wave mfs-volume-icon-wave-three" d="M18.5 5.5c5 3.5 5 9.5 0 13"></path>
+          <path class="mfs-volume-icon-muted" d="M4.5 4.5 19.5 19.5"></path>
+        </svg>
+      </button>
+    `;
+    return controls;
+  }
+
+  private setupMediaControls(
+    controls: HTMLDivElement,
+    video: HTMLVideoElement,
+    _debugMode: boolean
+  ): { cleanup: () => void; sync: () => void } {
+    const ownerWindow = video.ownerDocument.defaultView ?? window;
+    const volumePill = controls.querySelector<HTMLButtonElement>(
+      '[data-mfs-action="volume"]'
+    );
+
+    if (!volumePill) {
+      return { cleanup: () => {}, sync: () => {} };
+    }
+    let lastAudibleVolume = video.volume > 0 ? video.volume : 1;
+    let pointerStartY: number | null = null;
+    let activePointerId: number | null = null;
+    let suppressNextClick = false;
+    let suppressClickTimeout: number | null = null;
+    let persistVolumeTimeout: number | null = null;
+    let playbackVolumeTimeout: number | null = null;
+    let pendingPersistedVolume: StoredMediaVolumeT | null = null;
+    let hasUserAdjustedVolume = false;
+    const volumeStorageKey = this.getMediaVolumeStorageKey(video);
+
+    const syncVolume = (): void => {
+      const volumePercent = Math.round(video.volume * 100);
+      const isMuted = video.muted || video.volume === 0;
+      const volumeLevel = isMuted
+        ? 'muted'
+        : volumePercent <= 33
+          ? 'low'
+          : volumePercent <= 66
+            ? 'medium'
+            : 'high';
+
+      if (video.volume > 0 && !video.muted) lastAudibleVolume = video.volume;
+      volumePill.style.setProperty(
+        '--mfs-volume',
+        isMuted ? '0%' : `${volumePercent}%`
+      );
+      volumePill.dataset.mfsMuted = String(isMuted);
+      volumePill.dataset.mfsVolumeLevel = volumeLevel;
+      volumePill.setAttribute(
+        'aria-label',
+        isMuted ? 'Unmute' : `Volume ${volumePercent}%, click to mute`
+      );
+      volumePill.setAttribute('aria-pressed', String(isMuted));
+      volumePill.setAttribute(
+        'aria-valuenow',
+        String(isMuted ? 0 : volumePercent)
+      );
+      volumePill.setAttribute('aria-valuemin', '0');
+      volumePill.setAttribute('aria-valuemax', '100');
+      volumePill.title = isMuted
+        ? 'Click to unmute; drag or scroll to adjust volume'
+        : `Volume ${volumePercent}% · drag or scroll to adjust · click to mute`;
+    };
+
+    const applyPreferredVolume = (): void => {
+      const preferredVolume = this.mediaVolumePreferences.get(volumeStorageKey);
+      if (!preferredVolume) {
+        syncVolume();
+        return;
+      }
+
+      if (video.volume !== preferredVolume.volume) {
+        video.volume = preferredVolume.volume;
+      }
+      if (video.muted !== preferredVolume.muted) {
+        video.muted = preferredVolume.muted;
+      }
+      if (preferredVolume.volume > 0) {
+        lastAudibleVolume = preferredVolume.volume;
+      }
+      syncVolume();
+    };
+
+    const syncPreferredVolume = (): void => {
+      if (this.settingsManager.shouldHideVideoControls()) {
+        applyPreferredVolume();
+      } else {
+        syncVolume();
+      }
+    };
+
+    const handlePlaybackStart = (): void => {
+      if (!this.settingsManager.shouldHideVideoControls()) return;
+      applyPreferredVolume();
+      if (playbackVolumeTimeout !== null) {
+        ownerWindow.clearTimeout(playbackVolumeTimeout);
+      }
+      playbackVolumeTimeout = ownerWindow.setTimeout(() => {
+        playbackVolumeTimeout = null;
+        applyPreferredVolume();
+      }, 0);
+    };
+
+    const persistPendingVolume = (): void => {
+      if (!pendingPersistedVolume) return;
+      const volumeState = pendingPersistedVolume;
+      pendingPersistedVolume = null;
+      persistVolumeTimeout = null;
+      void this.persistMediaVolume(video, volumeState);
+    };
+
+    const commitVolumePreference = (): void => {
+      hasUserAdjustedVolume = true;
+      const volumeState = {
+        muted: video.muted || video.volume === 0,
+        volume: video.volume,
+      };
+      this.mediaVolumePreferences.set(
+        this.getMediaVolumeStorageKey(video),
+        volumeState
+      );
+      this.applyMediaVolumeToMatchingVideos(video, volumeState);
+      pendingPersistedVolume = volumeState;
+      if (persistVolumeTimeout !== null) {
+        ownerWindow.clearTimeout(persistVolumeTimeout);
+      }
+      persistVolumeTimeout = ownerWindow.setTimeout(
+        persistPendingVolume,
+        VOLUME_PERSIST_DELAY_MS
+      );
+    };
+
+    const toggleMute = (): void => {
+      if (video.muted || video.volume === 0) {
+        if (video.volume === 0) video.volume = lastAudibleVolume;
+        video.muted = false;
+      } else {
+        lastAudibleVolume = video.volume;
+        video.muted = true;
+      }
+      syncVolume();
+      commitVolumePreference();
+    };
+
+    const setVolume = (nextVolume: number): void => {
+      video.volume = Math.min(1, Math.max(0, nextVolume));
+      video.muted = video.volume === 0;
+      if (video.volume > 0) lastAudibleVolume = video.volume;
+      syncVolume();
+      commitVolumePreference();
+    };
+
+    const setVolumeFromClientY = (clientY: number): void => {
+      const rect = volumePill.getBoundingClientRect();
+      if (rect.height <= 0) return;
+      setVolume(1 - (clientY - rect.top) / rect.height);
+    };
+
+    const stopPlayerInteraction = (event: Event): void => {
+      event.stopImmediatePropagation();
+    };
+
+    const handlePointerDown = (event: PointerEvent): void => {
+      if (
+        event.isPrimary === false ||
+        (event.pointerType === 'mouse' && event.button !== 0) ||
+        activePointerId !== null
+      )
+        return;
+
+      pointerStartY = event.clientY;
+      activePointerId = event.pointerId;
+      suppressNextClick = false;
+      try {
+        volumePill.setPointerCapture?.(event.pointerId);
+      } catch {
+        // Document-level movement is not needed because the pill normally
+        // captures the pointer; browsers without capture still work in-bounds.
+      }
+    };
+
+    const handlePointerMove = (event: PointerEvent): void => {
+      if (event.pointerId !== activePointerId || pointerStartY === null) return;
+      if (
+        !suppressNextClick &&
+        Math.abs(event.clientY - pointerStartY) < VOLUME_DRAG_START_THRESHOLD_PX
+      )
+        return;
+
+      suppressNextClick = true;
+      volumePill.dataset.mfsDragging = 'true';
+      event.preventDefault();
+      setVolumeFromClientY(event.clientY);
+    };
+
+    const finishPointer = (event: PointerEvent): void => {
+      if (event.pointerId !== activePointerId) return;
+      if (suppressNextClick) {
+        event.preventDefault();
+        setVolumeFromClientY(event.clientY);
+      }
+      try {
+        if (volumePill.hasPointerCapture?.(event.pointerId)) {
+          volumePill.releasePointerCapture(event.pointerId);
+        }
+      } catch {
+        // Pointer capture can already be gone after cancellation.
+      }
+      activePointerId = null;
+      pointerStartY = null;
+      volumePill.dataset.mfsDragging = 'false';
+      if (suppressNextClick) {
+        if (suppressClickTimeout !== null) {
+          ownerWindow.clearTimeout(suppressClickTimeout);
+        }
+        suppressClickTimeout = ownerWindow.setTimeout(() => {
+          suppressNextClick = false;
+          suppressClickTimeout = null;
+        }, 0);
+      }
+    };
+
+    const handleClick = (event: MouseEvent): void => {
+      if (suppressNextClick) {
+        suppressNextClick = false;
+        if (suppressClickTimeout !== null) {
+          ownerWindow.clearTimeout(suppressClickTimeout);
+          suppressClickTimeout = null;
+        }
+        event.preventDefault();
+        return;
+      }
+      toggleMute();
+    };
+
+    const handleWheel = (event: WheelEvent): void => {
+      const rawDelta = event.deltaY !== 0 ? event.deltaY : event.deltaX;
+      if (rawDelta === 0) return;
+
+      const deltaPixels = getWheelDeltaPixels(
+        {
+          deltaMode: event.deltaMode,
+          deltaX: 0,
+          deltaY: rawDelta,
+        },
+        Math.max(ownerWindow.innerHeight, 1)
+      );
+
+      event.preventDefault();
+      const scrollDirection =
+        this.settingsManager.shouldInvertHorizontalScroll() ? -1 : 1;
+      setVolume(
+        video.volume + deltaPixels * VOLUME_WHEEL_SENSITIVITY * scrollDirection
+      );
+    };
+
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+      event.preventDefault();
+      setVolume(
+        video.volume +
+          (event.key === 'ArrowUp' ? VOLUME_KEY_STEP : -VOLUME_KEY_STEP)
+      );
+    };
+    const stoppedEvents = [
+      'pointerdown',
+      'mousedown',
+      'mouseup',
+      'click',
+      'dblclick',
+      'keydown',
+      'keyup',
+      'wheel',
+    ];
+
+    stoppedEvents.forEach((eventName) => {
+      controls.addEventListener(eventName, stopPlayerInteraction);
+    });
+    volumePill.addEventListener('pointerdown', handlePointerDown);
+    volumePill.addEventListener('pointermove', handlePointerMove);
+    volumePill.addEventListener('pointerup', finishPointer);
+    volumePill.addEventListener('pointercancel', finishPointer);
+    volumePill.addEventListener('click', handleClick);
+    volumePill.addEventListener('wheel', handleWheel, { passive: false });
+    volumePill.addEventListener('keydown', handleKeyDown);
+    video.addEventListener('volumechange', syncPreferredVolume);
+    video.addEventListener('play', handlePlaybackStart);
+
+    void this.loadMediaVolume(video).then((storedVolume) => {
+      if (!storedVolume || hasUserAdjustedVolume || !video.isConnected) return;
+      this.mediaVolumePreferences.set(volumeStorageKey, storedVolume);
+      syncPreferredVolume();
+    });
+
+    return {
+      cleanup: () => {
+        if (suppressClickTimeout !== null) {
+          ownerWindow.clearTimeout(suppressClickTimeout);
+          suppressClickTimeout = null;
+        }
+        if (persistVolumeTimeout !== null) {
+          ownerWindow.clearTimeout(persistVolumeTimeout);
+          persistPendingVolume();
+        }
+        if (playbackVolumeTimeout !== null) {
+          ownerWindow.clearTimeout(playbackVolumeTimeout);
+          playbackVolumeTimeout = null;
+        }
+        stoppedEvents.forEach((eventName) => {
+          controls.removeEventListener(eventName, stopPlayerInteraction);
+        });
+        volumePill.removeEventListener('pointerdown', handlePointerDown);
+        volumePill.removeEventListener('pointermove', handlePointerMove);
+        volumePill.removeEventListener('pointerup', finishPointer);
+        volumePill.removeEventListener('pointercancel', finishPointer);
+        volumePill.removeEventListener('click', handleClick);
+        volumePill.removeEventListener('wheel', handleWheel);
+        volumePill.removeEventListener('keydown', handleKeyDown);
+        video.removeEventListener('volumechange', syncPreferredVolume);
+        video.removeEventListener('play', handlePlaybackStart);
+      },
+      sync: syncPreferredVolume,
+    };
+  }
+
   private insertWrapperIntoDOM(
     video: HTMLVideoElement,
     scrubWrapper: HTMLDivElement
   ): void {
-    const videoContainer = video.parentElement || document.body;
+    const videoContainer = this.findOverlayHost(video);
 
-    // Insert wrapper right after the video element
-    if (video.nextSibling) {
+    // Keep the overlay near the video when its immediate parent is also the
+    // positioning host. Some players (notably TikTok) put the video inside
+    // zero-size intermediary elements, in which case the wrapper belongs in a
+    // higher ancestor instead.
+    if (video.parentElement === videoContainer && video.nextSibling) {
       videoContainer.insertBefore(scrubWrapper, video.nextSibling);
     } else {
       videoContainer.appendChild(scrubWrapper);
     }
   }
 
-  private setupMouseEventForwarding(
+  /**
+   * Find a positioning host with real layout dimensions.
+   *
+   * Setting a zero-height intermediary to `position: relative` changes the
+   * containing block of an absolutely positioned `height: 100%` video. TikTok
+   * uses exactly that structure, which collapses the moving video layer while
+   * audio continues playing. Skip such layout-only wrappers and anchor the
+   * overlay to the first ancestor that actually contains the visible video.
+   */
+  private findOverlayHost(video: HTMLVideoElement): HTMLElement {
+    let candidate = video.parentElement;
+
+    while (candidate) {
+      const rect = candidate.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) return candidate;
+      candidate = candidate.parentElement;
+    }
+
+    return video.parentElement || video.ownerDocument.body;
+  }
+
+  private setupPlayerClickHandling(
     scrubOverlay: HTMLDivElement,
     video: HTMLVideoElement,
-    debugMode: boolean
-  ): void {
-    const forwardMouseEvent = (eventType: string) => {
-      scrubOverlay.addEventListener(eventType, (e) => {
-        const mouseEvent = e as MouseEvent;
-        mouseEvent.preventDefault();
-        mouseEvent.stopPropagation();
+    debugMode: boolean,
+    getIsHovering: () => boolean = () => false
+  ): { cleanup: () => void; sync: () => void } {
+    const ownerDocument = video.ownerDocument;
+    const ownerWindow = ownerDocument.defaultView ?? window;
+    let feedbackElement: HTMLDivElement | null = null;
+    let feedbackTimeout: number | null = null;
+    let playbackClickTimeout: number | null = null;
 
-        // Create and dispatch a new event on the video element
-        const forwardedEvent = new MouseEvent(eventType, {
-          bubbles: true,
-          cancelable: true,
-          clientX: mouseEvent.clientX,
-          clientY: mouseEvent.clientY,
-          button: mouseEvent.button,
-          buttons: mouseEvent.buttons,
-          detail: mouseEvent.detail,
-        });
-
-        video.dispatchEvent(forwardedEvent);
-
-        if (debugMode) {
-          console.log(`🖱️ ${eventType} event forwarded to video element`);
-        }
-      });
+    const clearFeedback = (): void => {
+      if (feedbackTimeout !== null) {
+        ownerWindow.clearTimeout(feedbackTimeout);
+        feedbackTimeout = null;
+      }
+      feedbackElement?.remove();
+      feedbackElement = null;
     };
 
-    // Forward common video interaction events
-    [
-      // 'click',
-      // 'dblclick',
-      // 'contextmenu',
-      // 'mouseover',
-      // 'mousemove',
-      // 'mouseout',
-      // 'mouseenter',
-      // 'mouseleave',
-    ].forEach(forwardMouseEvent);
+    const showFeedback = (
+      action: 'play' | 'pause',
+      persistent = false
+    ): void => {
+      clearFeedback();
+
+      feedbackElement = ownerDocument.createElement('div');
+      feedbackElement.className = 'mfs-playback-feedback';
+      feedbackElement.dataset.mfsPlaybackFeedback = action;
+      if (persistent) feedbackElement.dataset.mfsPersistent = 'true';
+      feedbackElement.setAttribute('aria-hidden', 'true');
+      feedbackElement.innerHTML =
+        action === 'play'
+          ? '<svg viewBox="0 0 24 24"><path d="M8.4 4.6C7.35 3.93 6 4.68 6 5.93v12.14c0 1.25 1.35 2 2.4 1.33l9.54-6.07a1.58 1.58 0 0 0 0-2.66L8.4 4.6Z" /></svg>'
+          : '<svg viewBox="0 0 24 24"><rect x="5" y="4" width="5" height="16" rx="1.75" /><rect x="14" y="4" width="5" height="16" rx="1.75" /></svg>';
+      (scrubOverlay.parentElement ?? scrubOverlay).appendChild(feedbackElement);
+
+      if (!persistent) {
+        feedbackTimeout = ownerWindow.setTimeout(clearFeedback, 650);
+      }
+    };
+
+    const syncPausedFeedback = (): void => {
+      const shouldShowPause =
+        getIsHovering() && this.shouldShowPausedPlaybackUi(video);
+
+      if (shouldShowPause) {
+        if (
+          feedbackElement?.dataset.mfsPlaybackFeedback !== 'pause' ||
+          feedbackElement.dataset.mfsPersistent !== 'true'
+        ) {
+          showFeedback('pause', true);
+        }
+      } else if (feedbackElement?.dataset.mfsPlaybackFeedback === 'pause') {
+        clearFeedback();
+      }
+    };
+
+    const canTogglePlayback = (event: MouseEvent): boolean =>
+      event.button === 0 &&
+      this.settingsManager.shouldHideVideoControls() &&
+      getMediaSeekRange(video) !== null;
+
+    const togglePlayback = (): void => {
+      if (video.paused) {
+        showFeedback('play');
+        void video.play().catch((error) => {
+          if (debugMode) {
+            console.warn('Unable to play video from overlay click:', error);
+          }
+        });
+      } else {
+        showFeedback('pause', getIsHovering());
+        video.pause();
+      }
+    };
+
+    const clearScheduledPlaybackToggle = (): void => {
+      if (playbackClickTimeout === null) return;
+      ownerWindow.clearTimeout(playbackClickTimeout);
+      playbackClickTimeout = null;
+    };
+
+    const schedulePlaybackToggle = (): void => {
+      clearScheduledPlaybackToggle();
+      playbackClickTimeout = ownerWindow.setTimeout(() => {
+        playbackClickTimeout = null;
+        togglePlayback();
+      }, PLAYER_SINGLE_CLICK_DELAY_MS);
+    };
+
+    const isVideoFullscreen = (): boolean => {
+      const fullscreenElement = ownerDocument.fullscreenElement;
+      return Boolean(
+        fullscreenElement &&
+          (fullscreenElement === video || fullscreenElement.contains(video))
+      );
+    };
+
+    const toggleFullscreen = async (): Promise<void> => {
+      try {
+        if (isVideoFullscreen()) {
+          await ownerDocument.exitFullscreen?.();
+        } else {
+          const fullscreenTarget =
+            this.findPlayerControlsContainer(video) ??
+            video.parentElement ??
+            video;
+          await fullscreenTarget.requestFullscreen?.();
+        }
+      } catch (error) {
+        if (debugMode) {
+          console.warn('Unable to toggle fullscreen for video:', error);
+        }
+      }
+    };
+
+    const isExtensionControlEvent = (event: MouseEvent): boolean =>
+      event
+        .composedPath()
+        .some(
+          (target) =>
+            target instanceof ownerWindow.Element &&
+            target.matches(
+              '.mfs-media-controls, .mfs-media-controls *, .scrub-timeline, .scrub-timeline *, .scrub-debug-indicator, .scrub-debug-indicator *'
+            )
+        );
+
+    const isInsidePlayer = (event: MouseEvent): boolean => {
+      const playerRect = (
+        scrubOverlay.parentElement ?? scrubOverlay
+      ).getBoundingClientRect();
+      return (
+        playerRect.width > 0 &&
+        playerRect.height > 0 &&
+        event.clientX >= playerRect.left &&
+        event.clientX <= playerRect.right &&
+        event.clientY >= playerRect.top &&
+        event.clientY <= playerRect.bottom
+      );
+    };
+
+    const isOwnedByPlayer = (event: MouseEvent): boolean => {
+      const player = this.findPlayerControlsContainer(video);
+      if (
+        !player ||
+        player === ownerDocument.body ||
+        player === ownerDocument.documentElement
+      )
+        return false;
+
+      return event.composedPath().includes(player);
+    };
+
+    const isModalEvent = (event: MouseEvent): boolean =>
+      event
+        .composedPath()
+        .some(
+          (target) =>
+            target instanceof ownerWindow.Element &&
+            target.matches('dialog, [role="dialog"], [aria-modal="true"]')
+        );
+
+    const isSiteInteractiveControlEvent = (event: MouseEvent): boolean =>
+      event
+        .composedPath()
+        .some(
+          (target) =>
+            target instanceof ownerWindow.Element &&
+            target.matches(SITE_INTERACTIVE_SELECTOR) &&
+            !target.closest(EXTENSION_UI_SELECTOR)
+        );
+
+    const handleClick = (event: MouseEvent): void => {
+      if (!canTogglePlayback(event)) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      schedulePlaybackToggle();
+    };
+
+    const handlePlayerLayerClick = (event: MouseEvent): void => {
+      if (!canTogglePlayback(event)) return;
+
+      const path = event.composedPath();
+      if (path.includes(scrubOverlay) || isExtensionControlEvent(event)) return;
+      if (
+        isSiteInteractiveControlEvent(event) ||
+        isModalEvent(event) ||
+        !isOwnedByPlayer(event) ||
+        !isInsidePlayer(event)
+      )
+        return;
+
+      // Custom players such as YouTube and Instagram can put their click layer
+      // above the video. Capture the click before their handler can display a
+      // native play/pause bezel, then use only our own playback feedback.
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      schedulePlaybackToggle();
+    };
+
+    const handleDoubleClick = (event: MouseEvent): void => {
+      if (!canTogglePlayback(event)) return;
+
+      clearScheduledPlaybackToggle();
+      event.preventDefault();
+      event.stopPropagation();
+      void toggleFullscreen();
+    };
+
+    const handlePlayerLayerDoubleClick = (event: MouseEvent): void => {
+      if (!canTogglePlayback(event)) return;
+
+      const path = event.composedPath();
+      if (
+        path.includes(scrubOverlay) ||
+        isExtensionControlEvent(event) ||
+        isSiteInteractiveControlEvent(event) ||
+        isModalEvent(event) ||
+        !isOwnedByPlayer(event) ||
+        !isInsidePlayer(event)
+      )
+        return;
+
+      clearScheduledPlaybackToggle();
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      void toggleFullscreen();
+    };
+
+    scrubOverlay.addEventListener('click', handleClick);
+    scrubOverlay.addEventListener('dblclick', handleDoubleClick);
+    ownerDocument.addEventListener('click', handlePlayerLayerClick, true);
+    ownerDocument.addEventListener(
+      'dblclick',
+      handlePlayerLayerDoubleClick,
+      true
+    );
+    video.addEventListener('pause', syncPausedFeedback);
+    video.addEventListener('play', syncPausedFeedback);
+    video.addEventListener('loadedmetadata', syncPausedFeedback);
+
+    return {
+      cleanup: () => {
+        clearScheduledPlaybackToggle();
+        scrubOverlay.removeEventListener('click', handleClick);
+        scrubOverlay.removeEventListener('dblclick', handleDoubleClick);
+        ownerDocument.removeEventListener(
+          'click',
+          handlePlayerLayerClick,
+          true
+        );
+        ownerDocument.removeEventListener(
+          'dblclick',
+          handlePlayerLayerDoubleClick,
+          true
+        );
+        video.removeEventListener('pause', syncPausedFeedback);
+        video.removeEventListener('play', syncPausedFeedback);
+        video.removeEventListener('loadedmetadata', syncPausedFeedback);
+        clearFeedback();
+      },
+      sync: syncPausedFeedback,
+    };
   }
 
   /**
@@ -561,9 +2664,11 @@ export class OverlayCreator {
     const videoWidth = videoRect.width;
     const videoHeight = videoRect.height;
 
-    let currentElement = video.parentElement;
+    const ownerDocument = video.ownerDocument;
+    const ownerWindow = ownerDocument.defaultView ?? window;
+    let currentElement = this.getComposedParentElement(video, ownerWindow);
 
-    while (currentElement && currentElement !== document.body) {
+    while (currentElement && currentElement !== ownerDocument.body) {
       const elementRect = currentElement.getBoundingClientRect();
       const elementWidth = elementRect.width;
       const elementHeight = elementRect.height;
@@ -573,27 +2678,16 @@ export class OverlayCreator {
       const heightDiff = Math.abs(elementHeight - videoHeight);
 
       if (widthDiff <= margin && heightDiff <= margin) {
-        const computedStyle = window.getComputedStyle(currentElement);
-        const overflow = computedStyle.overflow;
-        const overflowX = computedStyle.overflowX;
-        const overflowY = computedStyle.overflowY;
-
-        // Check for clipping properties
-        const hasClipping =
-          overflow === 'hidden' ||
-          overflowX === 'hidden' ||
-          overflowY === 'hidden' ||
-          overflow === 'clip' ||
-          overflowX === 'clip' ||
-          overflowY === 'clip' ||
-          computedStyle.clipPath !== 'none';
-
-        if (hasClipping) {
+        const computedStyle = ownerWindow.getComputedStyle(currentElement);
+        if (this.hasVisualClipping(computedStyle)) {
           return currentElement;
         }
       }
 
-      currentElement = currentElement.parentElement;
+      currentElement = this.getComposedParentElement(
+        currentElement,
+        ownerWindow
+      );
     }
 
     return null;
@@ -613,18 +2707,20 @@ export class OverlayCreator {
     switch (actionArea) {
       case ActionAreaE.Top:
         return { top: 0, height: targetHeight * sizeRatio };
-      case ActionAreaE.Middle:
+      case ActionAreaE.Middle: {
         const middleHeight = targetHeight * sizeRatio;
         return {
           top: (targetHeight - middleHeight) / 2,
           height: middleHeight,
         };
-      case ActionAreaE.Bottom:
+      }
+      case ActionAreaE.Bottom: {
         const bottomHeight = targetHeight * sizeRatio;
         return {
           top: targetHeight - bottomHeight,
           height: bottomHeight,
         };
+      }
       case ActionAreaE.Full:
         return { top: 0, height: targetHeight };
       default:
@@ -644,7 +2740,7 @@ export class OverlayCreator {
       const targetElement = visibleContainer || video;
 
       const targetRect = targetElement.getBoundingClientRect();
-      const videoContainer = video.parentElement || document.body;
+      const videoContainer = this.findOverlayHost(video);
       const containerRect = videoContainer.getBoundingClientRect();
       const relativeTop = targetRect.top - containerRect.top;
       const relativeLeft = targetRect.left - containerRect.left;
@@ -695,85 +2791,545 @@ export class OverlayCreator {
     };
   }
 
-  // Method to update all existing overlays when action area changes
-  // Uses the same approach as keydown/keyup: remove then recreate
-  updateAllOverlaysForActionArea(): void {
+  // Update existing action areas in place so their new region can be previewed
+  // without interrupting the video's overlay state.
+  updateAllOverlaysForActionArea(
+    previewDurationMs = ACTION_AREA_PREVIEW_MS
+  ): void {
     const debugMode = this.settingsManager.isDebugEnabled();
 
-    // Always log ActionArea changes for debugging
     if (debugMode) {
-      console.log('🔄 ActionArea changed - removing and recreating overlays');
+      console.log('🎯 Updating and previewing changed action areas');
     }
 
-    // Step 1: Remove overlays immediately
-    // Fast hide first for immediate visual feedback
-    this.fastHideOverlays();
+    this.videoStateManager.forEach((state, video) => {
+      const { overlay, wrapper } = state;
+      const ownerWindow = video.ownerDocument.defaultView ?? window;
+      const wrapperRect = wrapper.getBoundingClientRect();
+      const { top, height } = this.calculateActionAreaDimensions(
+        wrapperRect.height,
+        this.settingsManager.getActionArea()
+      );
+      const existingTimeout = this.actionAreaPreviewTimeouts.get(overlay);
 
-    // Remove DOM elements and clear state
-    requestAnimationFrame(() => {
-      DOMUtils.removeExistingScrubWrappers();
-      DOMUtils.removeOverlayAttributes();
-      this.videoStateManager.clear();
-
-      if (debugMode) {
-        console.log('🚫 Overlays removed for ActionArea change');
+      if (existingTimeout !== undefined) {
+        ownerWindow.clearTimeout(existingTimeout);
       }
 
-      // Step 2: Recreate overlays with new ActionArea (same as keyup)
-      // Remove fast-hide artifacts
-      document.documentElement.classList.remove('mfs-disabled');
-      const s = document.getElementById('mfs-fast-hide');
-      if (s) s.remove();
-      this.isFastHideStyleInjected = false;
+      if (!this.actionAreaOriginalBackgrounds.has(overlay)) {
+        this.actionAreaOriginalBackgrounds.set(
+          overlay,
+          overlay.style.backgroundColor
+        );
+        this.actionAreaOriginalTransitions.set(
+          overlay,
+          overlay.style.transition
+        );
+      }
 
-      // Recreate overlays with new ActionArea settings
-      setTimeout(() => {
-        if (debugMode) {
-          console.log('✅ Recreating overlays with new ActionArea');
-        }
-        this.checkForVideos();
+      const reduceMotion =
+        ownerWindow.matchMedia?.('(prefers-reduced-motion: reduce)').matches ??
+        false;
+      overlay.style.transition = reduceMotion
+        ? 'none'
+        : `top ${SETTINGS_LAYOUT_TRANSITION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1), height ${SETTINGS_LAYOUT_TRANSITION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1), background-color 300ms ease`;
+      overlay.style.top = `${top}px`;
+      overlay.style.height = `${height}px`;
+      overlay.style.backgroundColor = ACTION_AREA_PREVIEW_BACKGROUND;
 
-        // Step 3: Flash the newly created overlays with the new action area
-        setTimeout(() => {
-          this.flashOverlaysBlue();
-        }, 50); // Small delay to ensure overlays are fully created
-      }, 100);
+      const fadeDelay = Math.max(0, previewDurationMs - 300);
+      const fadeTimeout = ownerWindow.setTimeout(() => {
+        overlay.style.backgroundColor =
+          this.actionAreaOriginalBackgrounds.get(overlay) ?? '';
+
+        const cleanupTimeout = ownerWindow.setTimeout(
+          () => {
+            overlay.style.transition =
+              this.actionAreaOriginalTransitions.get(overlay) ?? '';
+            this.actionAreaPreviewTimeouts.delete(overlay);
+            this.actionAreaOriginalBackgrounds.delete(overlay);
+            this.actionAreaOriginalTransitions.delete(overlay);
+          },
+          reduceMotion ? 0 : 300
+        );
+
+        this.actionAreaPreviewTimeouts.set(overlay, cleanupTimeout);
+      }, fadeDelay);
+
+      this.actionAreaPreviewTimeouts.set(overlay, fadeTimeout);
     });
   }
 
-  private flashOverlaysBlue(): void {
-    const debugMode = this.settingsManager.isDebugEnabled();
+  updateTimelineSeekingState(): void {
+    this.videoStateManager.forEach((state, video) => {
+      const isInteractive = this.updateTimelineInteractivityForVideo(
+        video,
+        state.timeline
+      );
 
-    if (debugMode) {
-      console.log('💙 Flashing overlays blue for action area change feedback');
+      if (!isInteractive) state.cancelTimelineSeeking?.();
+      const canDragVideo = this.updateVideoDraggingForVideo(video, state);
+      if (!canDragVideo) state.cancelVideoDragging?.();
+      this.updateTimelineHoverState(video, state, state.isHovering);
+    });
+  }
+
+  /**
+   * Apply timeline layout settings with motion that is limited to the popup
+   * interaction. Keeping the transition temporary prevents a portaled timeline
+   * from lagging behind its video during normal page scrolling or resizing.
+   */
+  updateTimelineLayoutWithAnimation(): void {
+    this.videoStateManager.forEach((state, video) => {
+      const { timeline } = state;
+      const ownerWindow = video.ownerDocument.defaultView ?? window;
+      const existingTimeout = this.timelineLayoutTimeouts.get(timeline);
+
+      if (existingTimeout !== undefined) {
+        ownerWindow.clearTimeout(existingTimeout);
+      }
+
+      const reduceMotion =
+        ownerWindow.matchMedia?.('(prefers-reduced-motion: reduce)').matches ??
+        false;
+      timeline.style.transition = reduceMotion
+        ? 'opacity 0.3s ease'
+        : `opacity 0.3s ease, top ${SETTINGS_LAYOUT_TRANSITION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1), height ${SETTINGS_LAYOUT_TRANSITION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1)`;
+
+      if (!reduceMotion) {
+        const timeout = ownerWindow.setTimeout(() => {
+          this.timelineLayoutTimeouts.delete(timeline);
+          timeline.style.transition = 'opacity 0.3s ease';
+        }, SETTINGS_LAYOUT_TRANSITION_MS + 50);
+        this.timelineLayoutTimeouts.set(timeline, timeout);
+      }
+    });
+
+    this.updateTimelineSeekingState();
+  }
+
+  updateVideoDraggingState(): void {
+    this.videoStateManager.forEach((state, video) => {
+      const canDragVideo = this.updateVideoDraggingForVideo(video, state);
+      if (!canDragVideo) state.cancelVideoDragging?.();
+    });
+  }
+
+  private updateVideoDraggingForVideo(
+    video: HTMLVideoElement,
+    state: VideoStateT
+  ): boolean {
+    const canDragVideo =
+      (this.settingsManager.shouldDragVideoToSeek?.() ?? false) &&
+      getMediaSeekRange(video) !== null;
+
+    state.overlay.dataset.mfsVideoDragging = String(canDragVideo);
+    state.overlay.style.touchAction = canDragVideo ? 'pan-y' : '';
+
+    if (state.isVideoDragging) {
+      state.overlay.style.cursor = 'pointer';
+    } else if (canDragVideo) {
+      state.overlay.style.cursor = 'pointer';
+    } else if (
+      (this.settingsManager.shouldHideVideoControls?.() ?? false) &&
+      getMediaSeekRange(video) !== null
+    ) {
+      state.overlay.style.cursor = 'pointer';
+    } else {
+      state.overlay.style.cursor = '';
     }
 
-    // Find all existing scrub overlays
-    const overlays = document.querySelectorAll('[data-video-id]');
+    return canDragVideo;
+  }
 
-    overlays.forEach((overlay) => {
-      if (overlay instanceof HTMLElement) {
-        // Store original background
-        const originalBackground = overlay.style.backgroundColor;
+  updateVideoControlsVisibility(): void {
+    this.videoStateManager.forEach((state, video) => {
+      this.updateVideoControlsForVideo(video, state);
+    });
+  }
 
-        // Flash blue with slower, smoother animation
-        overlay.style.backgroundColor = 'rgba(59, 130, 246, 0.4)'; // blue-500 with 40% opacity (slightly more visible)
-        overlay.style.transition =
-          'background-color 0.4s cubic-bezier(0.4, 0, 0.6, 1)'; // Slower with smooth easing
+  private updateVideoControlsForVideo(
+    video: HTMLVideoElement,
+    state: VideoStateT
+  ): void {
+    const shouldHide =
+      this.settingsManager.shouldHideVideoControls() &&
+      getMediaSeekRange(video) !== null;
 
-        // Restore original background after flash
-        setTimeout(() => {
-          overlay.style.backgroundColor = originalBackground;
-          // Keep the same smooth transition for fade out
-          overlay.style.transition =
-            'background-color 0.5s cubic-bezier(0.4, 0, 0.6, 1)';
-
-          // Remove transition after restoration to avoid interfering with other animations
-          setTimeout(() => {
-            overlay.style.transition = '';
-          }, 500);
-        }, 400); // Hold the blue color longer
+    if (!shouldHide) {
+      state.wrapper.style.removeProperty('z-index');
+      if (state.mediaControls) {
+        state.mediaControls.hidden = true;
+        state.mediaControls.dataset.mfsActive = 'false';
+        state.mediaControls.dataset.mfsVisible = 'false';
       }
+      this.updateMediaControlsPlacement(video, state);
+      if (state.videoControlsBeforeHide !== undefined) {
+        video.controls = state.videoControlsBeforeHide;
+        state.videoControlsBeforeHide = undefined;
+      }
+
+      video.removeAttribute('data-mfs-hide-controls');
+      state.hiddenControlsContainer?.removeAttribute(
+        'data-mfs-hide-controls-container'
+      );
+      this.clearInstagramPlayerChrome(state.hiddenControlsContainer);
+      state.hiddenControlsContainer?.removeAttribute(
+        'data-mfs-instagram-player'
+      );
+      state.hiddenControlsContainer?.removeAttribute('data-mfs-tiktok-player');
+      state.hiddenControlsContainer = undefined;
+      state.syncMediaControls?.();
+      state.syncPlaybackFeedback?.();
+      this.updateVideoDraggingForVideo(video, state);
+      this.updateTimelineHoverState(video, state, state.isHovering);
+      return;
+    }
+
+    if (state.videoControlsBeforeHide === undefined) {
+      state.videoControlsBeforeHide = video.controls;
+    }
+
+    video.controls = false;
+    video.setAttribute('data-mfs-hide-controls', 'true');
+    // Keep the scrub layer local to the player stacking context. A global
+    // maximum z-index makes a transparent layer win hit-testing over site
+    // dialogs even when the dialog is painted above the video.
+    state.wrapper.style.removeProperty('z-index');
+    if (state.mediaControls) {
+      state.mediaControls.hidden = false;
+      state.mediaControls.dataset.mfsActive = 'true';
+      state.mediaControls.dataset.mfsVisible = String(state.isHovering);
+    }
+    this.updateMediaControlsPlacement(video, state);
+
+    const controlsContainer = this.findPlayerControlsContainer(video);
+    if (state.hiddenControlsContainer !== controlsContainer) {
+      state.hiddenControlsContainer?.removeAttribute(
+        'data-mfs-hide-controls-container'
+      );
+      this.clearInstagramPlayerChrome(state.hiddenControlsContainer);
+      state.hiddenControlsContainer?.removeAttribute(
+        'data-mfs-instagram-player'
+      );
+      state.hiddenControlsContainer?.removeAttribute('data-mfs-tiktok-player');
+      state.hiddenControlsContainer = controlsContainer ?? undefined;
+    }
+    controlsContainer?.setAttribute('data-mfs-hide-controls-container', 'true');
+    if (controlsContainer && this.isInstagramVideo(video)) {
+      controlsContainer.setAttribute('data-mfs-instagram-player', 'true');
+      this.markInstagramPlayerChrome(video, controlsContainer);
+    } else {
+      controlsContainer?.removeAttribute('data-mfs-instagram-player');
+    }
+    if (controlsContainer && this.isTikTokVideo(video)) {
+      controlsContainer.setAttribute('data-mfs-tiktok-player', 'true');
+    } else {
+      controlsContainer?.removeAttribute('data-mfs-tiktok-player');
+    }
+    state.syncMediaControls?.();
+    state.syncPlaybackFeedback?.();
+    this.updateVideoDraggingForVideo(video, state);
+    this.updateTimelineHoverState(video, state, state.isHovering);
+  }
+
+  private updateMediaControlsPlacement(
+    video: HTMLVideoElement,
+    state: VideoStateT
+  ): void {
+    const controls = state.mediaControls;
+    if (!controls) return;
+
+    if (controls.hidden || controls.dataset.mfsActive !== 'true') {
+      if (controls.parentElement !== state.wrapper) {
+        state.wrapper.appendChild(controls);
+      }
+      controls.style.position = '';
+      controls.style.left = '';
+      controls.style.right = '';
+      controls.style.top = '';
+      delete controls.dataset.mfsPortaled;
+      return;
+    }
+
+    const ownerDocument = video.ownerDocument;
+    const ownerWindow = ownerDocument.defaultView ?? window;
+    const fullscreenElement = ownerDocument.fullscreenElement;
+    const portalHost =
+      fullscreenElement?.contains(video) ||
+      fullscreenElement?.contains(state.wrapper)
+        ? fullscreenElement
+        : ownerDocument.documentElement;
+    const videoRect = state.wrapper.getBoundingClientRect();
+    const controlsWidth =
+      controls.getBoundingClientRect().width || VOLUME_CONTROL_WIDTH_PX;
+    let portalLeft =
+      videoRect.right -
+      controlsWidth -
+      VOLUME_EDGE_GAP_PX +
+      ownerWindow.scrollX;
+    let portalTop = videoRect.top + videoRect.height / 2 + ownerWindow.scrollY;
+
+    if (portalHost !== ownerDocument.documentElement) {
+      const portalRect = portalHost.getBoundingClientRect();
+      portalLeft =
+        videoRect.right -
+        portalRect.left +
+        portalHost.scrollLeft -
+        portalHost.clientLeft -
+        controlsWidth -
+        VOLUME_EDGE_GAP_PX;
+      portalTop =
+        videoRect.top -
+        portalRect.top +
+        portalHost.scrollTop -
+        portalHost.clientTop +
+        videoRect.height / 2;
+    }
+
+    if (controls.parentElement !== portalHost) portalHost.appendChild(controls);
+    controls.style.position = 'absolute';
+    controls.style.left = `${portalLeft}px`;
+    controls.style.right = 'auto';
+    controls.style.top = `${portalTop}px`;
+    controls.dataset.mfsPortaled = 'true';
+  }
+
+  private findPlayerControlsContainer(
+    video: HTMLVideoElement
+  ): HTMLElement | null {
+    const instagramPlayer = this.findInstagramPlayerContainer(video);
+    const tiktokPlayer = this.findTikTokPlayerContainer(video);
+    const knownPlayer = video.closest<HTMLElement>(
+      [
+        '.html5-video-player',
+        '#player.player',
+        '.vp-player-layout',
+        '.responsive_menu_ignore_touch',
+        '[data-a-target="video-player"]',
+        '[data-uia="video-canvas"]',
+      ].join(',')
+    );
+
+    return (
+      instagramPlayer ??
+      tiktokPlayer ??
+      knownPlayer ??
+      this.findVisibleVideoContainer(video) ??
+      video.parentElement
+    );
+  }
+
+  private isInstagramVideo(video: HTMLVideoElement): boolean {
+    const hostname = video.ownerDocument.location.hostname.toLowerCase();
+    return hostname === 'instagram.com' || hostname.endsWith('.instagram.com');
+  }
+
+  private isTikTokVideo(video: HTMLVideoElement): boolean {
+    const hostname = video.ownerDocument.location.hostname.toLowerCase();
+    return hostname === 'tiktok.com' || hostname.endsWith('.tiktok.com');
+  }
+
+  private findTikTokPlayerContainer(
+    video: HTMLVideoElement
+  ): HTMLElement | null {
+    if (!this.isTikTokVideo(video)) return null;
+
+    // TikTok's generated class names change frequently. Prefer its stable
+    // player-level data marker so all of that video's chrome can be scoped
+    // without accidentally affecting page-level onboarding/login dialogs.
+    const markedPlayer =
+      video.closest<HTMLElement>(
+        '[data-e2e="recommend-list-item-container"]'
+      ) ??
+      video.closest<HTMLElement>(
+        '[data-e2e="feed-video"], [data-e2e="browse-video"]'
+      );
+    if (markedPlayer) return markedPlayer;
+
+    const ownerDocument = video.ownerDocument;
+    let current = video.parentElement;
+
+    while (current && current !== ownerDocument.body) {
+      if (
+        current.querySelector(
+          '[class*="DivVolumeControlContainer"], button[aria-label="Volume" i]'
+        )
+      ) {
+        return current;
+      }
+      current = current.parentElement;
+    }
+
+    return null;
+  }
+
+  private getMediaVolumeStorageKey(video: HTMLVideoElement): string {
+    return `${MEDIA_VOLUME_STORAGE_PREFIX}${video.ownerDocument.location.hostname.toLowerCase()}`;
+  }
+
+  private async loadMediaVolume(
+    video: HTMLVideoElement
+  ): Promise<StoredMediaVolumeT | null> {
+    const key = this.getMediaVolumeStorageKey(video);
+    const cached = this.mediaVolumePreferences.get(key);
+    if (cached) return cached;
+    if (typeof chrome === 'undefined' || !chrome.storage?.local) return null;
+
+    try {
+      const result = await chrome.storage.local.get(key);
+      const stored = result[key] as Partial<StoredMediaVolumeT> | undefined;
+      if (
+        typeof stored?.volume !== 'number' ||
+        !Number.isFinite(stored.volume) ||
+        stored.volume < 0 ||
+        stored.volume > 1 ||
+        typeof stored.muted !== 'boolean'
+      )
+        return null;
+
+      const volumeState = { muted: stored.muted, volume: stored.volume };
+      this.mediaVolumePreferences.set(key, volumeState);
+      return volumeState;
+    } catch {
+      return null;
+    }
+  }
+
+  private async persistMediaVolume(
+    video: HTMLVideoElement,
+    volumeState: StoredMediaVolumeT
+  ): Promise<void> {
+    if (typeof chrome === 'undefined' || !chrome.storage?.local) return;
+
+    try {
+      this.mediaVolumePreferences.set(
+        this.getMediaVolumeStorageKey(video),
+        volumeState
+      );
+      await chrome.storage.local.set({
+        [this.getMediaVolumeStorageKey(video)]: volumeState,
+      });
+    } catch {
+      // Losing a preference write should never interrupt media controls.
+    }
+  }
+
+  private applyMediaVolumeToMatchingVideos(
+    sourceVideo: HTMLVideoElement,
+    volumeState: StoredMediaVolumeT
+  ): void {
+    const hostname = sourceVideo.ownerDocument.location.hostname.toLowerCase();
+    this.videoStateManager.forEach((state, video) => {
+      if (video.ownerDocument.location.hostname.toLowerCase() !== hostname)
+        return;
+
+      video.volume = volumeState.volume;
+      video.muted = volumeState.muted;
+      state.syncMediaControls?.();
+    });
+  }
+
+  private findInstagramPlayerContainer(
+    video: HTMLVideoElement
+  ): HTMLElement | null {
+    if (!this.isInstagramVideo(video)) return null;
+
+    const ownerDocument = video.ownerDocument;
+    let current = video.parentElement;
+
+    while (current && current !== ownerDocument.body) {
+      const children = Array.from(current.children);
+      const hasVideoBranch = children.some(
+        (child) => child === video || child.contains(video)
+      );
+      const hasReelMetadataBranch = children.some(
+        (child) =>
+          child !== video &&
+          !child.contains(video) &&
+          child.querySelector('a[href*="/reels/"]')
+      );
+
+      if (hasVideoBranch && hasReelMetadataBranch) return current;
+      current = current.parentElement;
+    }
+
+    return null;
+  }
+
+  private markInstagramPlayerChrome(
+    video: HTMLVideoElement,
+    player: HTMLElement
+  ): void {
+    this.clearInstagramPlayerChrome(player);
+
+    let videoBranch: Element = video;
+    while (videoBranch !== player && videoBranch.parentElement) {
+      const parent = videoBranch.parentElement;
+      Array.from(parent.children).forEach((sibling) => {
+        if (
+          sibling !== videoBranch &&
+          !sibling.classList.contains('scrub-wrapper')
+        ) {
+          sibling.setAttribute('data-mfs-instagram-chrome', 'true');
+        }
+      });
+      videoBranch = parent;
+    }
+  }
+
+  private clearInstagramPlayerChrome(player?: HTMLElement): void {
+    player
+      ?.querySelectorAll('[data-mfs-instagram-chrome]')
+      .forEach((element) => {
+        element.removeAttribute('data-mfs-instagram-chrome');
+      });
+  }
+
+  /**
+   * Briefly reveal every existing timeline so popup setting changes are
+   * visible on the videos themselves, even when hover display is disabled.
+   */
+  previewTimelines(durationMs = 1200): void {
+    this.videoStateManager.forEach((state, video) => {
+      const { timeline } = state;
+      const ownerWindow = video.ownerDocument.defaultView ?? window;
+      const existingTimeout = this.timelinePreviewTimeouts.get(timeline);
+
+      if (existingTimeout !== undefined) {
+        ownerWindow.clearTimeout(existingTimeout);
+      }
+
+      const range = getMediaSeekRange(video);
+      if (!range) {
+        timeline.style.opacity = '0';
+        return;
+      }
+
+      const progressBar = timeline.firstElementChild as HTMLElement | null;
+      if (progressBar) {
+        progressBar.style.width = `${getMediaProgress(video, range) * 100}%`;
+      }
+
+      timeline.dataset.mfsSettingsPreview = 'true';
+      timeline.style.opacity = '1';
+
+      const timeout = ownerWindow.setTimeout(() => {
+        this.timelinePreviewTimeouts.delete(timeline);
+        delete timeline.dataset.mfsSettingsPreview;
+
+        const shouldRemainVisible =
+          state.isUserScrubbing ||
+          ((this.settingsManager.shouldShowTimelineOnHover() ||
+            this.settingsManager.isTimelineSeekingEnabled()) &&
+            state.isHovering);
+
+        if (!shouldRemainVisible) {
+          timeline.style.opacity = '0';
+        }
+      }, durationMs);
+
+      this.timelinePreviewTimeouts.set(timeline, timeout);
     });
   }
 
@@ -783,90 +3339,57 @@ export class OverlayCreator {
     overlay: HTMLDivElement,
     setIsSettingInitialScroll: (value: boolean) => void
   ): () => void {
-    let syncInterval: number | null = null;
-
     return () => {
       if (!scrollContent || !overlay) return;
 
       const baseWidth = video.offsetWidth || 800; // Fallback width if video not loaded
-      let finalWidth = baseWidth * 3; // Default minimum scrollable width
+      const range = getMediaSeekRange(video);
+      let finalWidth = baseWidth * 5;
 
-      // Check if we have a valid duration
-      const hasValidDuration =
-        video.duration &&
-        !isNaN(video.duration) &&
-        isFinite(video.duration) &&
-        video.duration > 0;
-
-      if (hasValidDuration) {
-        // Make content width proportional to video duration
-        const durationMinutes = video.duration / 60;
+      if (range) {
+        // Make content width proportional to the finite video or DVR window.
+        const durationMinutes = range.duration / 60;
         const contentWidth = Math.max(baseWidth, baseWidth * durationMinutes);
         const minScrollableWidth = baseWidth * 3;
         finalWidth = Math.max(contentWidth, minScrollableWidth);
-      } else {
-        // For videos without duration (live streams, not loaded yet, etc.)
-        // Use a more generous default width to ensure scrollability
-        const fallbackWidth = baseWidth * 5; // More generous fallback
-        finalWidth = Math.max(finalWidth, fallbackWidth);
-
-        // Try to get duration again after a delay
-        setTimeout(() => {
-          if (video.duration && video.duration > 0) {
-            // Recursively call this updater when duration becomes available
-            const updater = this.createContentWidthUpdater(
-              video,
-              scrollContent,
-              overlay,
-              setIsSettingInitialScroll
-            );
-            updater();
-          }
-        }, 1000);
       }
 
       scrollContent.style.width = `${finalWidth}px`;
-
-      // Clear existing sync interval to avoid duplicates
-      if (syncInterval) {
-        clearInterval(syncInterval);
-        syncInterval = null;
-      }
-
-      // Sync scroll position with video position
-      const checkOverlayReady = () => {
-        const currentHasValidDuration =
-          video.duration &&
-          !isNaN(video.duration) &&
-          isFinite(video.duration) &&
-          video.duration > 0;
-
-        if (currentHasValidDuration && video.currentTime !== undefined) {
-          setIsSettingInitialScroll(true);
-
-          const progress = video.currentTime / video.duration;
-          const maxScroll = scrollContent.offsetWidth - overlay.offsetWidth;
-
-          // Apply inversion when setting scroll position
-          const targetScroll =
-            this.settingsManager.shouldInvertHorizontalScroll()
-              ? progress * maxScroll
-              : (1 - progress) * maxScroll;
-
-          overlay.scrollLeft = targetScroll;
-
-          // Keep the flag set until next frame to ensure scroll event is ignored
-          requestAnimationFrame(() => {
-            setIsSettingInitialScroll(false);
-          });
-        }
-      };
-
-      // Only start sync interval if we have valid duration or if this is a retry
-      if (hasValidDuration || video.currentTime !== undefined) {
-        syncInterval = window.setInterval(checkOverlayReady, 500);
-      }
+      this.syncOverlayToVideo(
+        video,
+        overlay,
+        scrollContent,
+        setIsSettingInitialScroll
+      );
     };
+  }
+
+  private syncOverlayToVideo(
+    video: HTMLVideoElement,
+    overlay: HTMLDivElement,
+    scrollContent: HTMLDivElement,
+    setIsProgrammaticScroll: (value: boolean) => void
+  ): void {
+    const range = getMediaSeekRange(video);
+    if (!range) return;
+
+    const videoState = this.videoStateManager.get(video);
+    if (videoState?.isUserScrubbing) return;
+
+    const progress = getMediaProgress(video, range);
+    const maxScroll = Math.max(
+      0,
+      scrollContent.offsetWidth - overlay.offsetWidth
+    );
+    const targetScroll = this.settingsManager.shouldInvertHorizontalScroll()
+      ? progress * maxScroll
+      : (1 - progress) * maxScroll;
+
+    setIsProgrammaticScroll(true);
+    overlay.scrollLeft = targetScroll;
+    (video.ownerDocument.defaultView ?? window).requestAnimationFrame(() => {
+      setIsProgrammaticScroll(false);
+    });
   }
 
   private setupScrollHandling(
@@ -874,15 +3397,130 @@ export class OverlayCreator {
     overlay: HTMLDivElement,
     scrollContent: HTMLDivElement,
     timeline: HTMLDivElement,
+    seekSpeedLabel: HTMLDivElement,
     getIsSettingInitialScroll: () => boolean,
-    setIsSettingInitialScroll: (value: boolean) => void,
+    _setIsSettingInitialScroll: (value: boolean) => void,
     setScrubTimeout: (timeout: number | null) => void,
     getScrubTimeout: () => number | null,
     getIsHovering: () => boolean,
+    scheduleSeek: (time: number) => void,
     debugMode: boolean
-  ): void {
-    overlay.addEventListener('scroll', () => {
-      if (!video.duration || !scrollContent || !timeline) return;
+  ): () => void {
+    const ownerDocument = video.ownerDocument;
+    const ownerWindow = ownerDocument.defaultView ?? window;
+    let seekSpeedLabelDismissTimeout: number | undefined;
+
+    const showSeekSpeedLabel = (multiplier: number): void => {
+      const fullscreenElement = ownerDocument.fullscreenElement;
+      const portalHost = fullscreenElement?.contains(video)
+        ? fullscreenElement
+        : ownerDocument.documentElement;
+      const overlayRect = overlay.getBoundingClientRect();
+      let portalLeft =
+        overlayRect.left + overlayRect.width / 2 + ownerWindow.scrollX;
+      let portalTop = overlayRect.bottom - 12 + ownerWindow.scrollY;
+
+      if (portalHost !== ownerDocument.documentElement) {
+        const portalRect = portalHost.getBoundingClientRect();
+        portalLeft =
+          overlayRect.left -
+          portalRect.left +
+          portalHost.scrollLeft -
+          portalHost.clientLeft +
+          overlayRect.width / 2;
+        portalTop =
+          overlayRect.bottom -
+          portalRect.top +
+          portalHost.scrollTop -
+          portalHost.clientTop -
+          12;
+      }
+
+      if (seekSpeedLabel.parentElement !== portalHost) {
+        portalHost.appendChild(seekSpeedLabel);
+      }
+      seekSpeedLabel.style.left = `${portalLeft}px`;
+      seekSpeedLabel.style.top = `${portalTop}px`;
+      seekSpeedLabel.dataset.mfsPortaled = 'true';
+      seekSpeedLabel.textContent =
+        multiplier > 1 ? 'Fast seeking' : 'Slow seeking';
+      seekSpeedLabel.dataset.mfsSpeed = multiplier > 1 ? 'fast' : 'slow';
+      seekSpeedLabel.dataset.mfsVisible = 'true';
+
+      if (seekSpeedLabelDismissTimeout !== undefined) {
+        ownerWindow.clearTimeout(seekSpeedLabelDismissTimeout);
+      }
+      seekSpeedLabelDismissTimeout = ownerWindow.setTimeout(() => {
+        seekSpeedLabel.dataset.mfsVisible = 'false';
+        seekSpeedLabelDismissTimeout = undefined;
+      }, SEEK_SPEED_LABEL_DISMISS_DELAY_MS);
+    };
+
+    const handleOverlayWheel = (event: WheelEvent): void => {
+      const fastScrollHotkey = this.settingsManager.getFastScrollHotkey();
+      const slowScrollHotkey = this.settingsManager.getSlowScrollHotkey();
+      if (!hasScrollSpeedHotkey(event, fastScrollHotkey, slowScrollHotkey))
+        return;
+
+      const delta = getWheelDeltaPixels(event, overlay.clientWidth);
+      if (delta === 0) return;
+
+      // Replace the browser's native wheel action so the requested multiplier
+      // is applied exactly once.
+      event.preventDefault();
+      const multiplier = getScrollSpeedMultiplier(
+        event,
+        fastScrollHotkey,
+        slowScrollHotkey
+      );
+      showSeekSpeedLabel(multiplier);
+      overlay.scrollLeft += delta * multiplier;
+    };
+
+    const handlePlayerLayerWheel = (event: WheelEvent): void => {
+      // Custom players such as Vimeo put their controls and interaction target
+      // above the <video>. Listen at the document boundary so horizontal wheel
+      // gestures still reach our scrubber without raising the overlay above (and
+      // consequently blocking) the player's clickable controls.
+      if (!overlay.isConnected || event.composedPath().includes(overlay))
+        return;
+
+      const overlayRect = overlay.getBoundingClientRect();
+      const isInsideActionArea =
+        event.clientX >= overlayRect.left &&
+        event.clientX <= overlayRect.right &&
+        event.clientY >= overlayRect.top &&
+        event.clientY <= overlayRect.bottom;
+      if (!isInsideActionArea) return;
+
+      const fastScrollHotkey = this.settingsManager.getFastScrollHotkey();
+      const slowScrollHotkey = this.settingsManager.getSlowScrollHotkey();
+      const hasSpeedHotkey = hasScrollSpeedHotkey(
+        event,
+        fastScrollHotkey,
+        slowScrollHotkey
+      );
+
+      const delta = getPlayerLayerWheelDeltaPixels(
+        event,
+        overlay.clientWidth,
+        hasSpeedHotkey
+      );
+      if (delta === 0) return;
+
+      event.preventDefault();
+      const multiplier = getScrollSpeedMultiplier(
+        event,
+        fastScrollHotkey,
+        slowScrollHotkey
+      );
+      if (hasSpeedHotkey) showSeekSpeedLabel(multiplier);
+      overlay.scrollLeft += delta * multiplier;
+    };
+
+    const handleScroll = (): void => {
+      const range = getMediaSeekRange(video);
+      if (!range || !scrollContent || !timeline) return;
 
       // Don't process scroll events when setting initial position
       if (getIsSettingInitialScroll()) {
@@ -895,27 +3533,6 @@ export class OverlayCreator {
       const videoState = this.videoStateManager.get(video);
       if (!videoState) return;
 
-      // Immediately sync scroll position to current video time when user starts scrolling
-      if (!videoState.isUserScrubbing && overlay) {
-        const progress = video.currentTime / video.duration;
-        const maxScroll = scrollContent.offsetWidth - overlay.offsetWidth;
-
-        // Apply inversion when setting scroll position
-        const targetScroll = this.settingsManager.shouldInvertHorizontalScroll()
-          ? progress * maxScroll
-          : (1 - progress) * maxScroll;
-        overlay.scrollLeft = targetScroll;
-
-        if (debugMode) {
-          console.log('🔄 Synced scroll position to current video time:', {
-            currentTime: video.currentTime,
-            progress,
-            targetScroll,
-            scrollLeft: overlay.scrollLeft,
-          });
-        }
-      }
-
       videoState.isUserScrubbing = true;
 
       const scrollLeft = overlay.scrollLeft;
@@ -927,7 +3544,8 @@ export class OverlayCreator {
         scrollProgress = 1 - scrollProgress;
       }
 
-      const newTime = scrollProgress * video.duration;
+      const newTime = range.start + scrollProgress * range.duration;
+      scheduleSeek(newTime);
 
       // Show timeline bar and update progress
       timeline.style.opacity = '1';
@@ -943,126 +3561,588 @@ export class OverlayCreator {
       }
 
       // Set flag to false after user stops scrubbing
-      const timeout = window.setTimeout(() => {
-        videoState.isUserScrubbing = false;
+      const timeout = (video.ownerDocument.defaultView ?? window).setTimeout(
+        () => {
+          videoState.isUserScrubbing = false;
 
-        // Handle timeline visibility after scrubbing ends
-        if (timeline) {
-          const shouldShowOnHover =
-            this.settingsManager.shouldShowTimelineOnHover() && getIsHovering();
-          if (!shouldShowOnHover) {
-            timeline.style.opacity = '0';
-          } else {
-            // If timeline should remain visible, update progress to reflect actual video time
-            const progress = video.currentTime / video.duration;
-            const progressBar = timeline.firstElementChild as HTMLElement;
-            if (progressBar) {
-              progressBar.style.width = `${progress * 100}%`;
+          // Handle timeline visibility after scrubbing ends
+          if (timeline) {
+            const shouldShowOnHover =
+              (this.settingsManager.shouldShowTimelineOnHover() ||
+                this.settingsManager.isTimelineSeekingEnabled()) &&
+              getIsHovering();
+            const isSettingsPreviewVisible =
+              timeline.dataset.mfsSettingsPreview === 'true';
+            if (!(shouldShowOnHover || isSettingsPreviewVisible)) {
+              timeline.style.opacity = '0';
+            } else {
+              // If timeline should remain visible, update progress to reflect actual video time
+              const currentRange = getMediaSeekRange(video);
+              const progress = currentRange
+                ? getMediaProgress(video, currentRange)
+                : 0;
+              const progressBar = timeline.firstElementChild as HTMLElement;
+              if (progressBar) {
+                progressBar.style.width = `${progress * 100}%`;
+              }
             }
           }
-        }
-      }, 150);
+        },
+        MEDIA_SEEK_SETTLE_DELAY_MS
+      );
 
       setScrubTimeout(timeout);
-      video.currentTime = newTime;
+    };
+
+    overlay.addEventListener('wheel', handleOverlayWheel, { passive: false });
+    overlay.addEventListener('scroll', handleScroll);
+    ownerDocument.addEventListener('wheel', handlePlayerLayerWheel, {
+      capture: true,
+      passive: false,
+    });
+
+    return () => {
+      overlay.removeEventListener('wheel', handleOverlayWheel);
+      overlay.removeEventListener('scroll', handleScroll);
+      ownerDocument.removeEventListener('wheel', handlePlayerLayerWheel, true);
+      if (seekSpeedLabelDismissTimeout !== undefined) {
+        ownerWindow.clearTimeout(seekSpeedLabelDismissTimeout);
+      }
+      seekSpeedLabel.remove();
+    };
+  }
+
+  /**
+   * Let site-owned modal UI take exclusive pointer ownership while it is open.
+   * BetterVideo normally sits above custom player chrome, so without this guard
+   * a transparent scrub layer can intercept clicks intended for a login,
+   * consent, share, settings, or other page dialog.
+   */
+  private setupDocumentDialogGuard(ownerDocument: Document): void {
+    if (this.dialogGuardedDocuments.has(ownerDocument)) return;
+
+    const ownerWindow = ownerDocument.defaultView ?? window;
+    let updateFrame: number | null = null;
+    const scheduleUpdate = (): void => {
+      if (updateFrame !== null) return;
+      updateFrame = ownerWindow.requestAnimationFrame(() => {
+        updateFrame = null;
+        this.updateDocumentDialogGuard(ownerDocument);
+      });
+    };
+    const containsDialogCandidate = (node: Node): boolean => {
+      if (!(node instanceof ownerWindow.Element)) return false;
+      return (
+        node.matches(PAGE_DIALOG_SELECTOR) ||
+        node.querySelector(PAGE_DIALOG_SELECTOR) !== null
+      );
+    };
+    const Observer = ownerWindow.MutationObserver ?? MutationObserver;
+    const observer = new Observer((mutations) => {
+      const mayAffectDialog = mutations.some((mutation) => {
+        if (mutation.type === 'childList') {
+          return [...mutation.addedNodes, ...mutation.removedNodes].some(
+            containsDialogCandidate
+          );
+        }
+
+        return containsDialogCandidate(mutation.target);
+      });
+
+      if (mayAffectDialog) scheduleUpdate();
+    });
+
+    observer.observe(ownerDocument.documentElement, {
+      attributeFilter: [
+        'aria-hidden',
+        'aria-modal',
+        'class',
+        'hidden',
+        'open',
+        'popover',
+        'role',
+        'style',
+      ],
+      attributes: true,
+      childList: true,
+      subtree: true,
+    });
+    ownerDocument.addEventListener('toggle', scheduleUpdate, true);
+    ownerWindow.addEventListener('resize', scheduleUpdate, { passive: true });
+    this.dialogGuardedDocuments.add(ownerDocument);
+  }
+
+  private hasVisiblePageDialog(ownerDocument: Document): boolean {
+    const ownerWindow = ownerDocument.defaultView ?? window;
+    const candidates =
+      ownerDocument.querySelectorAll<HTMLElement>(PAGE_DIALOG_SELECTOR);
+
+    return Array.from(candidates).some((candidate) => {
+      if (
+        candidate.closest(
+          '.scrub-wrapper, .scrub-timeline, .mfs-media-controls, .mfs-seek-speed-label'
+        ) ||
+        candidate.hidden ||
+        candidate.getAttribute('aria-hidden') === 'true' ||
+        candidate.closest('[inert]')
+      ) {
+        return false;
+      }
+
+      if (candidate.hasAttribute('popover')) {
+        try {
+          if (!candidate.matches(':popover-open')) return false;
+        } catch {
+          if (!candidate.hasAttribute('open')) return false;
+        }
+      }
+
+      const rect = candidate.getBoundingClientRect();
+      if (
+        rect.width <= 0 ||
+        rect.height <= 0 ||
+        rect.right <= 0 ||
+        rect.bottom <= 0 ||
+        rect.left >= ownerWindow.innerWidth ||
+        rect.top >= ownerWindow.innerHeight
+      ) {
+        return false;
+      }
+
+      const style = ownerWindow.getComputedStyle(candidate);
+      return (
+        style.display !== 'none' &&
+        style.visibility !== 'hidden' &&
+        style.opacity !== '0' &&
+        style.pointerEvents !== 'none'
+      );
     });
   }
 
-  private setupHoverEvents(
-    video: HTMLVideoElement,
-    overlay: HTMLDivElement,
-    timeline: HTMLDivElement,
-    getIsHovering: () => boolean,
-    setIsHovering: (value: boolean) => void
-  ): void {
-    overlay.addEventListener('mouseenter', () => {
-      setIsHovering(true);
+  private updateDocumentDialogGuard(ownerDocument: Document): void {
+    const isDialogOpen = this.hasVisiblePageDialog(ownerDocument);
+    if (isDialogOpen) {
+      ownerDocument.documentElement.setAttribute(
+        'data-mfs-page-dialog-open',
+        'true'
+      );
+    } else {
+      ownerDocument.documentElement.removeAttribute(
+        'data-mfs-page-dialog-open'
+      );
+    }
+
+    this.videoStateManager.forEach((state, video) => {
       if (
-        !this.settingsManager.shouldShowTimelineOnHover() ||
-        !timeline ||
-        !video.duration
-      )
+        video.ownerDocument !== ownerDocument ||
+        !video.isConnected ||
+        !state.wrapper.isConnected
+      ) {
         return;
-
-      // Show timeline on hover
-      timeline.style.opacity = '1';
-
-      // Update progress bar to show current video time (only if not scrubbing)
-      const videoState = this.videoStateManager.get(video);
-      if (videoState && !videoState.isUserScrubbing) {
-        const progress = video.currentTime / video.duration;
-        const progressBar = timeline.firstElementChild as HTMLElement;
-        if (progressBar) {
-          progressBar.style.width = `${progress * 100}%`;
-        }
       }
-    });
 
-    overlay.addEventListener('mouseleave', () => {
-      setIsHovering(false);
-      const videoState = this.videoStateManager.get(video);
-      if (
-        !this.settingsManager.shouldShowTimelineOnHover() ||
-        !timeline ||
-        (videoState && videoState.isUserScrubbing)
-      )
+      if (isDialogOpen) {
+        state.wrapper.style.setProperty('visibility', 'hidden', 'important');
+        state.overlay.style.setProperty('pointer-events', 'none', 'important');
+        state.timeline.style.setProperty('visibility', 'hidden', 'important');
+        state.timeline.style.setProperty('pointer-events', 'none', 'important');
+        state.mediaControls?.style.setProperty(
+          'visibility',
+          'hidden',
+          'important'
+        );
+        state.mediaControls?.style.setProperty(
+          'pointer-events',
+          'none',
+          'important'
+        );
         return;
+      }
 
-      // Hide timeline when not hovering (unless user is scrubbing)
-      timeline.style.opacity = '0';
+      state.wrapper.style.removeProperty('visibility');
+      state.overlay.style.setProperty('pointer-events', 'auto');
+      state.timeline.style.removeProperty('visibility');
+      state.mediaControls?.style.removeProperty('visibility');
+      state.mediaControls?.style.removeProperty('pointer-events');
+      this.updateTimelineInteractivityForVideo(video, state.timeline);
     });
+
+    ownerDocument
+      .querySelectorAll<HTMLElement>('.mfs-seek-speed-label')
+      .forEach((label) => {
+        if (isDialogOpen) {
+          label.style.setProperty('visibility', 'hidden', 'important');
+          label.style.setProperty('pointer-events', 'none', 'important');
+        } else {
+          label.style.removeProperty('visibility');
+          label.style.removeProperty('pointer-events');
+        }
+      });
+  }
+
+  /**
+   * Track the pointer at the document boundary instead of relying on the
+   * scrub overlay to be the event target. Custom players commonly place a
+   * controls layer, link, canvas, or iframe above the video. Those elements
+   * still produce document-level pointer activity, so geometry is the most
+   * reliable way to decide whether the user is visually hovering a video.
+   *
+   * There is one listener set per frame document. Content scripts run in every
+   * frame, which also covers videos that live inside cross-origin iframes.
+   */
+  private setupDocumentHoverTracking(ownerDocument: Document): void {
+    if (this.hoverTrackedDocuments.has(ownerDocument)) return;
+
+    const updateFromPointer = (event: MouseEvent): void => {
+      this.updateSiteUiPointerPassthrough(
+        ownerDocument,
+        event.clientX,
+        event.clientY
+      );
+      this.updatePointerHoveredVideosAtPoint(
+        ownerDocument,
+        event.clientX,
+        event.clientY
+      );
+    };
+
+    const updateFromWheel = (event: WheelEvent): void => {
+      this.updateWheelHoveredVideosAtPoint(
+        ownerDocument,
+        event.clientX,
+        event.clientY
+      );
+    };
+
+    const clearHoveredVideos = (): void => {
+      this.videoStateManager.forEach((state, video) => {
+        if (video.ownerDocument === ownerDocument) {
+          this.clearWheelHoverLease(video, state);
+          state.isPointerHovering = false;
+          this.updateTimelineHoverState(video, state, false);
+        }
+      });
+    };
+
+    // pointerover runs before pointerdown, allowing a newly opened site dialog
+    // to take ownership even before the pointer has moved across it.
+    ownerDocument.addEventListener('pointerover', updateFromPointer, {
+      capture: true,
+      passive: true,
+    });
+    ownerDocument.addEventListener('pointermove', updateFromPointer, {
+      capture: true,
+      passive: true,
+    });
+    ownerDocument.addEventListener('mouseover', updateFromPointer, {
+      capture: true,
+      passive: true,
+    });
+    ownerDocument.addEventListener('wheel', updateFromWheel, {
+      capture: true,
+      passive: true,
+    });
+    ownerDocument.defaultView?.addEventListener('blur', clearHoveredVideos);
+
+    this.hoverTrackedDocuments.add(ownerDocument);
+  }
+
+  /**
+   * Give visible site-owned controls priority whenever they geometrically sit
+   * beneath one of our transparent/portaled layers. This is intentionally
+   * based on hit testing and interactive semantics rather than modal selectors,
+   * so login, consent, onboarding, share, and future dialogs all work alike.
+   */
+  private updateSiteUiPointerPassthrough(
+    ownerDocument: Document,
+    clientX: number,
+    clientY: number
+  ): void {
+    if (typeof ownerDocument.elementsFromPoint !== 'function') return;
+
+    const ownerWindow = ownerDocument.defaultView ?? window;
+    const siteControlAtPoint = ownerDocument
+      .elementsFromPoint(clientX, clientY)
+      .find((element) => {
+        if (
+          element.closest(EXTENSION_UI_SELECTOR) ||
+          !element.matches(SITE_INTERACTIVE_SELECTOR)
+        ) {
+          return false;
+        }
+
+        const style = ownerWindow.getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return (
+          rect.width > 0 &&
+          rect.height > 0 &&
+          style.display !== 'none' &&
+          style.visibility !== 'hidden' &&
+          style.pointerEvents !== 'none'
+        );
+      });
+
+    this.videoStateManager.forEach((state, video) => {
+      if (video.ownerDocument !== ownerDocument) return;
+
+      const containsPoint = (element?: HTMLElement): boolean => {
+        if (!element?.isConnected) return false;
+        const rect = element.getBoundingClientRect();
+        return (
+          rect.width > 0 &&
+          rect.height > 0 &&
+          clientX >= rect.left &&
+          clientX <= rect.right &&
+          clientY >= rect.top &&
+          clientY <= rect.bottom
+        );
+      };
+      const isOverActiveMediaControls = Boolean(
+        state.mediaControls &&
+          !state.mediaControls.hidden &&
+          state.mediaControls.dataset.mfsActive === 'true' &&
+          containsPoint(state.mediaControls)
+      );
+      const isOverExtensionLayer = [
+        state.wrapper,
+        state.timeline,
+        state.mediaControls,
+      ].some(containsPoint);
+      const shouldPassThrough = Boolean(
+        siteControlAtPoint && isOverExtensionLayer && !isOverActiveMediaControls
+      );
+
+      if (shouldPassThrough) {
+        state.overlay.style.setProperty('pointer-events', 'none', 'important');
+        state.timeline.style.setProperty('pointer-events', 'none', 'important');
+        state.mediaControls?.style.setProperty(
+          'pointer-events',
+          'none',
+          'important'
+        );
+        return;
+      }
+
+      if (ownerDocument.documentElement.dataset.mfsPageDialogOpen === 'true') {
+        return;
+      }
+
+      state.overlay.style.setProperty('pointer-events', 'auto');
+      state.mediaControls?.style.removeProperty('pointer-events');
+      this.updateTimelineInteractivityForVideo(video, state.timeline);
+    });
+  }
+
+  private updatePointerHoveredVideosAtPoint(
+    ownerDocument: Document,
+    clientX: number,
+    clientY: number
+  ): void {
+    this.videoStateManager.forEach((state, video) => {
+      if (video.ownerDocument !== ownerDocument) return;
+
+      this.clearWheelHoverLease(video, state);
+      state.isPointerHovering = this.isPointInsideVideoWrapper(
+        video,
+        state,
+        clientX,
+        clientY
+      );
+      this.updateTimelineHoverState(video, state, state.isPointerHovering);
+    });
+  }
+
+  private updateWheelHoveredVideosAtPoint(
+    ownerDocument: Document,
+    clientX: number,
+    clientY: number
+  ): void {
+    this.videoStateManager.forEach((state, video) => {
+      if (video.ownerDocument !== ownerDocument) return;
+
+      this.clearWheelHoverLease(video, state);
+      state.isWheelHovering = this.isPointInsideVideoWrapper(
+        video,
+        state,
+        clientX,
+        clientY
+      );
+
+      if (state.isWheelHovering) {
+        const ownerWindow = ownerDocument.defaultView ?? window;
+        state.wheelHoverTimeout = ownerWindow.setTimeout(() => {
+          state.wheelHoverTimeout = undefined;
+          state.isWheelHovering = false;
+          this.updateTimelineHoverState(
+            video,
+            state,
+            state.isPointerHovering === true
+          );
+        }, WHEEL_HOVER_LEASE_MS);
+      }
+
+      this.updateTimelineHoverState(
+        video,
+        state,
+        state.isPointerHovering === true || state.isWheelHovering === true
+      );
+    });
+  }
+
+  private clearWheelHoverLease(
+    video: HTMLVideoElement,
+    state: VideoStateT
+  ): void {
+    if (state.wheelHoverTimeout !== undefined) {
+      (video.ownerDocument.defaultView ?? window).clearTimeout(
+        state.wheelHoverTimeout
+      );
+      state.wheelHoverTimeout = undefined;
+    }
+    state.isWheelHovering = false;
+  }
+
+  private isPointInsideVideoWrapper(
+    video: HTMLVideoElement,
+    state: VideoStateT,
+    clientX: number,
+    clientY: number
+  ): boolean {
+    // Player layouts can move without resizing (for example YouTube's theater
+    // animations). Keep portaled UI attached to the current video rectangle.
+    this.updateTimelineInteractivityForVideo(video, state.timeline);
+
+    const rect = state.wrapper.getBoundingClientRect();
+    return (
+      state.wrapper.isConnected &&
+      rect.width > 0 &&
+      rect.height > 0 &&
+      clientX >= rect.left &&
+      clientX <= rect.right &&
+      clientY >= rect.top &&
+      clientY <= rect.bottom
+    );
+  }
+
+  private shouldShowPausedPlaybackUi(video: HTMLVideoElement): boolean {
+    return (
+      (this.settingsManager.shouldHideVideoControls?.() ?? false) &&
+      video.paused &&
+      getMediaSeekRange(video) !== null
+    );
+  }
+
+  private updateTimelineHoverState(
+    video: HTMLVideoElement,
+    state: VideoStateT,
+    isHovering: boolean
+  ): void {
+    state.isHovering = isHovering;
+    if (state.mediaControls && !state.mediaControls.hidden) {
+      state.mediaControls.dataset.mfsVisible = String(isHovering);
+    }
+    state.syncPlaybackFeedback?.();
+
+    const isSettingsPreviewVisible =
+      state.timeline.dataset.mfsSettingsPreview === 'true';
+    const shouldShow =
+      ((this.settingsManager.shouldShowTimelineOnHover?.() ?? false) ||
+        (this.settingsManager.isTimelineSeekingEnabled?.() ?? false)) &&
+      isHovering &&
+      getMediaSeekRange(video) !== null;
+
+    if (!shouldShow) {
+      if (!(state.isUserScrubbing || isSettingsPreviewVisible)) {
+        state.timeline.style.opacity = '0';
+      }
+      return;
+    }
+
+    state.timeline.style.opacity = '1';
+    if (state.isUserScrubbing) return;
+
+    const range = getMediaSeekRange(video);
+    const progressBar = state.timeline.firstElementChild as HTMLElement | null;
+    if (range && progressBar) {
+      progressBar.style.width = `${getMediaProgress(video, range) * 100}%`;
+    }
   }
 
   private setupVideoSyncEvents(
     video: HTMLVideoElement,
     overlay: HTMLDivElement,
-    scrollContent: HTMLDivElement
-  ): void {
-    // Sync scroll position only on actual seek events (not during normal playback)
-    video.addEventListener('seeked', () => {
-      const videoState = this.videoStateManager.get(video);
-      if (
-        !video.duration ||
-        !scrollContent ||
-        !overlay ||
-        (videoState && videoState.isUserScrubbing)
-      )
-        return;
-
-      const progress = video.currentTime / video.duration;
-      const maxScroll = scrollContent.offsetWidth - overlay.offsetWidth;
-
-      // Apply inversion when setting scroll position
-      const targetScroll = this.settingsManager.shouldInvertHorizontalScroll()
-        ? progress * maxScroll
-        : (1 - progress) * maxScroll;
-
-      overlay.scrollLeft = targetScroll;
+    scrollContent: HTMLDivElement,
+    setIsProgrammaticScroll: (value: boolean) => void
+  ): () => void {
+    const sync = () => {
+      this.syncOverlayToVideo(
+        video,
+        overlay,
+        scrollContent,
+        setIsProgrammaticScroll
+      );
+    };
+    const events: Array<keyof HTMLMediaElementEventMap> = [
+      'timeupdate',
+      'seeked',
+      'loadedmetadata',
+      'durationchange',
+      'progress',
+    ];
+    events.forEach((eventName) => {
+      video.addEventListener(eventName, sync);
     });
+
+    return () => {
+      events.forEach((eventName) => {
+        video.removeEventListener(eventName, sync);
+      });
+    };
   }
 
   private setupTimelineProgressUpdates(
     video: HTMLVideoElement,
     timeline: HTMLDivElement
-  ): void {
-    video.addEventListener('timeupdate', () => {
+  ): () => void {
+    const updateTimeline = () => {
       const videoState = this.videoStateManager.get(video);
+      const range = getMediaSeekRange(video);
       if (
-        !this.settingsManager.shouldShowTimelineOnHover() ||
+        (!this.settingsManager.shouldShowTimelineOnHover() &&
+          !this.settingsManager.isTimelineSeekingEnabled()) ||
         !timeline ||
-        (videoState && videoState.isUserScrubbing) ||
-        !video.duration
+        videoState?.isUserScrubbing ||
+        !range
       )
         return;
 
       // Only update if timeline is visible (user is hovering)
       if (timeline.style.opacity === '1') {
-        const progress = video.currentTime / video.duration;
+        const progress = getMediaProgress(video, range);
         const progressBar = timeline.firstElementChild as HTMLElement;
         if (progressBar) {
           progressBar.style.width = `${progress * 100}%`;
         }
       }
-    });
+    };
+
+    const syncTimelineVisibility = () => {
+      const videoState = this.videoStateManager.get(video);
+      if (!videoState) return;
+      this.updateTimelineHoverState(video, videoState, videoState.isHovering);
+    };
+
+    video.addEventListener('timeupdate', updateTimeline);
+    video.addEventListener('pause', syncTimelineVisibility);
+    video.addEventListener('play', syncTimelineVisibility);
+    video.addEventListener('loadedmetadata', syncTimelineVisibility);
+    syncTimelineVisibility();
+
+    return () => {
+      video.removeEventListener('timeupdate', updateTimeline);
+      video.removeEventListener('pause', syncTimelineVisibility);
+      video.removeEventListener('play', syncTimelineVisibility);
+      video.removeEventListener('loadedmetadata', syncTimelineVisibility);
+    };
   }
 }

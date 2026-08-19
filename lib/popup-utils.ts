@@ -1,6 +1,6 @@
 import { parse } from 'tldts';
 
-import { DomainConfigT } from '@/types/domains';
+import type { DomainConfigT } from '@/types/domains';
 
 export const getCurrentDomain = (): Promise<string> => {
   return new Promise((resolve) => {
@@ -26,9 +26,10 @@ export const checkIsAtDefaults = (
   timelinePosition: 'top' | 'bottom',
   timelineHeight: number,
   timelineHeightUnit: 'px' | '%',
-  domainRules: DomainConfigT[],
+  _domainRules: DomainConfigT[],
   actionArea: 'full' | 'top' | 'middle' | 'bottom',
-  actionAreaSize: number
+  actionAreaSize: number,
+  isTimelineSeekingEnabled = false
 ): boolean => {
   return (
     isEnabled === true &&
@@ -39,7 +40,8 @@ export const checkIsAtDefaults = (
     timelineHeight === 6 &&
     timelineHeightUnit === 'px' &&
     actionArea === 'full' &&
-    actionAreaSize === 30
+    actionAreaSize === 30 &&
+    isTimelineSeekingEnabled === false
   );
 };
 

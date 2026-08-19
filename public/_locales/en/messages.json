@@ -1,8 +1,8 @@
 {
   "extName": {
-    "message": "Media Flow Seek"
+    "message": "Better Video Controls for YouTube, Instagram, TikTok & More"
   },
   "extDescription": {
-    "message": "Control (Video, YouTube, Vimeo, ...) media playback with mouse scroll horizontally, even if the media or browser is not in focus."
+    "message": "Control videos on YouTube, Instagram, TikTok, and more. Scroll horizontally to seek instantly—even while another window is active."
   }
 }

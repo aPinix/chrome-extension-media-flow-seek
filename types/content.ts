@@ -1,4 +1,6 @@
-import { DomainRuleTypeT } from './domains';
+import type { ScrollHotkeyT } from '@/helpers/scroll-speed';
+
+import type { DomainRuleTypeT } from './domains';
 
 export type VideoStateT = {
   overlay: HTMLDivElement;
@@ -6,7 +8,19 @@ export type VideoStateT = {
   timeline: HTMLDivElement;
   wrapper: HTMLDivElement;
   debugIndicator: HTMLAnchorElement;
+  mediaControls?: HTMLDivElement;
+  isHovering: boolean;
+  isPointerHovering?: boolean;
+  isWheelHovering?: boolean;
+  wheelHoverTimeout?: number;
   isUserScrubbing: boolean;
+  isVideoDragging?: boolean;
+  videoControlsBeforeHide?: boolean;
+  hiddenControlsContainer?: HTMLElement;
+  cancelTimelineSeeking?: () => void;
+  cancelVideoDragging?: () => void;
+  syncMediaControls?: () => void;
+  syncPlaybackFeedback?: () => void;
   syncCleanup?: () => void;
 };
 
@@ -15,7 +29,13 @@ export type ContentSettingsT = {
   isDebugEnabled: boolean;
   isBetaFeaturesEnabled: boolean;
   invertHorizontalScroll: boolean;
+  fastScrollHotkey: ScrollHotkeyT;
+  slowScrollHotkey: ScrollHotkeyT;
   showTimelineOnHover: boolean;
+  isTimelineSeekingEnabled: boolean;
+  dragVideoToSeek: boolean;
+  hideVideoControls: boolean;
+  colorizedTimeline: boolean;
   timelinePosition: 'top' | 'bottom';
   timelineHeight: number;
   timelineHeightUnit: 'px' | '%';
@@ -38,11 +58,31 @@ export type ActionAreaT = (typeof ActionAreaE)[keyof typeof ActionAreaE];
 
 export type ChromeMessageT = {
   action: string;
-  [key: string]: any;
+  type: string;
+  isEnabled: boolean;
+  isDebugEnabled: boolean;
+  isBetaFeaturesEnabled: boolean;
+  invertHorizontalScroll: boolean;
+  fastScrollHotkey?: ContentSettingsT['fastScrollHotkey'];
+  slowScrollHotkey?: ContentSettingsT['slowScrollHotkey'];
+  showTimelineOnHover: boolean;
+  isTimelineSeekingEnabled?: boolean;
+  dragVideoToSeek?: boolean;
+  hideVideoControls?: boolean;
+  colorizedTimeline?: boolean;
+  timelinePosition: ContentSettingsT['timelinePosition'];
+  timelineHeight: number;
+  timelineHeightUnit: ContentSettingsT['timelineHeightUnit'];
+  domainRules: ContentSettingsT['domainRules'];
+  triggeredBy?: 'hotkey' | 'popup';
+  showNotification?: boolean;
+  settings?: Partial<ContentSettingsT>;
+  [key: string]: unknown;
 };
 
 export type DOMCheckOptionsT = {
   debugMode: boolean;
   shouldRun: () => boolean;
+  hasOverlay: (video: HTMLVideoElement) => boolean;
   createOverlay: (video: HTMLVideoElement) => void;
 };

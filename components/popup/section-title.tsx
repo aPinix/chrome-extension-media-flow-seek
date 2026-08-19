@@ -5,6 +5,7 @@ interface SectionTitlePropsI {
   icon?: React.ElementType;
   children?: React.ReactNode;
   className?: string;
+  id?: string;
 }
 
 export const SectionTitle = ({
@@ -12,6 +13,7 @@ export const SectionTitle = ({
   icon: Icon,
   children,
   className,
+  id,
 }: SectionTitlePropsI) => {
   return (
     <div className={cn('flex h-8 items-center justify-between', className)}>
@@ -19,7 +21,10 @@ export const SectionTitle = ({
         {Icon ? (
           <Icon className="h-4 w-4 text-slate-400 dark:text-slate-500" />
         ) : null}
-        <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+        <h3
+          className="font-semibold text-slate-800 text-sm dark:text-slate-100"
+          id={id}
+        >
           {title}
         </h3>
       </div>

@@ -1,4 +1,4 @@
-import { createInstance, i18n, Resource } from 'i18next';
+import { createInstance, type i18n, type Resource } from 'i18next';
 import resourcesToBackend from 'i18next-resources-to-backend';
 import { initReactI18next } from 'react-i18next/initReactI18next';
 

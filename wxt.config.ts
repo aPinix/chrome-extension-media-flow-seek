@@ -1,10 +1,10 @@
-import path from 'path';
-import { defineConfig } from 'wxt';
-
+import path from 'node:path';
 import tailwindcss from '@tailwindcss/vite';
+import { defineConfig } from 'wxt';
 
 // See https://wxt.dev/api/config.html
 export default defineConfig({
+  manifestVersion: 3,
   modules: ['@wxt-dev/module-react'],
   vite: () => ({
     plugins: [tailwindcss()],
@@ -14,50 +14,15 @@ export default defineConfig({
       },
     },
   }),
-  manifest: ({ browser, manifestVersion, mode, command }) => {
+  manifest: () => {
     return {
-      manifestVersion: 3,
-      name: 'Media Flow Seek',
-      short_name: 'Media Flow Seek',
+      name: 'Better Video Controls for YouTube, Instagram, TikTok & More',
+      short_name: 'BetterVideo',
       default_locale: 'en',
       description:
-        'Control (Video, YouTube, Vimeo, ...) media playback with mouse scroll horizontally, even if the media or browser is not in focus.',
+        'Control videos on YouTube, Instagram, TikTok, and more. Scroll horizontally to seek instantly—even while another window is active.',
       version: '1.0.9',
       author: 'aPinix',
-      keywords: [
-        'youtube',
-        'vimeo',
-        'netflix',
-        'twitch',
-        'tiktok',
-        'instagram',
-        'facebook',
-        'twitter',
-        'dailymotion',
-        'hulu',
-
-        'accessibility',
-        'control',
-        'entertainment',
-        'horizontal',
-        'media',
-        'mouse',
-        'navigation',
-        'overlay',
-        'playback',
-        'player',
-        'productivity',
-        'progress',
-        'scroll',
-        'scrub',
-        'scrubbing',
-        'seek',
-        'seeking',
-        'streaming',
-        'timeline',
-        'video',
-        'wheel',
-      ],
       icons: {
         '16': 'icon/16.png',
         '32': 'icon/32.png',
@@ -78,8 +43,8 @@ export default defineConfig({
       commands: {
         'toggle-extension': {
           suggested_key: {
-            default: 'Ctrl+Shift+V',
-            mac: 'Command+Shift+V',
+            default: 'Ctrl+Shift+S',
+            mac: 'MacCtrl+Shift+S',
           },
           description: 'Toggle extension enabled/disabled',
         },

@@ -1,6 +1,7 @@
 import { DOMUtils } from '@/helpers/dom-utils';
-import { NotificationHelper } from '@/helpers/notification-helper';
+import { showToggleNotification } from '@/helpers/notification-helper';
 import type { OverlayCreator } from '@/helpers/overlay-creator';
+import { normalizeScrollHotkeys } from '@/helpers/scroll-speed';
 import type { SettingsManager } from '@/helpers/settings-manager';
 import type { VideoStateManager } from '@/helpers/video-state';
 import type { ChromeMessageT } from '@/types/content';
@@ -14,6 +15,13 @@ export interface MessageHandlerDependencies {
   getDebugImageBackground: () => string;
 }
 
+type MessageResponse = {
+  success: boolean;
+  error?: string;
+};
+
+type SendResponse = (response: MessageResponse) => void;
+
 export class MessageHandler {
   private dependencies: MessageHandlerDependencies;
 
@@ -23,7 +31,7 @@ export class MessageHandler {
 
   initialize(): void {
     chrome.runtime.onMessage.addListener(
-      (message: ChromeMessageT, sender, sendResponse) => {
+      (message: ChromeMessageT, _sender, sendResponse) => {
         this.handleMessage(message, sendResponse);
       }
     );
@@ -31,10 +39,9 @@ export class MessageHandler {
 
   private handleMessage(
     message: ChromeMessageT,
-    sendResponse: (response: any) => void
+    sendResponse: SendResponse
   ): void {
-    const { settingsManager, videoStateManager, checkForVideos } =
-      this.dependencies;
+    const { settingsManager } = this.dependencies;
 
     // Handle both action and type for backward compatibility
     const messageType = message.action || message.type;
@@ -52,8 +59,28 @@ export class MessageHandler {
         this.handleUpdateScrollInversion(message, sendResponse);
         break;
 
+      case 'updateScrollHotkeys':
+        this.handleUpdateScrollHotkeys(message, sendResponse);
+        break;
+
       case 'updateTimelineHover':
         this.handleUpdateTimelineHover(message, sendResponse);
+        break;
+
+      case 'updateTimelineSeeking':
+        this.handleUpdateTimelineSeeking(message, sendResponse);
+        break;
+
+      case 'updateDragVideoToSeek':
+        this.handleUpdateDragVideoToSeek(message, sendResponse);
+        break;
+
+      case 'updateHideVideoControls':
+        this.handleUpdateHideVideoControls(message, sendResponse);
+        break;
+
+      case 'updateColorizedTimeline':
+        this.handleUpdateColorizedTimeline(message, sendResponse);
         break;
 
       case 'updateTimelinePosition':
@@ -90,7 +117,7 @@ export class MessageHandler {
 
   private handleUpdateEnabled(
     message: ChromeMessageT,
-    sendResponse: (response: any) => void
+    sendResponse: SendResponse
   ): void {
     const { settingsManager, videoStateManager, checkForVideos } =
       this.dependencies;
@@ -124,14 +151,14 @@ export class MessageHandler {
     // Show notification for toggle; default to 'popup' unless specified
     const source: 'hotkey' | 'popup' =
       message.triggeredBy === 'hotkey' ? 'hotkey' : 'popup';
-    NotificationHelper.showToggleNotification(message.isEnabled, source);
+    showToggleNotification(message.isEnabled, source);
 
     sendResponse({ success: true });
   }
 
   private handleUpdateScrollInversion(
     message: ChromeMessageT,
-    sendResponse: (response: any) => void
+    sendResponse: SendResponse
   ): void {
     const { settingsManager } = this.dependencies;
 
@@ -150,9 +177,29 @@ export class MessageHandler {
     sendResponse({ success: true });
   }
 
+  private handleUpdateScrollHotkeys(
+    message: ChromeMessageT,
+    sendResponse: SendResponse
+  ): void {
+    const { settingsManager } = this.dependencies;
+    const hotkeys = normalizeScrollHotkeys(
+      message.fastScrollHotkey ?? settingsManager.getFastScrollHotkey(),
+      message.slowScrollHotkey ?? settingsManager.getSlowScrollHotkey()
+    );
+
+    settingsManager.updateSetting('fastScrollHotkey', hotkeys.fastScrollHotkey);
+    settingsManager.updateSetting('slowScrollHotkey', hotkeys.slowScrollHotkey);
+
+    if (settingsManager.isDebugEnabled()) {
+      console.log('📤 Updated scroll hotkeys from popup:', hotkeys);
+    }
+
+    sendResponse({ success: true });
+  }
+
   private handleUpdateTimelineHover(
     message: ChromeMessageT,
-    sendResponse: (response: any) => void
+    sendResponse: SendResponse
   ): void {
     const { settingsManager } = this.dependencies;
 
@@ -171,11 +218,123 @@ export class MessageHandler {
     sendResponse({ success: true });
   }
 
+  private handleUpdateTimelineSeeking(
+    message: ChromeMessageT,
+    sendResponse: SendResponse
+  ): void {
+    const { overlayCreator, settingsManager } = this.dependencies;
+
+    if (typeof message.isTimelineSeekingEnabled !== 'boolean') {
+      sendResponse({
+        success: false,
+        error: 'Invalid timeline seeking setting',
+      });
+      return;
+    }
+
+    settingsManager.updateSetting(
+      'isTimelineSeekingEnabled',
+      message.isTimelineSeekingEnabled
+    );
+    overlayCreator.updateTimelineSeekingState();
+    overlayCreator.updateVideoDraggingState();
+    overlayCreator.updateVideoControlsVisibility();
+
+    if (settingsManager.isDebugEnabled()) {
+      console.log(
+        '📤 Updated timeline seeking from popup:',
+        message.isTimelineSeekingEnabled
+      );
+    }
+
+    sendResponse({ success: true });
+  }
+
+  private handleUpdateHideVideoControls(
+    message: ChromeMessageT,
+    sendResponse: SendResponse
+  ): void {
+    const { overlayCreator, settingsManager } = this.dependencies;
+
+    if (typeof message.hideVideoControls !== 'boolean') {
+      sendResponse({
+        success: false,
+        error: 'Invalid hide video controls setting',
+      });
+      return;
+    }
+
+    settingsManager.updateSetting(
+      'hideVideoControls',
+      message.hideVideoControls
+    );
+    overlayCreator.updateVideoControlsVisibility();
+
+    if (settingsManager.isDebugEnabled()) {
+      console.log(
+        '📤 Updated hide video controls from popup:',
+        message.hideVideoControls
+      );
+    }
+
+    sendResponse({ success: true });
+  }
+
+  private handleUpdateDragVideoToSeek(
+    message: ChromeMessageT,
+    sendResponse: SendResponse
+  ): void {
+    const { overlayCreator, settingsManager } = this.dependencies;
+
+    if (typeof message.dragVideoToSeek !== 'boolean') {
+      sendResponse({
+        success: false,
+        error: 'Invalid drag video to seek setting',
+      });
+      return;
+    }
+
+    settingsManager.updateSetting('dragVideoToSeek', message.dragVideoToSeek);
+    overlayCreator.updateVideoDraggingState();
+
+    if (settingsManager.isDebugEnabled()) {
+      console.log(
+        '📤 Updated drag video to seek from popup:',
+        message.dragVideoToSeek
+      );
+    }
+
+    sendResponse({ success: true });
+  }
+
+  private handleUpdateColorizedTimeline(
+    message: ChromeMessageT,
+    sendResponse: SendResponse
+  ): void {
+    const { overlayCreator, settingsManager } = this.dependencies;
+
+    if (typeof message.colorizedTimeline !== 'boolean') {
+      sendResponse({
+        success: false,
+        error: 'Invalid colorized timeline setting',
+      });
+      return;
+    }
+
+    settingsManager.updateSetting(
+      'colorizedTimeline',
+      message.colorizedTimeline
+    );
+    overlayCreator.updateTimelineColorization();
+
+    sendResponse({ success: true });
+  }
+
   private handleUpdateTimelinePosition(
     message: ChromeMessageT,
-    sendResponse: (response: any) => void
+    sendResponse: SendResponse
   ): void {
-    const { settingsManager, videoStateManager } = this.dependencies;
+    const { overlayCreator, settingsManager } = this.dependencies;
 
     settingsManager.updateSetting('timelinePosition', message.timelinePosition);
 
@@ -186,21 +345,17 @@ export class MessageHandler {
       );
     }
 
-    // Update existing timelines
-    videoStateManager.updateTimelinePosition(
-      message.timelinePosition,
-      settingsManager.getTimelineHeight(),
-      settingsManager.getTimelineHeightUnit()
-    );
+    overlayCreator.updateTimelineLayoutWithAnimation();
+    overlayCreator.previewTimelines();
 
     sendResponse({ success: true });
   }
 
   private handleUpdateTimelineHeight(
     message: ChromeMessageT,
-    sendResponse: (response: any) => void
+    sendResponse: SendResponse
   ): void {
-    const { settingsManager, videoStateManager } = this.dependencies;
+    const { overlayCreator, settingsManager } = this.dependencies;
 
     settingsManager.updateSetting('timelineHeight', message.timelineHeight);
     if (message.timelineHeightUnit) {
@@ -223,19 +378,15 @@ export class MessageHandler {
       }
     }
 
-    // Update existing timelines
-    videoStateManager.updateTimelineHeight(
-      message.timelineHeight,
-      message.timelineHeightUnit || settingsManager.getTimelineHeightUnit(),
-      settingsManager.getTimelinePosition()
-    );
+    overlayCreator.updateTimelineLayoutWithAnimation();
+    overlayCreator.previewTimelines();
 
     sendResponse({ success: true });
   }
 
   private handleUpdateDomainRules(
     message: ChromeMessageT,
-    sendResponse: (response: any) => void
+    sendResponse: SendResponse
   ): void {
     const { settingsManager, videoStateManager, checkForVideos } =
       this.dependencies;
@@ -270,7 +421,7 @@ export class MessageHandler {
 
   private handleUpdateDebug(
     message: ChromeMessageT,
-    sendResponse: (response: any) => void
+    sendResponse: SendResponse
   ): void {
     const {
       settingsManager,
@@ -300,7 +451,7 @@ export class MessageHandler {
 
   private handleUpdateBetaFeatures(
     message: ChromeMessageT,
-    sendResponse: (response: any) => void
+    sendResponse: SendResponse
   ): void {
     const { settingsManager, videoStateManager, checkForVideos } =
       this.dependencies;
@@ -330,13 +481,14 @@ export class MessageHandler {
   }
 
   private handleSettingsUpdated(
-    message: any,
-    sendResponse: (response: any) => void
+    message: ChromeMessageT,
+    sendResponse: SendResponse
   ): void {
     const { settingsManager, videoStateManager, checkForVideos } =
       this.dependencies;
 
     let shouldUpdateOverlays = false;
+    let shouldUpdateTimelineSeeking = false;
     let wasHotkeyToggle = false;
 
     // Handle hotkey toggle (legacy support)
@@ -389,29 +541,74 @@ export class MessageHandler {
           settings.invertHorizontalScroll
         );
       }
+      if (settings.fastScrollHotkey && settings.slowScrollHotkey) {
+        const hotkeys = normalizeScrollHotkeys(
+          settings.fastScrollHotkey,
+          settings.slowScrollHotkey
+        );
+        settingsManager.updateSetting(
+          'fastScrollHotkey',
+          hotkeys.fastScrollHotkey
+        );
+        settingsManager.updateSetting(
+          'slowScrollHotkey',
+          hotkeys.slowScrollHotkey
+        );
+      }
       if (typeof settings.showTimelineOnHover === 'boolean') {
         settingsManager.updateSetting(
           'showTimelineOnHover',
           settings.showTimelineOnHover
         );
       }
+      if (typeof settings.isTimelineSeekingEnabled === 'boolean') {
+        settingsManager.updateSetting(
+          'isTimelineSeekingEnabled',
+          settings.isTimelineSeekingEnabled
+        );
+        shouldUpdateTimelineSeeking = true;
+      }
+      if (typeof settings.dragVideoToSeek === 'boolean') {
+        settingsManager.updateSetting(
+          'dragVideoToSeek',
+          settings.dragVideoToSeek
+        );
+        shouldUpdateTimelineSeeking = true;
+      }
+      if (typeof settings.hideVideoControls === 'boolean') {
+        settingsManager.updateSetting(
+          'hideVideoControls',
+          settings.hideVideoControls
+        );
+        shouldUpdateTimelineSeeking = true;
+      }
+      if (typeof settings.colorizedTimeline === 'boolean') {
+        settingsManager.updateSetting(
+          'colorizedTimeline',
+          settings.colorizedTimeline
+        );
+        this.dependencies.overlayCreator.updateTimelineColorization();
+      }
       if (settings.timelinePosition) {
         settingsManager.updateSetting(
           'timelinePosition',
           settings.timelinePosition
         );
+        shouldUpdateTimelineSeeking = true;
       }
       if (typeof settings.timelineHeight === 'number') {
         settingsManager.updateSetting(
           'timelineHeight',
           settings.timelineHeight
         );
+        shouldUpdateTimelineSeeking = true;
       }
       if (settings.timelineHeightUnit) {
         settingsManager.updateSetting(
           'timelineHeightUnit',
           settings.timelineHeightUnit
         );
+        shouldUpdateTimelineSeeking = true;
       }
       if (settings.actionArea) {
         settingsManager.updateSetting('actionArea', settings.actionArea);
@@ -441,12 +638,16 @@ export class MessageHandler {
         // Update all existing overlays immediately for action area changes
         const { overlayCreator } = this.dependencies;
         overlayCreator.updateAllOverlaysForActionArea();
+      } else if (shouldUpdateTimelineSeeking) {
+        this.dependencies.overlayCreator.updateTimelineSeekingState();
+        this.dependencies.overlayCreator.updateVideoDraggingState();
+        this.dependencies.overlayCreator.updateVideoControlsVisibility();
       }
     }
 
     // Show notification for hotkey toggle only
-    if (wasHotkeyToggle) {
-      NotificationHelper.showToggleNotification(message.isEnabled, 'hotkey');
+    if (wasHotkeyToggle && message.showNotification !== false) {
+      showToggleNotification(message.isEnabled, 'hotkey');
     }
 
     sendResponse({ success: true });

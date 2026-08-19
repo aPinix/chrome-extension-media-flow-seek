@@ -1,188 +1,222 @@
-import { CheckIcon, GlobeIcon, Trash2Icon, XIcon } from 'lucide-react';
+import { GripVerticalIcon, Trash2Icon } from 'lucide-react';
+import { useLayoutEffect, useRef } from 'react';
+import { useDrag, useDrop } from 'react-dnd';
 
 import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
+import { getDomainMode } from '@/helpers/domains';
 import { cn } from '@/lib/utils';
-import {
-  DomainConfigT,
-  DomainRuleTypeE,
-  DomainRuleTypeT,
-} from '@/types/domains';
+import type { DomainConfigT, DomainModeT } from '@/types/domains';
 
-interface DomainListItemPropsI {
-  rule: DomainConfigT;
-  isGlobal?: boolean;
-  isCurrentDomain?: boolean;
-  onToggleEnabled?: (domain: string) => void;
-  onToggleRuleType: (domain: string, currentType: DomainRuleTypeT) => void;
-  onRemove?: (domain: string) => void;
+import { DomainFavicon } from './domain-favicon';
+import { DomainModeControl } from './domain-mode-control';
+import { ItemRowText } from './item-row-text';
+
+export const DOMAIN_RULE_DRAG_TYPE = 'site-access-rule';
+
+export interface DomainRuleDragItemI {
+  domain: string;
+  index: number;
 }
 
-export const DomainListItem = ({
-  rule,
-  isGlobal,
-  isCurrentDomain,
-  onToggleEnabled,
-  onToggleRuleType,
+interface DomainListItemPropsI {
+  highlighted?: boolean;
+  index: number;
+  isEntering?: boolean;
+  isRemoving?: boolean;
+  onDragEnd: (didDrop: boolean) => void;
+  onDragStart: (domain: string) => void;
+  onHoverMove: (domain: string, targetIndex: number) => void;
+  onKeyboardMove: (index: number, direction: -1 | 1) => void;
+  onModeChange: (domain: string, mode: DomainModeT) => void;
+  onRegisterRow: (domain: string, element: HTMLLIElement | null) => void;
+  onRemove: (domain: string) => void;
+  rule: DomainConfigT;
+  showDivider?: boolean;
+  sortingDisabled?: boolean;
+}
+
+export function DomainListItem({
+  highlighted,
+  index,
+  isEntering,
+  isRemoving,
+  onDragEnd,
+  onDragStart,
+  onHoverMove,
+  onKeyboardMove,
+  onModeChange,
+  onRegisterRow,
   onRemove,
-}: DomainListItemPropsI) => {
-  const getTitle = () => {
-    if (isGlobal) {
-      return 'All Websites (global)';
-    }
-    return rule.domain;
-  };
+  rule,
+  showDivider,
+  sortingDisabled,
+}: DomainListItemPropsI) {
+  const rowRef = useRef<HTMLLIElement>(null);
+  const handleRef = useRef<HTMLButtonElement>(null);
+  const dragPreviewRef = useRef<HTMLLIElement>(null);
+  const dragPreviewResetFrameRef = useRef<number | null>(null);
 
-  const getDescription = () => {
-    if (isGlobal) {
-      return rule.type === DomainRuleTypeE.Whitelist
-        ? 'Whitelisted'
-        : 'Blacklisted';
-    }
+  const [{ isDragging }, connectDrag, connectDragPreview] = useDrag(
+    () => ({
+      canDrag: !sortingDisabled,
+      collect: (monitor) => ({ isDragging: monitor.isDragging() }),
+      end: (_item, monitor) => onDragEnd(monitor.didDrop()),
+      item: () => {
+        const row = rowRef.current;
+        const preview = dragPreviewRef.current;
+        if (row && preview) {
+          const bounds = row.getBoundingClientRect();
+          Object.assign(preview.style, {
+            height: `${bounds.height}px`,
+            left: `${bounds.left}px`,
+            top: `${bounds.top}px`,
+            width: `${bounds.width}px`,
+          });
+          if (dragPreviewResetFrameRef.current !== null) {
+            cancelAnimationFrame(dragPreviewResetFrameRef.current);
+          }
+          dragPreviewResetFrameRef.current = requestAnimationFrame(() => {
+            if (dragPreviewRef.current === preview) {
+              preview.style.left = '-10000px';
+              preview.style.top = '0';
+            }
+            dragPreviewResetFrameRef.current = null;
+          });
+        }
+        onDragStart(rule.domain);
+        return { domain: rule.domain, index } satisfies DomainRuleDragItemI;
+      },
+      type: DOMAIN_RULE_DRAG_TYPE,
+    }),
+    [index, onDragEnd, onDragStart, rule.domain, sortingDisabled]
+  );
+  const [, connectDrop] = useDrop(
+    () => ({
+      accept: DOMAIN_RULE_DRAG_TYPE,
+      canDrop: () => !sortingDisabled,
+      drop: () => ({ moved: true }),
+      hover: (item: DomainRuleDragItemI, monitor) => {
+        if (sortingDisabled || item.index === index) return;
 
-    if (!rule.enabled) {
-      return 'Rule disabled';
-    }
+        const row = rowRef.current;
+        const pointer = monitor.getClientOffset();
+        if (!row || !pointer) return;
 
-    return rule.type === DomainRuleTypeE.Whitelist
-      ? 'Extension enabled'
-      : 'Extension disabled';
-  };
+        const bounds = row.getBoundingClientRect();
+        const pointerY = pointer.y - bounds.top;
+        const midpointY = (bounds.bottom - bounds.top) / 2;
+
+        if (item.index < index && pointerY < midpointY) return;
+        if (item.index > index && pointerY > midpointY) return;
+
+        onHoverMove(item.domain, index);
+        item.index = index;
+      },
+    }),
+    [index, onHoverMove, rule.domain, sortingDisabled]
+  );
+
+  connectDrop(rowRef);
+  connectDrag(handleRef);
+
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    if (!row) return;
+
+    const preview = row.cloneNode(true) as HTMLLIElement;
+    const bounds = row.getBoundingClientRect();
+    preview.dataset.domainDragPreview = rule.domain;
+    preview.setAttribute('aria-hidden', 'true');
+    preview.inert = true;
+    Object.assign(preview.style, {
+      borderRadius: '0',
+      height: `${bounds.height}px`,
+      left: '-10000px',
+      margin: '0',
+      pointerEvents: 'none',
+      position: 'fixed',
+      top: '0',
+      width: `${bounds.width}px`,
+    });
+    document.body.append(preview);
+    dragPreviewRef.current = preview;
+    connectDragPreview(preview);
+
+    return () => {
+      if (dragPreviewResetFrameRef.current !== null) {
+        cancelAnimationFrame(dragPreviewResetFrameRef.current);
+        dragPreviewResetFrameRef.current = null;
+      }
+      connectDragPreview(null);
+      dragPreviewRef.current = null;
+      preview.remove();
+    };
+  }, [connectDragPreview, rule.domain]);
 
   return (
-    <div className="py-1">
-      <div
+    <li
+      aria-hidden={isRemoving || undefined}
+      className={cn(
+        'group/domain-row relative grid h-13 min-h-0 grid-cols-[20px_24px_minmax(0,1fr)_80px_28px] items-center gap-1 overflow-hidden rounded-none bg-white pr-2 pl-2 transition-[height,opacity,transform,background-color] duration-250 ease-in-out hover:bg-slate-50/70 motion-reduce:transition-none dark:bg-slate-800/70 dark:hover:bg-slate-700/20',
+        showDivider &&
+          "after:absolute after:right-3 after:bottom-0 after:left-8 after:h-px after:bg-slate-100/70 after:content-[''] dark:after:bg-white/5",
+        highlighted && 'bg-brand-50/80 dark:bg-brand-900/35',
+        isDragging && 'opacity-35',
+        isEntering && 'h-0 -translate-y-2 opacity-0',
+        isRemoving && 'pointer-events-none h-0 -translate-x-2 opacity-0'
+      )}
+      data-entering={isEntering || undefined}
+      data-removing={isRemoving || undefined}
+      inert={isRemoving || undefined}
+      ref={(element) => {
+        rowRef.current = element;
+        onRegisterRow(rule.domain, element);
+      }}
+    >
+      <button
+        aria-label={`Move ${rule.domain}. Hold Alt and press an arrow key to reorder.`}
         className={cn(
-          'flex flex-col gap-3 rounded-xl border p-3 shadow-sm backdrop-blur-sm transition-all hover:shadow-md',
-          rule.type === DomainRuleTypeE.Whitelist
-            ? 'border-green-200 bg-green-50/80 dark:border-green-800/50 dark:bg-green-900/20'
-            : 'border-red-200 bg-red-50/80 dark:border-red-800/50 dark:bg-red-900/20'
+          'flex h-full w-5 cursor-grab touch-none items-center justify-center self-stretch rounded-sm text-slate-400 outline-none hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-brand/35 focus-visible:ring-inset active:cursor-grabbing dark:text-slate-500 dark:hover:text-slate-300',
+          (sortingDisabled || isRemoving) && 'cursor-not-allowed opacity-35'
         )}
+        disabled={sortingDisabled || isRemoving}
+        onKeyDown={(event) => {
+          if (!event.altKey) return;
+          if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            onKeyboardMove(index, -1);
+          } else if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            onKeyboardMove(index, 1);
+          }
+        }}
+        ref={handleRef}
+        type="button"
       >
-        {/* Top Row: Switch, Favicon, Title, Delete Button */}
-        <div className="flex items-center gap-3">
-          {/* Enable/Disable Switch (only for non-global) */}
-          {!isGlobal && onToggleEnabled ? (
-            <Switch
-              checked={rule.enabled}
-              onCheckedChange={() => onToggleEnabled(rule.domain)}
-            />
-          ) : null}
+        <GripVerticalIcon className="size-4" />
+      </button>
 
-          {/* Domain Favicon */}
-          <div
-            className={cn(
-              'flex-shrink-0',
-              !isGlobal && !rule.enabled && 'opacity-50'
-            )}
-          >
-            <div className="relative flex h-8 w-8 items-center justify-center rounded-lg bg-slate-200 dark:bg-slate-800/50">
-              {isGlobal ? (
-                <GlobeIcon className="h-5 w-5 text-slate-600 dark:text-slate-400" />
-              ) : (
-                <>
-                  <img
-                    src={`https://www.google.com/s2/favicons?domain=${rule.domain}&sz=32`}
-                    alt={`${rule.domain} favicon`}
-                    className="h-5 w-5 object-contain"
-                    onError={(e) => {
-                      const target = e.target as HTMLImageElement;
-                      target.style.display = 'none';
-                      const fallback = target.nextElementSibling as HTMLElement;
-                      fallback.style.display = 'flex';
-                    }}
-                  />
-                  <div className="hidden">
-                    <GlobeIcon className="hidden h-5 w-5 text-slate-600 dark:text-slate-400" />
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
+      <DomainFavicon domain={rule.domain} />
 
-          {/* Domain Title */}
-          <div className="flex min-w-0 flex-1 flex-col">
-            <div className="flex items-center gap-2">
-              <span className="truncate text-sm font-semibold text-slate-900 dark:text-white">
-                {getTitle()}
-              </span>
-              {!isGlobal && isCurrentDomain && (
-                <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900/50 dark:text-blue-200">
-                  Current
-                </span>
-              )}
-            </div>
-            <span className="text-xs text-slate-600 dark:text-slate-400">
-              {getDescription()}
-            </span>
-          </div>
+      <ItemRowText title={rule.domain} titleTooltip={rule.domain} />
 
-          {/* Action Buttons (only for non-global) */}
-          {!isGlobal && onRemove ? (
-            <div className="flex items-center gap-1">
-              {/* Delete Button */}
-              {onRemove ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => onRemove(rule.domain)}
-                  className="h-8 w-8 p-0 text-red-500 transition-transform hover:scale-110 hover:bg-red-100 dark:hover:bg-red-900/30"
-                  title="Remove domain"
-                >
-                  <Trash2Icon className="h-4 w-4" />
-                </Button>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
+      <DomainModeControl
+        label={`Access for ${rule.domain}`}
+        onChange={(mode) => onModeChange(rule.domain, mode)}
+        value={getDomainMode(rule)}
+      />
 
-        {/* Bottom Row: Whitelist/Blacklist Actions */}
-        <div className="flex justify-center gap-2">
-          {/* Whitelist Button */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              if (rule.type !== DomainRuleTypeE.Whitelist) {
-                onToggleRuleType(rule.domain, rule.type);
-              }
-            }}
-            disabled={!isGlobal && !rule.enabled}
-            className={cn(
-              'h-8 px-4 text-xs font-medium transition-all',
-              rule.type === DomainRuleTypeE.Whitelist
-                ? 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/40 dark:text-green-300 dark:hover:bg-green-900/60'
-                : 'text-green-600 hover:bg-green-50 hover:text-green-700 dark:text-green-400 dark:hover:bg-green-900/20 dark:hover:text-green-300'
-            )}
-            title="Set to whitelist (enable extension)"
-          >
-            <CheckIcon className="mr-1 h-3 w-3" />
-            Whitelist
-          </Button>
-
-          {/* Blacklist Button */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              if (rule.type !== DomainRuleTypeE.Blacklist) {
-                onToggleRuleType(rule.domain, rule.type);
-              }
-            }}
-            disabled={!isGlobal && !rule.enabled}
-            className={cn(
-              'h-8 px-4 text-xs font-medium transition-all',
-              rule.type === DomainRuleTypeE.Blacklist
-                ? 'bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/40 dark:text-red-300 dark:hover:bg-red-900/60'
-                : 'text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300'
-            )}
-            title="Set to blacklist (disable extension)"
-          >
-            <XIcon className="mr-1 h-3 w-3" />
-            Blacklist
-          </Button>
-        </div>
-      </div>
-    </div>
+      <Button
+        aria-label={`Delete ${rule.domain}`}
+        className="size-7 rounded-md p-0 text-slate-400 opacity-40 transition-[color,background-color,opacity] duration-150 hover:bg-red-50 hover:text-red-600 hover:opacity-100 focus-visible:bg-red-50 focus-visible:text-red-600 focus-visible:opacity-100 dark:text-slate-500 dark:focus-visible:bg-red-950/30 dark:focus-visible:text-red-300 dark:hover:bg-red-950/30 dark:hover:text-red-300"
+        disabled={isRemoving}
+        onClick={() => onRemove(rule.domain)}
+        title={`Delete ${rule.domain}`}
+        type="button"
+        variant="ghost"
+      >
+        <Trash2Icon className="size-4" />
+      </Button>
+    </li>
   );
-};
+}

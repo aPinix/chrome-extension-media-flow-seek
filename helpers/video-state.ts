@@ -1,7 +1,25 @@
-import { VideoStateT } from '@/types/content';
+import type { VideoStateT } from '@/types/content';
 
 export class VideoStateManager {
   private videoStates = new Map<HTMLVideoElement, VideoStateT>();
+
+  private restoreVideoControls(
+    video: HTMLVideoElement,
+    state: VideoStateT
+  ): void {
+    if (state.videoControlsBeforeHide !== undefined) {
+      video.controls = state.videoControlsBeforeHide;
+      state.videoControlsBeforeHide = undefined;
+    }
+
+    video.removeAttribute('data-mfs-hide-controls');
+    state.hiddenControlsContainer?.removeAttribute(
+      'data-mfs-hide-controls-container'
+    );
+    state.hiddenControlsContainer?.removeAttribute('data-mfs-instagram-player');
+    state.hiddenControlsContainer?.removeAttribute('data-mfs-tiktok-player');
+    state.hiddenControlsContainer = undefined;
+  }
 
   set(video: HTMLVideoElement, state: VideoStateT): void {
     this.videoStates.set(video, state);
@@ -23,29 +41,50 @@ export class VideoStateManager {
         state.syncCleanup();
       }
 
+      this.restoreVideoControls(video, state);
+
       // Clean up DOM elements
       state.overlay.remove();
       state.scrollContent.remove();
       state.timeline.remove();
       state.debugIndicator.remove();
+      state.mediaControls?.remove();
       state.wrapper.remove();
+      video.removeAttribute('data-scrub-enabled');
     }
     return this.videoStates.delete(video);
   }
 
+  hasConnectedOverlay(video: HTMLVideoElement): boolean {
+    const state = this.videoStates.get(video);
+    return Boolean(state?.wrapper.isConnected && state.overlay.isConnected);
+  }
+
+  pruneDisconnected(): void {
+    this.videoStates.forEach((state, video) => {
+      if (!video.isConnected || !state.wrapper.isConnected) {
+        this.delete(video);
+      }
+    });
+  }
+
   clear(): void {
     // Clean up all DOM elements before clearing
-    this.videoStates.forEach((state) => {
+    this.videoStates.forEach((state, video) => {
       // Call sync cleanup function if it exists
       if (state.syncCleanup) {
         state.syncCleanup();
       }
 
+      this.restoreVideoControls(video, state);
+
       state.overlay.remove();
       state.scrollContent.remove();
       state.timeline.remove();
       state.debugIndicator.remove();
+      state.mediaControls?.remove();
       state.wrapper.remove();
+      video.removeAttribute('data-scrub-enabled');
     });
     this.videoStates.clear();
   }

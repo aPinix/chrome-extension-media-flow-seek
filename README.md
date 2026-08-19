@@ -1,13 +1,17 @@
 <div style="display: flex; align-items: center;">
   <img src="public/icon/48.png" alt="App Icon" width="48" style="margin-right: 12px;" />
-  <h1 style="margin: 0;">Media Flow Seek</h1>
+  <h1 style="margin: 0;">Better Video Controls for YouTube, Instagram, TikTok &amp; More</h1>
 </div>
 
 <br />
 
 <img src="repo-images/apinix-media-flow-seek-screenshot-01.png" alt="App Icon" style="width: 100%;" />
 
-> **Control video playback timeline with horizontal mouse scroll - even when the browser isn't in focus!**
+> **Control videos on YouTube, Instagram, TikTok, and more. Scroll horizontally to seek instantly—even while another window is active.**
+
+BetterVideo makes seeking through web videos fast and natural. Hover over a
+video and scroll horizontally to move backward or forward, with support for
+popular social platforms and other HTML5 video sites.
 
 <p align="left">
   <a href="https://github.com/aPinix/chrome-extension-media-flow-seek">
@@ -31,7 +35,8 @@
 
 ### 🎯 **Universal Video Control**
 
-- **Works on ALL websites** - YouTube, Vimeo, Twitch, Netflix, TikTok, Instagram, and any site with HTML5 video
+- **Works on ALL websites** - YouTube, Vimeo, Steam, Facebook, Instagram, TikTok, and any site with HTML5 video
+- **Embedded-player support** - Detects videos in cross-origin frames and open shadow DOM players
 - **Horizontal scroll to seek** - Use your mouse wheel to scrub through video timeline
 - **Background control** - Works even when the browser tab isn't active or in focus
 
@@ -60,6 +65,7 @@
 ### 🎛️ **Advanced Controls**
 
 - **Precise seeking** - Scroll distance correlates to video duration for accurate control
+- **Configurable speed hotkeys** - Defaults to `Alt` for 3× speed and `Alt+Shift` for ¼× precision
 - **Smooth transitions** - Optimized for responsive, lag-free scrubbing
 - **Non-intrusive** - Overlay only appears during active scrubbing
 
@@ -67,9 +73,9 @@
 
 ### Chrome Web Store (Recommended)
 
-[![Chrome Web Store](https://img.shields.io/chrome-web-store/v/phhigkiikolopghmahejjlojejpocagg.svg)](https://chromewebstore.google.com/detail/media-flow-seek/phhigkiikolopghmahejjlojejpocagg)
+[![Chrome Web Store](https://img.shields.io/chrome-web-store/v/phhigkiikolopghmahejjlojejpocagg.svg)](https://chromewebstore.google.com/detail/better-video-controls-for-youtube-instagram-tiktok-more/phhigkiikolopghmahejjlojejpocagg)
 
-**[Install from Chrome Web Store](https://chromewebstore.google.com/detail/media-flow-seek/phhigkiikolopghmahejjlojejpocagg)**
+**[Install Better Video Controls from the Chrome Web Store](https://chromewebstore.google.com/detail/better-video-controls-for-youtube-instagram-tiktok-more/phhigkiikolopghmahejjlojejpocagg)**
 
 ### Manual Installation (Developer Mode)
 
@@ -121,6 +127,8 @@
 2. **Hover over the video** - The invisible overlay is automatically active
 3. **Scroll horizontally** - Use your mouse wheel or trackpad to seek through the timeline
 4. **Visual feedback** - A colored progress bar appears showing your current position
+
+Hold **Alt** while scrolling to seek at 3× speed, or hold **Alt+Shift** to seek at ¼× speed for precise adjustments. Both hotkeys can be changed in the extension popup.
 
 ### Settings
 
@@ -208,6 +216,7 @@ bun run dev:firefox
 | TikTok              | ✅     | 🩷 Pink        |
 | Instagram           | ✅     | 🩷 Pink        |
 | Facebook            | ✅     | 🔵 Blue        |
+| Steam               | ✅     | 🔵 Blue        |
 | Twitter/X           | ✅     | 🔵 Blue        |
 | Dailymotion         | ✅     | 🔵 Blue        |
 | **Any HTML5 Video** | ✅     | ⚪ White       |

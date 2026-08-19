@@ -2,8 +2,10 @@ import { ChevronRight } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 
+import { ItemRowText } from './item-row-text';
+
 interface CardListItemPropsI {
-  title: string;
+  title: React.ReactNode;
   icon?: React.ElementType;
   iconToggle?: React.ElementType;
   iconIsToggled?: boolean;
@@ -34,23 +36,23 @@ export const CardListItem = ({
   classNameIcon,
   classNameContentBottom,
 }: CardListItemPropsI) => {
-  return (
-    <div
-      className={cn(
-        'card-list-item',
-        'rounded-xl border border-slate-200 bg-white p-4 transition-all dark:border-slate-600 dark:bg-slate-800/70',
-        onClick && 'cursor-pointer hover:shadow-lg dark:hover:bg-slate-800/80',
-        disabled &&
-          'pointer-events-none cursor-not-allowed opacity-50 dark:opacity-60',
-        className
-      )}
-      onClick={onClick}
-    >
+  const rootClassName = cn(
+    'card-list-item',
+    'rounded-xl border border-slate-200 bg-white p-4 transition-all dark:border-slate-600 dark:bg-slate-800/70',
+    onClick &&
+      'w-full cursor-pointer text-left hover:shadow-lg dark:hover:bg-slate-800/80',
+    disabled &&
+      'pointer-events-none cursor-not-allowed opacity-50 dark:opacity-60',
+    className
+  );
+
+  const content = (
+    <>
       <div className="flex items-center justify-between gap-4">
         {/* icon + info */}
         <div
           className={cn(
-            'flex items-start gap-3',
+            'flex min-w-0 flex-1 items-start gap-3',
             disabledSoft && 'opacity-50 dark:opacity-60'
           )}
         >
@@ -85,22 +87,15 @@ export const CardListItem = ({
             </div>
           )}
 
-          {/* title + description */}
-          <div className="flex flex-col">
-            <span
-              className={cn(
-                'text-sm font-medium text-slate-900 dark:text-white',
-                disabled && 'text-slate-400 line-through dark:text-slate-500'
-              )}
-            >
-              {title}
-            </span>
-            <span className="text-xs text-slate-600 dark:text-slate-300">
-              {description}
-            </span>
-          </div>
+          <ItemRowText
+            description={description}
+            title={title}
+            titleClassName={cn(
+              disabled && 'text-slate-400 line-through dark:text-slate-500'
+            )}
+          />
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex shrink-0 items-center gap-3">
           {components?.RightSlot}
           {onClick && !disabled ? (
             <ChevronRight className="h-4 w-4 text-slate-400 dark:text-slate-500" />
@@ -112,6 +107,21 @@ export const CardListItem = ({
           {components.BottomSlot}
         </div>
       ) : null}
-    </div>
+    </>
   );
+
+  if (onClick) {
+    return (
+      <button
+        className={rootClassName}
+        disabled={disabled}
+        onClick={onClick}
+        type="button"
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return <div className={rootClassName}>{content}</div>;
 };

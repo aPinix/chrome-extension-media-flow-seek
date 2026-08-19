@@ -1,0 +1,40 @@
+{
+  // editor
+  "editor.rulers": [80],
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.organizeImports.biome": "explicit",
+    "source.fixAll.biome": "explicit"
+    // "source.fixAll": "explicit"
+  },
+
+  // formatting
+  "editor.defaultFormatter": "biomejs.biome",
+  "[typescript][typescriptreact][javascript][javascriptreact][json][jsonc][html][xml][yaml][yml][css][scss][less][json]": {
+    "editor.defaultFormatter": "biomejs.biome"
+  },
+  "[markdown]": {
+    "editor.defaultFormatter": "yzhang.markdown-all-in-one"
+  },
+
+  // typescript
+  "js/ts.tsdk.path": "node_modules/typescript/lib",
+
+  // vitest
+  "vitest.nodeExecutable": "/opt/homebrew/bin/node",
+
+  // tailwindcss
+  "tailwindCSS.classAttributes": ["class", "className", ".*class.*"],
+  "tailwindCSS.classFunctions": ["cn", "clsx", "cva", "tw", "tw.style"],
+  // "tailwindCSS.experimental.classRegex": [
+  //   "tw`([^`]*)",
+  //   ["tw.style\\(([^)]*)\\)", "'([^']*)'"]
+  // ],
+  // "tailwindCSS.experimental.configFile": "src/styles/globals.css"
+  // "editor.quickSuggestions": {
+  //   "strings": true
+  // }
+
+  // i18n
+  "i18n-ally-next.localesPaths": ["src/locales", "src/lib/i18n"]
+}

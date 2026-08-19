@@ -1,9 +1,9 @@
-import * as React from 'react';
+import { useEffect, useState } from 'react';
 
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { AppSegmentedControl } from '@/components/app/app-segmented-control';
+import { AppSlider } from '@/components/app/app-slider';
+import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-
-import { Slider } from './ui/slider';
 
 type TimelineUnit = 'px' | '%';
 
@@ -22,34 +22,77 @@ const TimelineHeightControl = ({
   onUnitChange,
   className,
 }: TimelineHeightControlPropsI) => {
+  const [inputValue, setInputValue] = useState(String(value));
+
+  useEffect(() => setInputValue(String(value)), [value]);
+
+  const commitInputValue = () => {
+    const parsedValue = Number(inputValue);
+    if (!inputValue.trim() || !Number.isFinite(parsedValue)) {
+      setInputValue(String(value));
+      return;
+    }
+
+    const nextValue = Math.min(100, Math.max(0, parsedValue));
+    setInputValue(String(nextValue));
+    onChange(nextValue);
+  };
+
   return (
     <div className={cn('flex items-center gap-3', className)}>
-      <Slider
-        value={[value]}
-        onValueChange={(values) => onChange(values[0])}
-        min={0}
-        max={100}
+      <AppSlider
+        aria-label="Timeline height"
         className="flex-1"
+        max={100}
+        min={0}
+        onValueChange={(nextValue) => {
+          onChange(
+            typeof nextValue === 'number' ? nextValue : (nextValue[0] ?? value)
+          );
+        }}
+        value={value}
       />
-      <span className="font-mono text-xs text-slate-700 dark:text-slate-300">
-        {value}
-        {unit}
-      </span>
+      <div className="relative h-7 w-32 shrink-0">
+        <Input
+          aria-label="Timeline height value"
+          className="h-7 w-full appearance-none rounded-full border-slate-200 bg-white/90 pr-20 pl-2 text-center font-mono text-slate-700 text-xs shadow-sm transition-[color,box-shadow,background-color,border-color] duration-[250ms] focus-visible:border-brand focus-visible:ring-0 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:focus-visible:border-brand [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          inputMode="numeric"
+          max={100}
+          min={0}
+          onBlur={commitInputValue}
+          onChange={(event) => {
+            const nextInputValue = event.target.value;
+            setInputValue(nextInputValue);
 
-      <ToggleGroup
-        type="single"
-        value={unit}
-        onValueChange={(value) => value && onUnitChange(value as TimelineUnit)}
-        variant="outline"
-        size="sm"
-      >
-        <ToggleGroupItem value="px" className="flex-none shrink">
-          px
-        </ToggleGroupItem>
-        <ToggleGroupItem value="%" className="flex-none shrink">
-          %
-        </ToggleGroupItem>
-      </ToggleGroup>
+            const nextValue = Number(nextInputValue);
+            if (
+              nextInputValue.trim() &&
+              Number.isFinite(nextValue) &&
+              nextValue >= 0 &&
+              nextValue <= 100
+            ) {
+              onChange(nextValue);
+            }
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') event.currentTarget.blur();
+          }}
+          step={1}
+          type="number"
+          value={inputValue}
+        />
+
+        <AppSegmentedControl
+          className="absolute inset-y-0 right-0 z-10 h-7 w-20 rounded-full"
+          label="Timeline height unit"
+          onValueChange={onUnitChange}
+          options={[
+            { label: 'px', value: 'px' },
+            { label: '%', value: '%' },
+          ]}
+          value={unit}
+        />
+      </div>
     </div>
   );
 };

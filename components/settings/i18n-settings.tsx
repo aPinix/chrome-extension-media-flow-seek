@@ -4,8 +4,7 @@ import { browser } from 'wxt/browser';
 import languages from '@/components/i18nConfig.ts';
 import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { RadioGroupItem } from '@/components/ui/radio-group';
-import { RadioGroup } from '@/components/ui/radio-group';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 export function I18nSettings() {
   const { i18n } = useTranslation();
@@ -13,31 +12,27 @@ export function I18nSettings() {
   return (
     <Card>
       <div className="space-y-1.5 p-6 pb-3">
-        <h3 className="text-left text-base font-semibold">
+        <h3 className="text-left font-semibold text-base">
           {t('i18nSettings')}
         </h3>
       </div>
       <RadioGroup
-        defaultValue={i18n.language}
-        value={i18n.language}
         className="p-6 pt-2"
+        defaultValue={i18n.language}
+        onValueChange={async (locale: string) => {
+          await i18n.changeLanguage(locale);
+          await browser.storage.local.set({ i18n: locale });
+        }}
+        value={i18n.language}
       >
-        {languages.map((language, index, array) => {
+        {languages.map((language, index) => {
           return (
             <div
-              key={index}
               className="flex items-center justify-between space-y-1.5"
-              onClick={async () => {
-                await i18n.changeLanguage(language.locale);
-                await browser.runtime.sendMessage({
-                  messageType: MessageType.changeLocale,
-                  content: language.locale,
-                });
-                await browser.storage.local.set({ i18n: language.locale });
-              }}
+              key={language.locale}
             >
               <Label htmlFor={`r${index}`}>{language.name}</Label>
-              <RadioGroupItem value={`${language.locale}`} id={`r${index}`} />
+              <RadioGroupItem id={`r${index}`} value={`${language.locale}`} />
             </div>
           );
         })}

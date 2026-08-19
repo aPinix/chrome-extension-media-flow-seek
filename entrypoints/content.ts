@@ -1,5 +1,7 @@
+import { IS_DEVELOPMENT } from '@/config/variables.config';
 import { DOMUtils } from '@/helpers/dom-utils';
-import { getProgressColorSync } from '@/helpers/domains';
+import { getProgressColorSync } from '@/helpers/favicon-color';
+import { InputEventProbe } from '@/helpers/input-event-probe';
 import { OverlayCreator } from '@/helpers/overlay-creator';
 import { SettingsManager } from '@/helpers/settings-manager';
 import { VideoStateManager } from '@/helpers/video-state';
@@ -7,10 +9,23 @@ import { MessageHandler } from '@/lib/message-handler';
 
 export default defineContentScript({
   matches: ['<all_urls>'],
+  allFrames: true,
+  matchAboutBlank: true,
+  matchOriginAsFallback: true,
   main() {
     // Initialize managers
     const settingsManager = new SettingsManager();
     const videoStateManager = new VideoStateManager();
+    const inputEventProbe = IS_DEVELOPMENT
+      ? new InputEventProbe(document, window)
+      : null;
+
+    if (inputEventProbe) {
+      chrome.storage.onChanged.addListener((changes, areaName) => {
+        if (areaName !== 'sync' || !changes.isDebugEnabled) return;
+        inputEventProbe.setEnabled(changes.isDebugEnabled.newValue === true);
+      });
+    }
 
     // Debug utility functions
     const getDebugColorBackground = (): string => {
@@ -34,9 +49,11 @@ export default defineContentScript({
 
     // Check for videos function
     const checkForVideos = (): void => {
+      videoStateManager.pruneDisconnected();
       DOMUtils.checkForVideos({
         debugMode: settingsManager.isDebugEnabled(),
         shouldRun: () => settingsManager.shouldRun(),
+        hasOverlay: (video) => videoStateManager.hasConnectedOverlay(video),
         createOverlay: createScrubOverlay,
       });
     };
@@ -67,6 +84,7 @@ export default defineContentScript({
     const initializeExtension = async (): Promise<void> => {
       // Initialize settings
       await settingsManager.initialize();
+      inputEventProbe?.setEnabled(settingsManager.isDebugEnabled());
 
       const debugMode = settingsManager.isDebugEnabled();
       if (debugMode) {
@@ -80,9 +98,23 @@ export default defineContentScript({
           '📜 Loaded scroll inversion setting:',
           settings.invertHorizontalScroll
         );
+        console.log('📜 Loaded fast scroll hotkey:', settings.fastScrollHotkey);
+        console.log('📜 Loaded slow scroll hotkey:', settings.slowScrollHotkey);
         console.log(
           '📜 Loaded timeline hover setting:',
           settings.showTimelineOnHover
+        );
+        console.log(
+          '📜 Loaded interactive timeline setting:',
+          settings.isTimelineSeekingEnabled
+        );
+        console.log(
+          '📜 Loaded drag video to seek setting:',
+          settings.dragVideoToSeek
+        );
+        console.log(
+          '📜 Loaded hide video controls setting:',
+          settings.hideVideoControls
         );
         console.log(
           '📜 Loaded timeline position setting:',
@@ -121,10 +153,7 @@ export default defineContentScript({
     initializeExtension();
 
     // Watch for new video elements being added to DOM
-    const observer = DOMUtils.observeNewVideos(
-      checkForVideos,
-      settingsManager.isDebugEnabled()
-    );
+    DOMUtils.observeNewVideos(checkForVideos, settingsManager.isDebugEnabled());
 
     // Also check when mouse moves (fallback for edge cases)
     const throttledMouseCheck = DOMUtils.createMouseCheckThrottler(

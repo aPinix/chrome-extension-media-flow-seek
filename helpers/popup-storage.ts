@@ -1,12 +1,27 @@
-import { getDefaultDomainRules } from '@/helpers/domains';
-import { DomainConfigT } from '@/types/domains';
+import {
+  getDefaultDomainRules,
+  mergeAndMigrateDomainRules,
+} from '@/helpers/domains';
+import {
+  DEFAULT_FAST_SCROLL_HOTKEY,
+  DEFAULT_SLOW_SCROLL_HOTKEY,
+  normalizeScrollHotkeys,
+  type ScrollHotkeyT,
+} from '@/helpers/scroll-speed';
+import type { DomainConfigT } from '@/types/domains';
 
 export type PopupSettings = {
   isEnabled: boolean;
   isDebugEnabled: boolean;
   isBetaFeaturesEnabled: boolean;
   invertHorizontalScroll: boolean;
+  fastScrollHotkey: ScrollHotkeyT;
+  slowScrollHotkey: ScrollHotkeyT;
   showTimelineOnHover: boolean;
+  isTimelineSeekingEnabled: boolean;
+  dragVideoToSeek: boolean;
+  hideVideoControls: boolean;
+  colorizedTimeline: boolean;
   timelinePosition: 'top' | 'bottom';
   timelineHeight: number;
   timelineHeightUnit: 'px' | '%';
@@ -18,9 +33,15 @@ export type PopupSettings = {
 export const DEFAULT_SETTINGS: Omit<PopupSettings, 'domainRules'> = {
   isEnabled: true,
   isDebugEnabled: false,
-  isBetaFeaturesEnabled: false,
+  isBetaFeaturesEnabled: true,
   invertHorizontalScroll: false,
+  fastScrollHotkey: DEFAULT_FAST_SCROLL_HOTKEY,
+  slowScrollHotkey: DEFAULT_SLOW_SCROLL_HOTKEY,
   showTimelineOnHover: false,
+  isTimelineSeekingEnabled: true,
+  dragVideoToSeek: false,
+  hideVideoControls: false,
+  colorizedTimeline: false,
   timelinePosition: 'bottom',
   timelineHeight: 6,
   timelineHeightUnit: 'px',
@@ -30,20 +51,7 @@ export const DEFAULT_SETTINGS: Omit<PopupSettings, 'domainRules'> = {
 
 export const mergeDomainRules = (
   existingRules: DomainConfigT[]
-): DomainConfigT[] => {
-  const defaults = getDefaultDomainRules();
-  const merged = [...existingRules];
-
-  // Add any missing default domains
-  defaults.forEach((defaultRule) => {
-    const exists = merged.find((rule) => rule.domain === defaultRule.domain);
-    if (!exists) {
-      merged.push(defaultRule);
-    }
-  });
-
-  return merged;
-};
+): DomainConfigT[] => mergeAndMigrateDomainRules(existingRules);
 
 export const loadPopupSettings = (): Promise<PopupSettings> => {
   return new Promise((resolve) => {
@@ -53,7 +61,13 @@ export const loadPopupSettings = (): Promise<PopupSettings> => {
         'isDebugEnabled',
         'isBetaFeaturesEnabled',
         'invertHorizontalScroll',
+        'fastScrollHotkey',
+        'slowScrollHotkey',
         'showTimelineOnHover',
+        'isTimelineSeekingEnabled',
+        'dragVideoToSeek',
+        'hideVideoControls',
+        'colorizedTimeline',
         'timelinePosition',
         'timelineHeight',
         'timelineHeightUnit',
@@ -62,37 +76,55 @@ export const loadPopupSettings = (): Promise<PopupSettings> => {
         'domainRules',
       ],
       (result) => {
-        const existingRules = result.domainRules as DomainConfigT[] | undefined;
+        const stored = result as Partial<PopupSettings>;
+        const existingRules = stored.domainRules;
         const finalRules = existingRules
           ? mergeDomainRules(existingRules)
           : getDefaultDomainRules();
+        const scrollHotkeys = normalizeScrollHotkeys(
+          stored.fastScrollHotkey,
+          stored.slowScrollHotkey
+        );
 
-        // Save merged rules back to storage if we added new ones
-        if (existingRules && finalRules.length !== existingRules.length) {
+        // Save added defaults and the one-time YouTube-only default migration.
+        if (
+          existingRules &&
+          JSON.stringify(finalRules) !== JSON.stringify(existingRules)
+        ) {
           chrome.storage.sync.set({ domainRules: finalRules });
         }
 
         resolve({
-          isEnabled: result.isEnabled ?? DEFAULT_SETTINGS.isEnabled,
+          isEnabled: stored.isEnabled ?? DEFAULT_SETTINGS.isEnabled,
           isDebugEnabled:
-            result.isDebugEnabled ?? DEFAULT_SETTINGS.isDebugEnabled,
+            stored.isDebugEnabled ?? DEFAULT_SETTINGS.isDebugEnabled,
           isBetaFeaturesEnabled:
-            result.isBetaFeaturesEnabled ??
+            stored.isBetaFeaturesEnabled ??
             DEFAULT_SETTINGS.isBetaFeaturesEnabled,
           invertHorizontalScroll:
-            result.invertHorizontalScroll ??
+            stored.invertHorizontalScroll ??
             DEFAULT_SETTINGS.invertHorizontalScroll,
+          ...scrollHotkeys,
           showTimelineOnHover:
-            result.showTimelineOnHover ?? DEFAULT_SETTINGS.showTimelineOnHover,
+            stored.showTimelineOnHover ?? DEFAULT_SETTINGS.showTimelineOnHover,
+          isTimelineSeekingEnabled:
+            stored.isTimelineSeekingEnabled ??
+            DEFAULT_SETTINGS.isTimelineSeekingEnabled,
+          dragVideoToSeek:
+            stored.dragVideoToSeek ?? DEFAULT_SETTINGS.dragVideoToSeek,
+          hideVideoControls:
+            stored.hideVideoControls ?? DEFAULT_SETTINGS.hideVideoControls,
+          colorizedTimeline:
+            stored.colorizedTimeline ?? DEFAULT_SETTINGS.colorizedTimeline,
           timelinePosition:
-            result.timelinePosition ?? DEFAULT_SETTINGS.timelinePosition,
+            stored.timelinePosition ?? DEFAULT_SETTINGS.timelinePosition,
           timelineHeight:
-            result.timelineHeight ?? DEFAULT_SETTINGS.timelineHeight,
+            stored.timelineHeight ?? DEFAULT_SETTINGS.timelineHeight,
           timelineHeightUnit:
-            result.timelineHeightUnit ?? DEFAULT_SETTINGS.timelineHeightUnit,
-          actionArea: result.actionArea ?? DEFAULT_SETTINGS.actionArea,
+            stored.timelineHeightUnit ?? DEFAULT_SETTINGS.timelineHeightUnit,
+          actionArea: stored.actionArea ?? DEFAULT_SETTINGS.actionArea,
           actionAreaSize:
-            result.actionAreaSize ?? DEFAULT_SETTINGS.actionAreaSize,
+            stored.actionAreaSize ?? DEFAULT_SETTINGS.actionAreaSize,
           domainRules: finalRules,
         });
       }
@@ -104,7 +136,26 @@ export const saveSettings = (settings: Partial<PopupSettings>) => {
   chrome.storage.sync.set(settings);
 };
 
-export const sendMessageToCurrentTab = (message: any) => {
+export const subscribeToEnabledChanges = (
+  onChange: (isEnabled: boolean) => void
+) => {
+  const handleStorageChange = (
+    changes: Record<string, chrome.storage.StorageChange>,
+    areaName: chrome.storage.AreaName
+  ) => {
+    const nextIsEnabled = changes.isEnabled?.newValue;
+
+    if (areaName === 'sync' && typeof nextIsEnabled === 'boolean') {
+      onChange(nextIsEnabled);
+    }
+  };
+
+  chrome.storage.onChanged.addListener(handleStorageChange);
+
+  return () => chrome.storage.onChanged.removeListener(handleStorageChange);
+};
+
+export const sendMessageToCurrentTab = (message: Record<string, unknown>) => {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     if (tabs[0]?.id) {
       chrome.tabs.sendMessage(tabs[0].id, message);

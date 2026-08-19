@@ -1,0 +1,764 @@
+- generic [ref=f1e3]:
+  - banner [ref=f1e4]:
+    - generic [ref=f1e5]:
+      - link "Link to the Steam Homepage" [ref=f1e8] [cursor=pointer]:
+        - /url: https://store.steampowered.com/?snr=1_5_9__global-header
+        - img "Link to the Steam Homepage" [ref=f1e9]
+      - navigation "Global Menu" [ref=f1e10]:
+        - link "STORE" [ref=f1e11] [cursor=pointer]:
+          - /url: https://store.steampowered.com/?snr=1_5_9__global-header
+        - link "COMMUNITY" [ref=f1e12] [cursor=pointer]:
+          - /url: https://steamcommunity.com/
+        - link "About" [ref=f1e13] [cursor=pointer]:
+          - /url: https://store.steampowered.com/about/?snr=1_5_9__global-header
+        - link "SUPPORT" [ref=f1e14] [cursor=pointer]:
+          - /url: https://help.steampowered.com/en/
+      - navigation "Account Menu" [ref=f1e16]:
+        - link "Install Steam" [ref=f1e17] [cursor=pointer]:
+          - /url: https://store.steampowered.com/about/?snr=1_5_9__global-header
+        - link "sign in" [ref=f1e19] [cursor=pointer]:
+          - /url: https://store.steampowered.com/login/?redir=app%2F2399420%2FLe_Mans_Ultimate%2F&redir_ssl=1&snr=1_5_9__global-header
+        - text: "| language"
+  - navigation "Store menu" [ref=f1e22]:
+    - generic [ref=f1e23]:
+      - generic [ref=f1e25]:
+        - button "Browse" [ref=f1e26] [cursor=pointer]
+        - button "Recommendations" [ref=f1e30] [cursor=pointer]
+        - button "Categories" [ref=f1e34] [cursor=pointer]
+        - button "Hardware" [ref=f1e38] [cursor=pointer]
+        - button "Ways to Play" [ref=f1e42] [cursor=pointer]
+        - button "Special Sections" [ref=f1e46] [cursor=pointer]
+      - generic [ref=f1e50]:
+        - search [ref=f1e51]:
+          - combobox "Search the store" [ref=f1e53]
+          - button [ref=f1e54] [cursor=pointer]:
+            - img "Search" [ref=f1e55]
+        - link "Advanced Search" [ref=f1e58] [cursor=pointer]:
+          - /url: https://store.steampowered.com/search/?term=&snr=1_7_15__advancedsearch
+  - main [ref=f1e60]:
+    - generic [ref=f1e61]:
+      - generic [ref=f1e499]:
+        - generic [ref=f1e500]: Open in Desktop App
+        - generic [ref=f1e502]: You're not signed in!Open this page in the Steam App to wishlist, follow, purchase and see recommendations
+      - generic [ref=f1e64]:
+        - generic [ref=f1e65]:
+          - generic [ref=f1e67]:
+            - generic [ref=f1e69]:
+              - link "All Games" [ref=f1e70] [cursor=pointer]:
+                - /url: https://store.steampowered.com/search/?term=&snr=1_5_9__205
+              - text: ">"
+              - link "Racing Games" [ref=f1e71] [cursor=pointer]:
+                - /url: https://store.steampowered.com/genre/Racing/?snr=1_5_9__205
+              - text: ">"
+              - link "Le Mans Ultimate" [ref=f1e72] [cursor=pointer]:
+                - /url: https://store.steampowered.com/app/2399420/?snr=1_5_9__205
+            - generic [ref=f1e74]:
+              - link "Community Hub" [ref=f1e76] [cursor=pointer]:
+                - /url: https://steamcommunity.com/app/2399420
+              - heading "Le Mans Ultimate" [level=1] [ref=f1e78]
+          - generic [ref=f1e81]:
+            - generic [ref=f1e83]:
+              - generic [ref=f1e84]: Step into the world of endurance racing and race on the official game of the FIA World Endurance Championship and 24 Hours of Le Mans. Race the latest Hypercars, LMGT3, LMP2 and GTE machinery on laser-scanned circuits with dynamic weather, ranked online competition, asynchronous Co-op and VR.
+              - generic [ref=f1e87]:
+                - generic [ref=f1e88]:
+                  - generic [ref=f1e89]:
+                    - 'link "Recent Reviews: Mostly Positive (463)" [ref=f1e90] [cursor=pointer]':
+                      - /url: "#app_reviews_hash"
+                      - generic [ref=f1e91]: "Recent Reviews:"
+                      - generic [ref=f1e92]: Mostly Positive (463)
+                    - 'link "English Reviews: Mostly Positive (6,647)" [ref=f1e93] [cursor=pointer]':
+                      - /url: "#app_reviews_hash"
+                      - generic [ref=f1e94]: "English Reviews:"
+                      - generic [ref=f1e95]: Mostly Positive (6,647)
+                  - generic [ref=f1e96]:
+                    - generic [ref=f1e97]: "Release Date:"
+                    - generic [ref=f1e98]: 22 Jul, 2025
+                  - generic [ref=f1e99]:
+                    - generic [ref=f1e100]: "Developer:"
+                    - link "Studio 397" [ref=f1e102] [cursor=pointer]:
+                      - /url: https://store.steampowered.com/developer/MotorsportGames?snr=1_5_9__2000
+                  - generic [ref=f1e103]:
+                    - generic [ref=f1e104]: "Publisher:"
+                    - link "Studio 397" [ref=f1e106] [cursor=pointer]:
+                      - /url: https://store.steampowered.com/publisher/MotorsportGames?snr=1_5_9__2000
+                - generic [ref=f1e108]:
+                  - generic [ref=f1e109]: "Popular user-defined tags for this product:"
+                  - generic [ref=f1e110]:
+                    - link "Racing" [ref=f1e111] [cursor=pointer]:
+                      - /url: https://store.steampowered.com/tags/en/Racing/?snr=1_5_9__409
+                    - link "Automobile Sim" [ref=f1e112] [cursor=pointer]:
+                      - /url: https://store.steampowered.com/tags/en/Automobile%20Sim/?snr=1_5_9__409
+                    - link "Multiplayer" [ref=f1e113] [cursor=pointer]:
+                      - /url: https://store.steampowered.com/tags/en/Multiplayer/?snr=1_5_9__409
+                    - link "Driving" [ref=f1e114] [cursor=pointer]:
+                      - /url: https://store.steampowered.com/tags/en/Driving/?snr=1_5_9__409
+                    - link "Realistic" [ref=f1e115] [cursor=pointer]:
+                      - /url: https://store.steampowered.com/tags/en/Realistic/?snr=1_5_9__409
+                    - button "+" [ref=f1e116] [cursor=pointer]
+            - generic [ref=f1e506]:
+              - generic [ref=f1e511]:
+                - generic "Bahrain Hypercar compilation - Gameplay" [ref=f1e512]
+                - generic [ref=f1e513]:
+                  - generic [ref=f1e520]:
+                    - generic [ref=f1e521]:
+                      - generic [ref=f1e523] [cursor=pointer]
+                      - generic [ref=f1e528] [cursor=pointer]
+                      - generic [ref=f1e535]:
+                        - generic [ref=f1e536]: 0:59
+                        - generic [ref=f1e537]: /
+                        - generic [ref=f1e538]: 2:04
+                    - generic [ref=f1e539]:
+                      - generic [ref=f1e541] [cursor=pointer]
+                      - generic [ref=f1e545] [cursor=pointer]
+                      - generic [ref=f1e549] [cursor=pointer]
+                  - generic:
+                    - generic:
+                      - generic: Gameplay
+                      - generic: Bahrain Hypercar compilation - Gameplay
+              - generic [ref=f1e552]:
+                - generic [ref=f1e553]:
+                  - generic [ref=f1e554] [cursor=pointer]
+                  - generic [ref=f1e559] [cursor=pointer]
+                  - generic [ref=f1e564] [cursor=pointer]
+                  - generic [ref=f1e566] [cursor=pointer]
+                  - generic [ref=f1e568] [cursor=pointer]
+                  - generic [ref=f1e570] [cursor=pointer]
+                  - generic [ref=f1e572] [cursor=pointer]
+                  - generic [ref=f1e574] [cursor=pointer]
+                  - generic [ref=f1e576] [cursor=pointer]
+                  - generic [ref=f1e578] [cursor=pointer]
+                  - generic [ref=f1e580] [cursor=pointer]
+                  - generic [ref=f1e582] [cursor=pointer]
+                  - generic [ref=f1e584] [cursor=pointer]
+                  - generic [ref=f1e586] [cursor=pointer]
+                  - generic [ref=f1e588] [cursor=pointer]
+                  - generic [ref=f1e590] [cursor=pointer]
+                  - generic [ref=f1e592] [cursor=pointer]
+                  - generic [ref=f1e594] [cursor=pointer]
+                  - generic [ref=f1e596] [cursor=pointer]
+                  - generic [ref=f1e598] [cursor=pointer]
+                  - generic [ref=f1e600] [cursor=pointer]
+                  - generic [ref=f1e602] [cursor=pointer]
+                  - generic [ref=f1e604] [cursor=pointer]
+                  - generic [ref=f1e606] [cursor=pointer]
+                  - generic [ref=f1e608] [cursor=pointer]
+                  - generic [ref=f1e610] [cursor=pointer]
+                  - generic [ref=f1e612] [cursor=pointer]
+                  - generic [ref=f1e614] [cursor=pointer]
+                  - generic [ref=f1e616] [cursor=pointer]
+                  - generic [ref=f1e618] [cursor=pointer]
+                  - generic [ref=f1e620] [cursor=pointer]
+                  - generic [ref=f1e622] [cursor=pointer]
+                  - generic [ref=f1e624] [cursor=pointer]
+                  - generic [ref=f1e626] [cursor=pointer]
+                  - generic [ref=f1e628] [cursor=pointer]
+                  - generic [ref=f1e630] [cursor=pointer]
+                  - generic [ref=f1e632] [cursor=pointer]
+                  - generic [ref=f1e634] [cursor=pointer]
+                  - generic [ref=f1e636] [cursor=pointer]
+                  - generic [ref=f1e638] [cursor=pointer]
+                  - generic [ref=f1e640] [cursor=pointer]
+                  - generic [ref=f1e642] [cursor=pointer]
+                  - generic [ref=f1e644] [cursor=pointer]
+                  - generic [ref=f1e646] [cursor=pointer]
+                  - generic [ref=f1e648] [cursor=pointer]
+                  - generic [ref=f1e650] [cursor=pointer]
+                  - generic [ref=f1e652] [cursor=pointer]
+                  - generic [ref=f1e654] [cursor=pointer]
+                  - generic [ref=f1e656] [cursor=pointer]
+                  - generic [ref=f1e658] [cursor=pointer]
+                  - generic [ref=f1e660] [cursor=pointer]
+                  - generic [ref=f1e662] [cursor=pointer]
+                  - generic [ref=f1e664] [cursor=pointer]
+                  - generic [ref=f1e666] [cursor=pointer]
+                  - generic [ref=f1e668] [cursor=pointer]
+                  - generic [ref=f1e670] [cursor=pointer]
+                  - generic [ref=f1e672] [cursor=pointer]
+                  - generic [ref=f1e674] [cursor=pointer]
+                  - generic [ref=f1e676] [cursor=pointer]
+                  - generic [ref=f1e678] [cursor=pointer]
+                  - generic [ref=f1e680] [cursor=pointer]
+                  - generic [ref=f1e682] [cursor=pointer]
+                  - generic [ref=f1e684] [cursor=pointer]
+                  - generic [ref=f1e686] [cursor=pointer]
+                  - generic [ref=f1e688] [cursor=pointer]
+                  - generic [ref=f1e690] [cursor=pointer]
+                  - generic [ref=f1e692] [cursor=pointer]
+                  - generic [ref=f1e694] [cursor=pointer]
+                  - generic [ref=f1e696] [cursor=pointer]
+                  - generic [ref=f1e701] [cursor=pointer]
+                - generic [ref=f1e706]:
+                  - generic [ref=f1e707] [cursor=pointer]
+                  - generic [ref=f1e711] [cursor=pointer]
+                  - generic [ref=f1e712] [cursor=pointer]
+        - generic [ref=f1e129]:
+          - paragraph [ref=f1e130]:
+            - link "Sign in" [ref=f1e131] [cursor=pointer]:
+              - /url: https://store.steampowered.com/login/?redir=app%2F2399420&snr=1_5_9_
+            - text: to add this item to your wishlist, follow it, or mark it as ignored
+          - link [ref=f1e133] [cursor=pointer]:
+            - /url: javascript:void(0)
+        - generic [ref=f1e136]:
+          - generic [ref=f1e137]:
+            - generic [ref=f1e138]:
+              - generic [ref=f1e139]:
+                - link "Single-player" [ref=f1e140] [cursor=pointer]:
+                  - /url: https://store.steampowered.com/search/?category2=2&snr=1_5_9__423
+                - link "Online PvP" [ref=f1e143] [cursor=pointer]:
+                  - /url: https://store.steampowered.com/search/?category2=36&snr=1_5_9__423
+                - link "Online Co-op" [ref=f1e146] [cursor=pointer]:
+                  - /url: https://store.steampowered.com/search/?category2=38&snr=1_5_9__423
+                - link "VR Supported" [ref=f1e149] [cursor=pointer]:
+                  - /url: https://store.steampowered.com/search/?vrsupport=402&snr=1_5_9__423
+                - link "Family Sharing" [ref=f1e152] [cursor=pointer]:
+                  - /url: https://store.steampowered.com/search/?category2=62&snr=1_5_9__423
+              - generic [ref=f1e716]:
+                - generic [ref=f1e717]: Partial Controller Support
+                - link "Xbox Controllers" [ref=f1e718] [cursor=pointer]:
+                  - /url: https://store.steampowered.com/search/?controllersupport=18
+              - generic [ref=f1e155]: "Requires 3rd-Party Account: RaceControl (Supports Linking to Steam Account)"
+              - generic [ref=f1e156]:
+                - generic [ref=f1e157]: Uses Kernel Level Anti-Cheat
+                - generic [ref=f1e158]: Easy Anti-Cheat - Requires manual removal after game uninstall
+              - button "Requires agreement to a 3rd-party EULA Le Mans Ultimate EULA" [ref=f1e159]:
+                - generic [ref=f1e160]: Requires agreement to a 3rd-party EULA
+                - link "Le Mans Ultimate EULA" [ref=f1e162] [cursor=pointer]:
+                  - /url: https://store.steampowered.com//eula/2399420_eula_1
+            - generic [ref=f1e163]:
+              - generic [ref=f1e164]: "Languages:"
+              - generic [ref=f1e165]:
+                - table [ref=f1e166]:
+                  - rowgroup [ref=f1e167]:
+                    - row [ref=f1e168]:
+                      - columnheader [ref=f1e169]
+                      - columnheader "Interface" [ref=f1e170]
+                      - columnheader "Full Audio" [ref=f1e171]
+                      - columnheader "Subtitles" [ref=f1e172]
+                    - row [ref=f1e173]:
+                      - cell "English" [ref=f1e174]
+                      - cell "✔" [ref=f1e175]
+                      - cell [ref=f1e176]
+                      - cell [ref=f1e177]
+                    - row [ref=f1e178]:
+                      - cell "French" [ref=f1e179]
+                      - cell "✔" [ref=f1e180]
+                      - cell [ref=f1e181]
+                      - cell [ref=f1e182]
+                    - row [ref=f1e183]:
+                      - cell "Italian" [ref=f1e184]
+                      - cell "✔" [ref=f1e185]
+                      - cell [ref=f1e186]
+                      - cell [ref=f1e187]
+                    - row [ref=f1e188]:
+                      - cell "German" [ref=f1e189]
+                      - cell "✔" [ref=f1e190]
+                      - cell [ref=f1e191]
+                      - cell [ref=f1e192]
+                    - row [ref=f1e193]:
+                      - cell "Spanish - Spain" [ref=f1e194]
+                      - cell "✔" [ref=f1e195]
+                      - cell [ref=f1e196]
+                      - cell [ref=f1e197]
+                - generic [ref=f1e198] [cursor=pointer]: See all 10 supported languages
+            - group "Steam Deck Compatibility" [ref=f1e726]:
+              - generic [ref=f1e728]:
+                - generic [ref=f1e729]: Unsupported
+                - button "Learn more" [ref=f1e732] [cursor=pointer]
+            - generic [ref=f1e199]:
+              - generic [ref=f1e200]: Includes 44 Steam Achievements
+              - generic [ref=f1e201]:
+                - img "Accomplished" [ref=f1e203]
+                - img "Take on Me" [ref=f1e205]
+                - img "Hunting High and Low" [ref=f1e207]
+                - img "First Timer" [ref=f1e209]
+                - link "View all 44" [ref=f1e210] [cursor=pointer]:
+                  - /url: https://steamcommunity.com/stats/2399420/achievements
+                  - text: Viewall 44
+            - generic [ref=f1e213]:
+              - generic [ref=f1e214]:
+                - text: "Title: Le Mans Ultimate Genre:"
+                - generic [ref=f1e215]:
+                  - link "Racing" [ref=f1e216] [cursor=pointer]:
+                    - /url: https://store.steampowered.com/genre/Racing/?snr=1_5_9__408
+                  - text: ","
+                  - link "Simulation" [ref=f1e217] [cursor=pointer]:
+                    - /url: https://store.steampowered.com/genre/Simulation/?snr=1_5_9__408
+                  - text: ","
+                  - link "Sports" [ref=f1e218] [cursor=pointer]:
+                    - /url: https://store.steampowered.com/genre/Sports/?snr=1_5_9__408
+                - generic [ref=f1e219]:
+                  - text: "Developer:"
+                  - link "Studio 397" [ref=f1e220] [cursor=pointer]:
+                    - /url: https://store.steampowered.com/developer/MotorsportGames?snr=1_5_9__408
+                - generic [ref=f1e221]:
+                  - text: "Publisher:"
+                  - link "Studio 397" [ref=f1e222] [cursor=pointer]:
+                    - /url: https://store.steampowered.com/publisher/MotorsportGames?snr=1_5_9__408
+                - text: "Release Date: 22 Jul, 2025 Early Access Release Date: 20 Feb, 2024"
+              - generic [ref=f1e223]:
+                - link [ref=f1e224] [cursor=pointer]:
+                  - /url: https://steamcommunity.com/linkfilter/?u=http%3A%2F%2Flemansultimate.com
+                  - text: Visit the website
+                  - img "External" [ref=f1e225]
+                - link "View update history" [ref=f1e226] [cursor=pointer]:
+                  - /url: https://store.steampowered.com/newshub/?appids=2399420&snr=1_5_9__408
+                - link "Read related news" [ref=f1e227] [cursor=pointer]:
+                  - /url: https://store.steampowered.com/newshub/app/2399420?snr=1_5_9__408
+                - link "View discussions" [ref=f1e228] [cursor=pointer]:
+                  - /url: https://steamcommunity.com/app/2399420/discussions/
+                - link "Find Community Groups" [ref=f1e229] [cursor=pointer]:
+                  - /url: https://steamcommunity.com/actions/Search?T=ClanAccount&K=Le%20Mans%20Ultimate
+            - generic [ref=f1e230]:
+              - link "Embed" [ref=f1e231] [cursor=pointer]:
+                - /url: "#"
+              - link "Report this Product" [ref=f1e233] [cursor=pointer]:
+                - /url: javascript:void(0)
+            - generic [ref=f1e236]:
+              - generic [ref=f1e237]: Awards
+              - paragraph [ref=f1e242]
+            - generic [ref=f1e246]:
+              - generic [ref=f1e247]: Content
+              - generic [ref=f1e248]:
+                - generic [ref=f1e249]: Includes Interactive Elements
+                - paragraph [ref=f1e250]: Online interactivity
+          - generic [ref=f1e251]:
+            - generic [ref=f1e252]:
+              - generic [ref=f1e733]: This game runs in both standard and VR modes. See system requirements for optional VR headset details.
+              - region [ref=f1e254]:
+                - generic [ref=f1e255]: VR Supported
+                - heading "Buy Le Mans Ultimate" [level=2] [ref=f1e259]
+                - generic [ref=f1e261]:
+                  - generic [ref=f1e262]: 39,99€
+                  - button "Add to Cart" [ref=f1e264] [cursor=pointer]
+              - region [ref=f1e267]:
+                - heading "Buy Le Mans Ultimate WEC Full Access Bundle BUNDLE (?)" [level=2] [ref=f1e270]:
+                  - text: Buy Le Mans Ultimate WEC Full Access Bundle
+                  - generic [ref=f1e271]: BUNDLE (?)
+                - paragraph [ref=f1e272]:
+                  - generic [ref=f1e744]: Buy this bundle to save 15% off all 6 items!
+                  - generic [ref=f1e746]:
+                    - link [ref=f1e747] [cursor=pointer]:
+                      - /url: https://store.steampowered.com/app/2399420/?snr=1_5_9__412
+                      - img "Le Mans Ultimate" [ref=f1e748]
+                    - link [ref=f1e749] [cursor=pointer]:
+                      - /url: https://store.steampowered.com/app/2973290/?snr=1_5_9__412
+                      - img "Le Mans Ultimate - 2024 Pack 1" [ref=f1e750]
+                    - link [ref=f1e751] [cursor=pointer]:
+                      - /url: https://store.steampowered.com/app/3151390/?snr=1_5_9__412
+                      - img "Le Mans Ultimate - 2024 Pack 2" [ref=f1e752]
+                    - link [ref=f1e753] [cursor=pointer]:
+                      - /url: https://store.steampowered.com/app/3260810/?snr=1_5_9__412
+                      - img "Le Mans Ultimate - 2024 Pack 3" [ref=f1e754]
+                    - link [ref=f1e755] [cursor=pointer]:
+                      - /url: https://store.steampowered.com/app/3260820/?snr=1_5_9__412
+                      - img "Le Mans Ultimate - 2024 Pack 4" [ref=f1e756]
+                    - link [ref=f1e757] [cursor=pointer]:
+                      - /url: https://store.steampowered.com/app/3511300/?snr=1_5_9__412
+                      - img "Le Mans Ultimate - 2024 Pack 5" [ref=f1e758]
+                - generic [ref=f1e279]:
+                  - link "Bundle info" [ref=f1e282] [cursor=pointer]:
+                    - /url: https://store.steampowered.com/bundle/56301/Le_Mans_Ultimate_WEC_Full_Access_Bundle/?snr=1_5_9__403
+                  - generic [ref=f1e284]:
+                    - link "0% off. 84,94€ normally, discounted to 84,94€" [ref=f1e285]:
+                      - generic [ref=f1e286]: "-15%"
+                      - generic [ref=f1e288]:
+                        - generic [ref=f1e759]: "Your Price:"
+                        - generic [ref=f1e760]: 84,94€
+                    - button "Add to Cart" [ref=f1e290] [cursor=pointer]
+              - generic [ref=f1e292]:
+                - heading "Content For This Game" [level=2] [ref=f1e293]:
+                  - text: Content For This Game
+                  - link [ref=f1e295] [cursor=pointer]:
+                    - /url: https://store.steampowered.com/dlc/2399420/Le_Mans_Ultimate/?snr=1_5_9__1061
+                    - text: Browse all
+                    - emphasis [ref=f1e296]: (11)
+                - generic [ref=f1e299]:
+                  - generic [ref=f1e300]:
+                    - link "Le Mans Ultimate - 2024 Pack 1 11,99€" [ref=f1e301] [cursor=pointer]:
+                      - /url: https://store.steampowered.com/app/2973290/Le_Mans_Ultimate__2024_Pack_1/?snr=1_5_9__405
+                      - generic [ref=f1e302]: Le Mans Ultimate - 2024 Pack 1
+                      - generic [ref=f1e303]: 11,99€
+                    - link "Le Mans Ultimate - 2024 Pack 2 11,99€" [ref=f1e304] [cursor=pointer]:
+                      - /url: https://store.steampowered.com/app/3151390/Le_Mans_Ultimate__2024_Pack_2/?snr=1_5_9__405
+                      - generic [ref=f1e305]: Le Mans Ultimate - 2024 Pack 2
+                      - generic [ref=f1e306]: 11,99€
+                    - link "Le Mans Ultimate - 2024 Pack 3 16,99€" [ref=f1e307] [cursor=pointer]:
+                      - /url: https://store.steampowered.com/app/3260810/Le_Mans_Ultimate__2024_Pack_3/?snr=1_5_9__405
+                      - generic [ref=f1e308]: Le Mans Ultimate - 2024 Pack 3
+                      - generic [ref=f1e309]: 16,99€
+                    - link "Le Mans Ultimate - 2024 Pack 4 6,99€" [ref=f1e310] [cursor=pointer]:
+                      - /url: https://store.steampowered.com/app/3260820/Le_Mans_Ultimate__2024_Pack_4/?snr=1_5_9__405
+                      - generic [ref=f1e311]: Le Mans Ultimate - 2024 Pack 4
+                      - generic [ref=f1e312]: 6,99€
+                    - link "Le Mans Ultimate - 2024 Pack 5 11,99€" [ref=f1e313] [cursor=pointer]:
+                      - /url: https://store.steampowered.com/app/3511300/Le_Mans_Ultimate__2024_Pack_5/?snr=1_5_9__405
+                      - generic [ref=f1e314]: Le Mans Ultimate - 2024 Pack 5
+                      - generic [ref=f1e315]: 11,99€
+                  - generic:
+                    - button "See All" [ref=f1e317] [cursor=pointer]
+                    - generic [ref=f1e318]: showing 1 - 5 of 11
+            - generic [ref=f1e763]:
+              - generic [ref=f1e764]:
+                - heading [level=2] [ref=f1e765]:
+                  - text: Recent Events & Announcements
+                  - button "View All" [ref=f1e766] [cursor=pointer]
+                - generic [ref=f1e767]:
+                  - button "News Some users may need to reinstall EAC in order open and play the game To do this, players should go to their installation folder below and run the install command steam -> steamapp... Le Mans Ultimate - Easy Anti-cheat update - 18th August Tue, August 18, 2026" [ref=f1e769] [cursor=pointer]:
+                    - generic:
+                      - generic: News
+                      - generic: Some users may need to reinstall EAC in order open and play the game To do this, players should go to their installation folder below and run the install command steam -> steamapp...
+                    - generic [ref=f1e774]:
+                      - generic [ref=f1e775]: Le Mans Ultimate - Easy Anti-cheat update - 18th August
+                      - generic [ref=f1e776]: Tue, August 18, 2026
+                  - button "Major Update Headlines - Game Improved protest system, with reports to come directly from event replays. Each player has 3 protests per month, with protest credits returned on a successful... V1.4, 28th July - release notes Tue, July 28, 2026" [ref=f1e779] [cursor=pointer]:
+                    - generic:
+                      - generic: Major Update
+                      - generic: Headlines - Game Improved protest system, with reports to come directly from event replays. Each player has 3 protests per month, with protest credits returned on a successful...
+                    - generic [ref=f1e784]:
+                      - generic [ref=f1e785]: V1.4, 28th July - release notes
+                      - generic [ref=f1e786]: Tue, July 28, 2026
+              - 'button "See all updates (Latest: Aug 17)" [ref=f1e793] [cursor=pointer]'
+            - generic [ref=f1e320]:
+              - generic [ref=f1e322]:
+                - heading "About This Game" [level=2] [ref=f1e323]
+                - paragraph [ref=f1e324]:
+                  - strong [ref=f1e325]: INCLUDED IN BASE GAME
+                - list [ref=f1e326]:
+                  - listitem [ref=f1e327]:
+                    - paragraph [ref=f1e328]: 19 cars across Hypercar, LMP2, LMP2, LMGT3 and LMGTE
+                  - listitem [ref=f1e329]:
+                    - paragraph [ref=f1e330]: 7 laser scanned tracks with multiple configurations
+                  - listitem [ref=f1e331]:
+                    - paragraph [ref=f1e332]: Ranked multiplayer and hosted servers
+                  - listitem [ref=f1e333]:
+                    - paragraph [ref=f1e334]: Race Weekend, mid-race saves, asynchronous co-op and VR
+                - paragraph [ref=f1e335]
+                - paragraph [ref=f1e336]:
+                  - strong [ref=f1e337]: DLC
+                - list [ref=f1e338]:
+                  - listitem [ref=f1e339]:
+                    - paragraph [ref=f1e340]: WEC Expansion Pack 1 - 5
+                  - listitem [ref=f1e341]:
+                    - paragraph [ref=f1e342]: ELMS Expansion Packs 1 - 3
+                  - listitem [ref=f1e343]:
+                    - paragraph [ref=f1e344]: US Track Pass Expansion
+                - paragraph [ref=f1e345]
+                - paragraph [ref=f1e346]:
+                  - strong [ref=f1e347]: THE OFFICIAL GAME OF THE FIA WORLD ENDURANCE CHAMPIONSHIP
+                - paragraph [ref=f1e348]: Le Mans Ultimate is the official game of the FIA World Endurance Championship and 24 Hours of Le Mans. Play out the exciting new era for sportscar racing in unparalleled detail. Le Mans Ultimate offers an immersive game for both seasoned sim racers and those new to the sport and genre, growing and evolving with the real-life FIA WEC series.
+                - paragraph [ref=f1e349]
+                - paragraph [ref=f1e350]:
+                  - button [ref=f1e354]:
+                    - img "Pause animation" [ref=f1e355]
+                - paragraph [ref=f1e356]
+                - paragraph [ref=f1e357]:
+                  - strong [ref=f1e358]: INCREDIBLE CARS FROM SPORTSCAR RACING
+                  - text: Drive the officially licensed manufacturer Hypercars from the incredible 2023 centenary season in the included base game content. Recreate tantalising on track battles between Toyota, Ferrari, Porsche, Cadillac, Peugeot, Glickenhaus and Vanwall.
+                - paragraph [ref=f1e359]: Alongside the Hypercars comes a competitive array of classes. Lock horns in wheel-to-wheel LMP2 competition as well as the ultra-close, thunderous GTE cars. Drive for supremacy for famous brands such as Aston Martin, Corvette, Ferrari and Porsche.
+                - paragraph [ref=f1e360]: 3 LMGT3 cars from the 2024 and 2025 season (Mercedes AMG Evo, Ford Mustang and McLaren 720 Evo) have been added to the base game along with the incredible Adrian Newey designed Aston Martin Valkyrie AMR LMH with its ear-splitting V12.
+                - paragraph [ref=f1e361]:
+                  - text: 19 cars are available in the base game with over 200 different livery variations.
+                  - strong [ref=f1e362]: LASER-SCANNED LEGENDARY CIRCUITS
+                  - text: "Enjoy the pulsating challenge of racing around some of the most revered circuits in the world including the seven destinations on the 2023 FIA WEC calendar in the base game: Autodromo Nazionale Monza, Circuit de Spa-Francorchamps, Sebring International Raceway, Bahrain International Circuit, Algarve International Circuit (Portimão), Fuji Speedway and the legendary – Circuit de la Sarthe in Le Mans – the playground for the ultimate racing experience."
+                - paragraph [ref=f1e363]
+                - paragraph [ref=f1e364]:
+                  - button [ref=f1e368]:
+                    - img "Pause animation" [ref=f1e369]
+                - paragraph [ref=f1e370]
+                - paragraph [ref=f1e371]:
+                  - strong [ref=f1e372]: DRIVERS... START, YOUR ENGINES!
+                - paragraph [ref=f1e373]: Experience the best of American road racing with the latest track DLC! 6 tracks, 3 individual packs or 1 track pass with all content included.
+                - paragraph [ref=f1e374]:
+                  - strong [ref=f1e375]: US Track Pack 1 OUT NOW
+                  - text: "- including WeatherTech Raceway Laguna Seca & Daytona International Speedway"
+                - paragraph [ref=f1e376]
+                - paragraph [ref=f1e377]:
+                  - button [ref=f1e381]:
+                    - img "Pause animation" [ref=f1e382]
+                - paragraph [ref=f1e383]
+                - paragraph [ref=f1e384]:
+                  - strong [ref=f1e385]: "NOW AVAILABLE: 2024 SEASON CONTENT"
+                - paragraph [ref=f1e386]: Get the latest content from the 2024 FIA WEC season - available as individual packs or as a bundle.
+                - paragraph [ref=f1e387]: These packs add 7 additional LMGT3 cars, 3 Hypercars and 4 incredible circuits - Imola, Interlagos, COTA (Circuit of the Americas), Qatar (Lusail International Circuit)
+                - paragraph [ref=f1e388]:
+                  - strong [ref=f1e389]
+                - paragraph [ref=f1e390]:
+                  - button [ref=f1e394]:
+                    - img "Pause animation" [ref=f1e395]
+                  - strong [ref=f1e396]
+                - paragraph [ref=f1e397]:
+                  - strong [ref=f1e398]: INDUSTRY-LEADING PHYSICS MODEL
+                - paragraph [ref=f1e399]: Le Mans Ultimate uses the industry leading physics and handling simulation DNA from pMotor 2.5 as used and further improved from rFactor2 – enabling the game to take on more advanced simulation techniques, such as hybrid units, whilst also become more accessible and user friendly to the community – removing barriers to entry while also maintaining the key core elements of sim racing.
+                - paragraph [ref=f1e400]: Tyre dynamics are first-in-class, utilising an advanced “brush” model that accurately portrays slip angles and models advanced features such as vehicle “flat spots” that you can really feel.
+                - paragraph [ref=f1e401]: For wheel users, the 400Hz physics engine is directly translated into force feedback, delivering a highly detailed and predictable feeling to your steering wheel with presets available directly collaborated on with a number of prominent equipment manufacturers.
+                - paragraph [ref=f1e402]: The game also features improved in-game controller support as well as a selectable and customisable difficulty level – to allow the player to determine their own skill level with help for first timers allowing adjustable assists.
+                - paragraph [ref=f1e403]
+                - paragraph [ref=f1e404]:
+                  - strong [ref=f1e405]: DYNAMIC RACING EXPERIENCE
+                - paragraph [ref=f1e406]: Realistic day and night cycles are a key element of this simulation with incredible lighting effects as you race into dusk, through night and again into dawn down the Mulsanne at over 200mph.
+                - paragraph [ref=f1e407]: Le Mans Ultimate uses an advancement in Real Road 2.0 track evolution simulation found uniquely in Studio 397 titles. Like a real race session, the track will begin as a green, relatively gripless circuit at the start of a weekend and rubber in as more cars pass over the racing line – with cars moving the dust, dirt and marbles off-line.
+                - paragraph [ref=f1e408]: Work has been undertaken in several areas, including the dynamic weather effects too, such as rainfall and debris on windscreens and more realistic flow of water and formation of puddles on the circuit.
+                - paragraph [ref=f1e409]:
+                  - button [ref=f1e413]:
+                    - img "Pause animation" [ref=f1e414]
+                - paragraph [ref=f1e415]: The cars will also change throughout the race, and the build-up of dirt and debris will cover the car – giving it the authentic weathered, endurance look.
+                - paragraph [ref=f1e416]:
+                  - button [ref=f1e420]:
+                    - img "Pause animation" [ref=f1e421]
+                - paragraph [ref=f1e422]
+                - paragraph [ref=f1e423]:
+                  - strong [ref=f1e424]: MULTIPLAYER - COMPETE IN SKILL BASED EVENTS OR MANAGE YOUR OWN SERVER
+                - paragraph [ref=f1e425]: For those looking for the edge of the seat, wheel-to-wheel competition against real-life drivers, the Online function, powered by RaceControl, will be home to that pulsating challenge. Racers are able to take part in ranked Daily, Weekly and Special Events that provide the opportunity to build the player’s Driver and Safety rankings. As the player unlocks higher ranked races and exclusive events when the game develops and grows alongside the real-life FIA World Endurance Championship.
+                - paragraph [ref=f1e426]: Also available is player-controlled server hosting so users and leagues can configure their own experience, when they want it.
+                - paragraph [ref=f1e427]: For the latest information & schedule on all online multiplayer, head to RaceControl.GG
+                - paragraph [ref=f1e428]
+                - paragraph [ref=f1e429]:
+                  - strong [ref=f1e430]: ULTIMATE RACE WEEKEND
+                  - text: Single Player fans can enjoy the Race Weekend feature which provides the perfect proving ground for racing against formidable AI opponents which customisable difficulty.
+                - paragraph [ref=f1e431]: In this game mode players can define their race experience - adjusting the time of day, session duration and weather conditions to your liking. From there, you can refine your car set-up and race wheel-to-wheel taking part in Practice, Qualifying and the main Race.
+                - paragraph [ref=f1e432]: Players can also save their Race Weekend at pitstops, allowing you to complete your endurance races when it is convenient to you.
+                - paragraph [ref=f1e433]
+                - paragraph [ref=f1e434]:
+                  - strong [ref=f1e435]: "PLAY TOGETHER: AROUND YOUR SCHEDULE [CO-OP MODE]"
+                - paragraph [ref=f1e436]: An innovative co-operative mode has been added to the game, allowing you to race with your friends against the AI opponents at a time convenient to you.
+                - paragraph [ref=f1e437]: This “play by mail” style game online game mode allows you to invite your friends to complete a race, at a difficulty level of each individual user’s choosing whilst also racing for supremacy on the leaderboards as each action on track awards you points.
+              - generic [ref=f1e438]: READ MORE
+            - generic [ref=f1e441]:
+              - heading "System Requirements" [level=2] [ref=f1e442]
+              - generic [ref=f1e444]:
+                - list [ref=f1e446]:
+                  - strong [ref=f1e447]: "Minimum:"
+                  - list [ref=f1e448]:
+                    - listitem [ref=f1e449]:
+                      - strong [ref=f1e450]: "OS:"
+                      - text: Windows 10 or 11
+                    - listitem [ref=f1e451]:
+                      - strong [ref=f1e452]: "Processor:"
+                      - text: Intel Core i5-8400 or AMD Ryzen 5 2600
+                    - listitem [ref=f1e453]:
+                      - strong [ref=f1e454]: "Memory:"
+                      - text: 8 GB RAM
+                    - listitem [ref=f1e455]:
+                      - strong [ref=f1e456]: "Graphics:"
+                      - text: nVidia GeForce GTX 1060 (6GB) or AMD Radeon RX 580 (6GB)
+                    - listitem [ref=f1e457]:
+                      - strong [ref=f1e458]: "DirectX:"
+                      - text: Version 11
+                    - listitem [ref=f1e459]:
+                      - strong [ref=f1e460]: "Network:"
+                      - text: Broadband Internet connection
+                    - listitem [ref=f1e461]:
+                      - strong [ref=f1e462]: "Storage:"
+                      - text: 45 GB available space
+                    - listitem [ref=f1e463]:
+                      - strong [ref=f1e464]: "Sound Card:"
+                      - text: DirectX Compatible
+                    - listitem [ref=f1e465]:
+                      - strong [ref=f1e466]: "Additional Notes:"
+                      - text: To run on minimal settings at 1080p on single class
+                - list [ref=f1e468]:
+                  - strong [ref=f1e469]: "Recommended:"
+                  - list [ref=f1e470]:
+                    - listitem [ref=f1e471]:
+                      - strong [ref=f1e472]: "OS:"
+                      - text: Windows 10 or 11
+                    - listitem [ref=f1e473]:
+                      - strong [ref=f1e474]: "Processor:"
+                      - text: Intel Core i5-10600 or AMD Ryzen 5 5600X
+                    - listitem [ref=f1e475]:
+                      - strong [ref=f1e476]: "Memory:"
+                      - text: 16 GB RAM
+                    - listitem [ref=f1e477]:
+                      - strong [ref=f1e478]: "Graphics:"
+                      - text: GeForce GTX 2070 8 GB, Radeon RX 6600 8GB
+                    - listitem [ref=f1e479]:
+                      - strong [ref=f1e480]: "DirectX:"
+                      - text: Version 11
+                    - listitem [ref=f1e481]:
+                      - strong [ref=f1e482]: "Storage:"
+                      - text: 45 GB available space
+                    - listitem [ref=f1e483]:
+                      - strong [ref=f1e484]: "Sound Card:"
+                      - text: DirectX Compatible
+                    - listitem [ref=f1e485]:
+                      - strong [ref=f1e486]: "Additional Notes:"
+                      - text: To run on minimal settings at 1080p on single class
+        - generic [ref=f1e488]:
+          - generic [ref=f1e796]:
+            - generic [ref=f1e797]:
+              - generic [ref=f1e798]: More like this
+              - link "See All" [ref=f1e799] [cursor=pointer]:
+                - /url: https://store.steampowered.com/recommended/morelike/app/2399420/?snr=1_5_9__300
+            - generic [ref=f1e803]:
+              - generic [ref=f1e804]:
+                - button "Previous" [ref=f1e805] [cursor=pointer]
+                - list "slider" [ref=f1e807]:
+                  - generic [ref=f1e809]:
+                    - listitem [ref=f1e810]:
+                      - button [ref=f1e816]:
+                        - link "Forza Horizon 6 69,99€" [ref=f1e817] [cursor=pointer]:
+                          - /url: https://store.steampowered.com/app/2483190/Forza_Horizon_6?snr=1_5_9__300
+                          - generic [ref=f1e820]:
+                            - img "Forza Horizon 6"
+                          - generic [ref=f1e821]: 69,99€
+                    - listitem [ref=f1e825]:
+                      - button [ref=f1e831]:
+                        - link "F1® 25 49,99€" [ref=f1e832] [cursor=pointer]:
+                          - /url: https://store.steampowered.com/app/3059520/F1_25?snr=1_5_9__300
+                          - generic [ref=f1e835]:
+                            - img "F1® 25"
+                          - generic [ref=f1e836]: 49,99€
+                    - listitem [ref=f1e840]:
+                      - button [ref=f1e846]:
+                        - link "iRacing 11,21€" [ref=f1e847] [cursor=pointer]:
+                          - /url: https://store.steampowered.com/app/266410/iRacing?snr=1_5_9__300
+                          - generic [ref=f1e850]:
+                            - img "iRacing"
+                          - generic [ref=f1e851]: 11,21€
+                    - listitem [ref=f1e855]:
+                      - button [ref=f1e861]:
+                        - link "Forza Horizon 5 59,99€" [ref=f1e862] [cursor=pointer]:
+                          - /url: https://store.steampowered.com/app/1551360/Forza_Horizon_5?snr=1_5_9__300
+                          - generic [ref=f1e865]:
+                            - img "Forza Horizon 5"
+                          - generic [ref=f1e866]: 59,99€
+                    - listitem [ref=f1e870]
+                    - listitem [ref=f1e873]
+                    - listitem [ref=f1e876]
+                    - listitem [ref=f1e879]
+                    - listitem [ref=f1e882]
+                    - listitem [ref=f1e885]
+                    - listitem [ref=f1e888]
+                    - listitem [ref=f1e891]
+                    - listitem [ref=f1e894]
+                    - listitem [ref=f1e897]
+                    - listitem [ref=f1e900]
+                    - listitem [ref=f1e903]
+                    - listitem [ref=f1e906]
+                    - listitem [ref=f1e909]
+                    - listitem [ref=f1e912]
+                    - listitem [ref=f1e915]
+                    - listitem [ref=f1e918]
+                    - listitem [ref=f1e921]
+                    - listitem [ref=f1e924]
+                    - listitem [ref=f1e927]
+                    - listitem [ref=f1e930]
+                    - listitem [ref=f1e933]
+                    - listitem [ref=f1e936]
+                    - listitem [ref=f1e939]
+                    - listitem [ref=f1e942]
+                    - listitem [ref=f1e945]
+                - button "Next" [ref=f1e948] [cursor=pointer]
+              - generic [ref=f1e951]:
+                - button "previous" [ref=f1e955] [cursor=pointer]
+                - button "next" [ref=f1e957] [cursor=pointer]
+          - generic [ref=f1e490]:
+            - link "View all" [ref=f1e491] [cursor=pointer]:
+              - /url: https://store.steampowered.com/curators/curatorsreviewing/?appid=2399420&snr=1_5_9__top-curators
+            - heading "What Curators Say" [level=2] [ref=f1e492]
+            - generic [ref=f1e493]:
+              - text: 37 Curators have reviewed this product. Click
+              - link "here" [ref=f1e494] [cursor=pointer]:
+                - /url: https://store.steampowered.com/curators/curatorsreviewing/?appid=2399420&snr=1_5_9__top-curators
+              - text: to see them.
+        - generic [ref=f1e961]:
+          - generic [ref=f1e962]:
+            - heading "Customer reviews for Le Mans Ultimate" [level=2] [ref=f1e963]
+            - generic [ref=f1e965]:
+              - button "See language breakdown" [ref=f1e966] [cursor=pointer]
+              - link "About user reviews" [ref=f1e967] [cursor=pointer]:
+                - /url: https://help.steampowered.com/faqs/view/2DA6-9CB3-F84A-643E
+              - link "Your preferences" [ref=f1e968] [cursor=pointer]:
+                - /url: https://store.steampowered.com/account/preferences/#review_score_preferences
+          - generic [ref=f1e969]:
+            - generic [ref=f1e972]:
+              - generic [ref=f1e973]: "English Reviews:"
+              - generic [ref=f1e974]: Mostly Positive
+              - generic [ref=f1e975]: (6 647 reviews)
+            - generic [ref=f1e976]:
+              - generic [ref=f1e977]:
+                - text: "Total reviews in all languages:"
+                - generic [ref=f1e978]: 14 804
+                - generic [ref=f1e979]: Mostly Positive
+              - generic [ref=f1e980]:
+                - text: "Recent Reviews in all languages:"
+                - generic [ref=f1e981]: "463"
+                - generic [ref=f1e982]: Mostly Positive
+          - list "Filter options" [ref=f1e984]:
+            - listitem [ref=f1e985]:
+              - button "Review Type" [ref=f1e986] [cursor=pointer]
+            - listitem [ref=f1e988]:
+              - button "Purchase Type" [ref=f1e989] [cursor=pointer]
+            - listitem [ref=f1e991]:
+              - button "Language" [ref=f1e992] [cursor=pointer]
+            - listitem [ref=f1e994]:
+              - button "Date Range" [ref=f1e995] [cursor=pointer]
+            - listitem [ref=f1e997]:
+              - button "Playtime" [ref=f1e998] [cursor=pointer]
+            - listitem [ref=f1e1000]:
+              - button "Display" [ref=f1e1001] [cursor=pointer]
+            - button "Show graph" [ref=f1e1004] [cursor=pointer]
+          - generic [ref=f1e1007]:
+            - generic [ref=f1e1008]: Filters
+            - button "Your Languages" [ref=f1e1009] [cursor=pointer]
+  - contentinfo [ref=f1e1017]:
+    - generic [ref=f1e1018]:
+      - generic [ref=f1e1019]:
+        - link [ref=f1e1020] [cursor=pointer]:
+          - /url: https://store.steampowered.com/?snr=1_44_44_
+        - link [ref=f1e1031] [cursor=pointer]:
+          - /url: https://valvesoftware.com
+      - paragraph [ref=f1e1037]: © 2026 Valve Corporation. All rights reserved. All trademarks are property of their respective owners in the US and other countries.VAT included in all prices where applicable.
+      - generic [ref=f1e1038]:
+        - link [ref=f1e1039] [cursor=pointer]:
+          - /url: https://www.youtube.com/@Steam
+        - link [ref=f1e1042] [cursor=pointer]:
+          - /url: https://bsky.app/profile/steampowered.com
+        - link [ref=f1e1045] [cursor=pointer]:
+          - /url: https://facebook.com/steam
+        - link [ref=f1e1048] [cursor=pointer]:
+          - /url: https://twitter.com/steam
+    - generic [ref=f1e1051]:
+      - heading "STEAM" [level=3] [ref=f1e1052]
+      - link "About Steam" [ref=f1e1053] [cursor=pointer]:
+        - /url: https://store.steampowered.com/about/?snr=1_44_44_
+      - link "Steam SSA" [ref=f1e1054] [cursor=pointer]:
+        - /url: https://store.steampowered.com/subscriber_agreement/?snr=1_44_44_
+      - link "Steamworks" [ref=f1e1055] [cursor=pointer]:
+        - /url: https://partner.steamgames.com/
+      - link "Steam Distribution" [ref=f1e1056] [cursor=pointer]:
+        - /url: https://partner.steamgames.com/steamdirect
+      - link "Gift Cards" [ref=f1e1057] [cursor=pointer]:
+        - /url: https://store.steampowered.com/digitalgiftcards/?snr=1_44_44_
+    - generic [ref=f1e1058]:
+      - heading "VALVE" [level=3] [ref=f1e1059]
+      - link "About Valve" [ref=f1e1060] [cursor=pointer]:
+        - /url: https://valvesoftware.com/about
+      - link "Jobs" [ref=f1e1061] [cursor=pointer]:
+        - /url: https://valvesoftware.com/
+      - link "Hardware" [ref=f1e1062] [cursor=pointer]:
+        - /url: https://store.steampowered.com/hardware/?snr=1_44_44_
+      - link "Recycling" [ref=f1e1063] [cursor=pointer]:
+        - /url: https://store.steampowered.com/hardware_recycling/?snr=1_44_44_
+    - generic [ref=f1e1064]:
+      - heading "LEGAL" [level=3] [ref=f1e1065]
+      - link "Privacy" [ref=f1e1066] [cursor=pointer]:
+        - /url: https://store.steampowered.com/privacy_agreement/?snr=1_44_44_
+      - link "Accessibility" [ref=f1e1067] [cursor=pointer]:
+        - /url: https://help.steampowered.com/faqs/view/10BB-D27A-6378-4436
+      - link "Notices & Policies" [ref=f1e1068] [cursor=pointer]:
+        - /url: https://store.steampowered.com/legal/?snr=1_44_44_
+      - link "Cookies" [ref=f1e1069] [cursor=pointer]:
+        - /url: https://store.steampowered.com/account/cookiepreferences/?snr=1_44_44_
+      - link "Refunds" [ref=f1e1070] [cursor=pointer]:
+        - /url: https://store.steampowered.com/steam_refunds/?snr=1_44_44_
+    - generic [ref=f1e1071]:
+      - heading "MORE" [level=3] [ref=f1e1072]
+      - link "Get Steam" [ref=f1e1073] [cursor=pointer]:
+        - /url: https://store.steampowered.com/about/?snr=1_44_44_
+      - link "Get Mobile Apps" [ref=f1e1074] [cursor=pointer]:
+        - /url: https://store.steampowered.com/mobile/?snr=1_44_44_
+      - link "Get Support" [ref=f1e1075] [cursor=pointer]:
+        - /url: https://help.steampowered.com/
+      - link "My Account" [ref=f1e1076] [cursor=pointer]:
+        - /url: https://store.steampowered.com/account/?snr=1_44_44_

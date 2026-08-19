@@ -1,47 +1,45 @@
-'use client';
+"use client"
 
-import * as React from 'react';
-import { cva, type VariantProps } from 'class-variance-authority';
+import { Toggle as TogglePrimitive } from "@base-ui/react/toggle"
+import { cva, type VariantProps } from "class-variance-authority"
 
-import { cn } from '@/lib/utils';
-import * as TogglePrimitive from '@radix-ui/react-toggle';
+import { cn } from "@/lib/utils"
 
 const toggleVariants = cva(
-  "inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium hover:bg-muted hover:text-muted-foreground disabled:pointer-events-none disabled:opacity-50 data-[state=on]:bg-brand cursor-pointer data-[state=on]:text-accent-foreground [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 [&_svg]:shrink-0 focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] outline-none transition-[color,box-shadow] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive whitespace-nowrap",
+  "group/toggle inline-flex cursor-pointer items-center justify-center gap-1 rounded-3xl text-sm font-medium whitespace-nowrap transition-colors outline-none hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 data-pressed:border-transparent data-pressed:bg-brand-50 data-pressed:text-brand-500 data-pressed:hover:bg-brand-100 dark:aria-invalid:ring-destructive/40 dark:data-pressed:bg-brand-600 dark:data-pressed:text-brand-50 dark:data-pressed:hover:bg-brand-700 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
-        default: 'bg-transparent',
-        outline:
-          'border border-input bg-transparent shadow-xs hover:bg-accent hover:text-accent-foreground',
+        default: "bg-transparent",
+        outline: "border border-input bg-transparent hover:bg-muted",
       },
       size: {
-        default: 'h-9 px-2 min-w-9',
-        sm: 'h-8 px-1.5 min-w-8',
-        lg: 'h-10 px-2.5 min-w-10',
+        default:
+          "h-9 min-w-9 px-3 has-data-[icon=inline-end]:pr-2.5 has-data-[icon=inline-start]:pl-2.5",
+        sm: "h-8 min-w-8 px-3 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
+        lg: "h-10 min-w-10 px-4 has-data-[icon=inline-end]:pr-3 has-data-[icon=inline-start]:pl-3",
       },
     },
     defaultVariants: {
-      variant: 'default',
-      size: 'default',
+      variant: "default",
+      size: "default",
     },
   }
-);
+)
 
 function Toggle({
   className,
-  variant,
-  size,
+  variant = "default",
+  size = "default",
   ...props
-}: React.ComponentProps<typeof TogglePrimitive.Root> &
-  VariantProps<typeof toggleVariants>) {
+}: TogglePrimitive.Props & VariantProps<typeof toggleVariants>) {
   return (
-    <TogglePrimitive.Root
+    <TogglePrimitive
       data-slot="toggle"
       className={cn(toggleVariants({ variant, size, className }))}
       {...props}
     />
-  );
+  )
 }
 
-export { Toggle, toggleVariants };
+export { Toggle, toggleVariants }

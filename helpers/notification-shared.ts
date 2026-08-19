@@ -4,125 +4,117 @@ import { getAppLogoBase64 } from './logo';
 
 // Shared notification logic that can be used both in content scripts and injected scripts
 export const createNotificationFunction = () => {
+  const notificationUrl = EXT_URL;
+  const notificationLogo = getAppLogoBase64();
+
   return function showToggleNotification(
     isEnabled: boolean,
-    triggeredBy: 'hotkey' | 'popup'
+    triggeredBy: 'hotkey' | 'popup',
+    extensionUrl = notificationUrl,
+    extensionLogo = notificationLogo
   ): void {
     const NOTIFICATION_ID = 'media-flow-seek-notification';
     const NOTIFICATION_DURATION = 3000;
-
-    const removeNotification = () => {
-      const existing = document.getElementById(NOTIFICATION_ID);
-      if (existing) {
-        existing.classList.remove('mfs-notification-show');
-        setTimeout(() => {
-          existing.remove();
-        }, 300);
-      }
+    type NotificationElement = HTMLDivElement & {
+      __mfsDismissTimer?: ReturnType<typeof setTimeout>;
     };
 
-    const createNotificationElement = (enabled: boolean, trigger: string) => {
-      const notification = document.createElement('div');
-      notification.id = NOTIFICATION_ID;
-      notification.className = 'mfs-notification';
-
-      const icon = enabled ? '✅' : '🚫';
+    const updateNotificationElement = (
+      notification: NotificationElement,
+      enabled: boolean,
+      trigger: string
+    ) => {
       const status = enabled ? 'Enabled' : 'Disabled';
-      const triggerText = trigger === 'hotkey' ? '⌨️ Hotkey' : '🖱️ Popup';
+      const triggerText = trigger === 'hotkey' ? 'Hotkey' : 'Popup';
 
       notification.innerHTML = `
         <div class="mfs-notification-content ${enabled ? 'mfs-notification-enabled' : 'mfs-notification-disabled'}">
-          <div class="mfs-notification-icon-circle">
-            <div class="mfs-notification-icon">${icon}</div>
+          <div class="mfs-notification-logo-container">
+            <a class="mfs-notification-logo-link" href="${extensionUrl}" target="_blank" rel="noopener noreferrer">
+              <img class="mfs-notification-logo" src="${extensionLogo}" alt="BetterVideo" />
+            </a>
           </div>
           <div class="mfs-notification-text">
-            <span class="mfs-notification-title">Media Flow Seek ${status}</span>
+            <span class="mfs-notification-title">BetterVideo <span class="mfs-notification-status">${status}</span></span>
             <span class="mfs-notification-subtitle">${triggerText}</span>
-          </div>
-
-          <div class="mfs-notification-separator"></div>
-
-          <div class="mfs-notification-via">
-            <a href="${EXT_URL}" target="_blank" rel="noopener noreferrer">
-              <img src="${getAppLogoBase64()}" alt="Extension icon" />
-            </a>
           </div>
         </div>
       `;
+    };
 
-      // Add styles if not already present
-      if (!document.getElementById('mfs-notification-styles')) {
-        const styles = document.createElement('style');
-        styles.id = 'mfs-notification-styles';
-        styles.textContent = `
+    // Add styles if not already present
+    if (!document.getElementById('mfs-notification-styles')) {
+      const styles = document.createElement('style');
+      styles.id = 'mfs-notification-styles';
+      styles.textContent = `
           .mfs-notification {
             position: fixed;
             bottom: 30px;
             left: 50%;
-            transform: translateX(-50%) translateY(100px);
-            background: rgb(0 0 0 / 0.8);
-            color: white;
+            transform: translateX(-50%) scale(0.94);
+            transform-origin: center;
+            background: rgb(255 255 255 / 0.8);
+            color: rgb(15 23 42);
             padding: 12px 20px 12px 12px;
+            border: 1px solid rgb(255 255 255 / 0.4);
             border-radius: 9999px;
-            box-shadow: 4px 12px 40px 6px rgb(0 0 0 / .4);
+            box-shadow:
+              0 2px 4px rgb(15 23 42 / 0.06),
+              0 12px 30px -10px rgb(15 23 42 / 0.22),
+              0 24px 60px -24px rgb(15 23 42 / 0.28),
+              inset 0 1px 0 rgb(255 255 255 / 0.72),
+              inset 0 0 0 1px rgb(15 23 42 / 0.035);
+            -webkit-backdrop-filter: saturate(180%) blur(20px);
             backdrop-filter: saturate(180%) blur(20px);
             z-index: 999999;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             font-size: 14px;
             opacity: 0;
-            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-            backdrop-filter: blur(16px);
-            border: 1px solid rgb(255 255 255 / 0.1);
-            max-width: 90vw;
+            filter: blur(5px);
+            pointer-events: none;
+            box-sizing: border-box;
+            transition:
+              transform 360ms cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 220ms ease,
+              filter 320ms ease,
+              box-shadow 240ms ease;
+            max-width: calc(100vw - 24px);
             white-space: nowrap;
+            will-change: transform, opacity, filter;
           }
           .mfs-notification-show {
-            transform: translateX(-50%) translateY(0);
+            transform: translateX(-50%) scale(1);
             opacity: 1;
+            filter: blur(0);
+            pointer-events: auto;
           }
           .mfs-notification-content {
             display: flex;
             align-items: center;
             gap: 12px;
           }
-          .mfs-notification-icon-circle {
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            background: transparent;
+          .mfs-notification-logo-container {
+            width: 42px;
+            height: 42px;
             display: flex;
             align-items: center;
             justify-content: center;
             flex-shrink: 0;
           }
-          .mfs-notification-content.mfs-notification-enabled .mfs-notification-icon-circle {
-            background: rgb(0 255 0 / 0.25);
+          .mfs-notification-logo-link {
+            display: flex;
+            align-items: center;
+            justify-content: center;
           }
-          .mfs-notification-content.mfs-notification-disabled .mfs-notification-icon-circle {
-            background: rgb(255 0 0 / 0.25);
-          }
-          .mfs-notification-icon {
-            font-size: 16px;
-            line-height: 1;
+          .mfs-notification-logo {
+            width: 22px;
+            height: 22px;
+            object-fit: contain;
           }
           .mfs-notification-text {
             display: flex;
             flex-direction: column;
             gap: 2px;
-          }
-          .mfs-notification-separator {
-            width: 1px;
-            height: 26px;
-            background: rgb(255 255 255 / 0.2);
-          }
-          .mfs-notification-via {
-            display: flex;
-            align-items: center;
-          }
-          .mfs-notification-via img {
-            width: 24px;
-            height: 24px;
-            object-fit: contain;
           }
           .mfs-notification-title {
             font-weight: 600;
@@ -131,21 +123,53 @@ export const createNotificationFunction = () => {
           }
           .mfs-notification-subtitle {
             font-size: 12px;
-            opacity: 0.7;
+            opacity: 0.62;
             line-height: 1.2;
+          }
+          .mfs-notification-enabled .mfs-notification-status {
+            color: rgb(22 163 74);
+          }
+          .mfs-notification-disabled .mfs-notification-status {
+            color: rgb(220 38 38);
+          }
+          @media (prefers-color-scheme: dark) {
+            .mfs-notification {
+              background: rgb(51 51 51 / 0.8);
+              color: rgb(248 250 252);
+              border-color: rgb(255 255 255 / 0.14);
+              box-shadow:
+                0 2px 6px rgb(0 0 0 / 0.22),
+                0 16px 36px -12px rgb(0 0 0 / 0.55),
+                0 28px 70px -28px rgb(0 0 0 / 0.65),
+                inset 0 1px 0 rgb(255 255 255 / 0.12),
+                inset 0 0 0 1px rgb(0 0 0 / 0.12);
+            }
+            .mfs-notification-enabled .mfs-notification-status {
+              color: rgb(74 222 128);
+            }
+            .mfs-notification-disabled .mfs-notification-status {
+              color: rgb(248 113 113);
+            }
+          }
+          @media (prefers-reduced-motion: reduce) {
+            .mfs-notification {
+              transition: opacity 160ms ease;
+              filter: none;
+            }
           }
           @media (max-width: 480px) {
             .mfs-notification {
               bottom: 20px;
-              padding: 10px 20px;
+              padding: 10px 18px 10px 10px;
               font-size: 13px;
             }
-            .mfs-notification-icon-circle {
+            .mfs-notification-logo-container {
               width: 28px;
               height: 28px;
             }
-            .mfs-notification-icon {
-              font-size: 14px;
+            .mfs-notification-logo {
+              width: 20px;
+              height: 20px;
             }
             .mfs-notification-title {
               font-size: 13px;
@@ -155,26 +179,52 @@ export const createNotificationFunction = () => {
             }
           }
         `;
-        document.head.appendChild(styles);
+      document.head.appendChild(styles);
+    }
+
+    const existingNotifications = document.querySelectorAll(
+      `#${NOTIFICATION_ID}`
+    );
+    let notification = existingNotifications[0] as
+      | NotificationElement
+      | undefined;
+    let isNewNotification = false;
+
+    // Clean up duplicates created by older versions of the notification code.
+    for (let index = 1; index < existingNotifications.length; index += 1) {
+      existingNotifications[index]?.remove();
+    }
+
+    if (!notification) {
+      notification = document.createElement('div') as NotificationElement;
+      notification.id = NOTIFICATION_ID;
+      notification.className = 'mfs-notification';
+      document.body.appendChild(notification);
+      isNewNotification = true;
+    }
+
+    updateNotificationElement(notification, isEnabled, triggeredBy);
+
+    if (!notification.classList.contains('mfs-notification-show')) {
+      const showNotification = () => {
+        notification.classList.add('mfs-notification-show');
+      };
+
+      if (isNewNotification) {
+        // Let the browser paint the initial hidden state before revealing it.
+        requestAnimationFrame(() => requestAnimationFrame(showNotification));
+      } else {
+        requestAnimationFrame(showNotification);
       }
+    }
 
-      return notification;
-    };
+    if (notification.__mfsDismissTimer !== undefined) {
+      clearTimeout(notification.__mfsDismissTimer);
+    }
 
-    // Remove existing notification first
-    removeNotification();
-
-    const notification = createNotificationElement(isEnabled, triggeredBy);
-    document.body.appendChild(notification);
-
-    // Trigger animation
-    requestAnimationFrame(() => {
-      notification.classList.add('mfs-notification-show');
-    });
-
-    // Auto-remove after duration
-    setTimeout(() => {
-      removeNotification();
+    notification.__mfsDismissTimer = setTimeout(() => {
+      notification.classList.remove('mfs-notification-show');
+      notification.__mfsDismissTimer = undefined;
     }, NOTIFICATION_DURATION);
   };
 };

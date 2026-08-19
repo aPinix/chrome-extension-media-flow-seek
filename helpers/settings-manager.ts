@@ -1,7 +1,13 @@
-import { getDefaultDomainRules } from '@/helpers/domains';
+import { IS_DEVELOPMENT } from '@/config/variables.config';
+import {
+  getDefaultDomainRules,
+  mergeAndMigrateDomainRules,
+} from '@/helpers/domains';
 import { DEFAULT_SETTINGS } from '@/helpers/popup-storage';
-import { ContentSettingsT } from '@/types/content';
-import { DomainConfigT, DomainRuleTypeE } from '@/types/domains';
+import { normalizeScrollHotkeys } from '@/helpers/scroll-speed';
+import type { ContentSettingsT } from '@/types/content';
+import type { DomainConfigT } from '@/types/domains';
+import { DomainRuleTypeE } from '@/types/domains';
 
 export class SettingsManager {
   private settings: ContentSettingsT;
@@ -22,7 +28,13 @@ export class SettingsManager {
           'isDebugEnabled',
           'isBetaFeaturesEnabled',
           'invertHorizontalScroll',
+          'fastScrollHotkey',
+          'slowScrollHotkey',
           'showTimelineOnHover',
+          'isTimelineSeekingEnabled',
+          'dragVideoToSeek',
+          'hideVideoControls',
+          'colorizedTimeline',
           'timelinePosition',
           'timelineHeight',
           'timelineHeightUnit',
@@ -31,33 +43,58 @@ export class SettingsManager {
           'domainRules',
         ],
         (result) => {
+          const stored = result as Partial<ContentSettingsT>;
+          const scrollHotkeys = normalizeScrollHotkeys(
+            stored.fastScrollHotkey,
+            stored.slowScrollHotkey
+          );
           this.settings = {
-            isEnabled: result.isEnabled ?? this.defaultSettings.isEnabled,
+            isEnabled: stored.isEnabled ?? this.defaultSettings.isEnabled,
             isDebugEnabled:
-              result.isDebugEnabled ?? this.defaultSettings.isDebugEnabled,
+              stored.isDebugEnabled ?? this.defaultSettings.isDebugEnabled,
             isBetaFeaturesEnabled:
-              result.isBetaFeaturesEnabled ??
+              stored.isBetaFeaturesEnabled ??
               this.defaultSettings.isBetaFeaturesEnabled,
             invertHorizontalScroll:
-              result.invertHorizontalScroll ??
+              stored.invertHorizontalScroll ??
               this.defaultSettings.invertHorizontalScroll,
+            ...scrollHotkeys,
             showTimelineOnHover:
-              result.showTimelineOnHover ??
+              stored.showTimelineOnHover ??
               this.defaultSettings.showTimelineOnHover,
+            isTimelineSeekingEnabled:
+              stored.isTimelineSeekingEnabled ??
+              this.defaultSettings.isTimelineSeekingEnabled,
+            dragVideoToSeek:
+              stored.dragVideoToSeek ?? this.defaultSettings.dragVideoToSeek,
+            hideVideoControls:
+              stored.hideVideoControls ??
+              this.defaultSettings.hideVideoControls,
+            colorizedTimeline:
+              stored.colorizedTimeline ??
+              this.defaultSettings.colorizedTimeline,
             timelinePosition:
-              result.timelinePosition ?? this.defaultSettings.timelinePosition,
+              stored.timelinePosition ?? this.defaultSettings.timelinePosition,
             timelineHeight:
-              result.timelineHeight ?? this.defaultSettings.timelineHeight,
+              stored.timelineHeight ?? this.defaultSettings.timelineHeight,
             timelineHeightUnit:
-              result.timelineHeightUnit ??
+              stored.timelineHeightUnit ??
               this.defaultSettings.timelineHeightUnit,
-            actionArea: result.actionArea ?? this.defaultSettings.actionArea,
+            actionArea: stored.actionArea ?? this.defaultSettings.actionArea,
             actionAreaSize:
-              result.actionAreaSize ?? this.defaultSettings.actionAreaSize,
-            domainRules: result.domainRules
-              ? this.mergeDomainRules(result.domainRules)
+              stored.actionAreaSize ?? this.defaultSettings.actionAreaSize,
+            domainRules: stored.domainRules
+              ? mergeAndMigrateDomainRules(stored.domainRules)
               : this.defaultSettings.domainRules,
           };
+
+          if (
+            stored.domainRules &&
+            JSON.stringify(stored.domainRules) !==
+              JSON.stringify(this.settings.domainRules)
+          ) {
+            chrome.storage.sync.set({ domainRules: this.settings.domainRules });
+          }
 
           resolve(this.settings);
         }
@@ -81,7 +118,7 @@ export class SettingsManager {
   }
 
   isDebugEnabled(): boolean {
-    return this.settings.isDebugEnabled;
+    return IS_DEVELOPMENT && this.settings.isDebugEnabled;
   }
 
   isBetaFeaturesEnabled(): boolean {
@@ -92,8 +129,36 @@ export class SettingsManager {
     return this.settings.invertHorizontalScroll;
   }
 
+  getFastScrollHotkey(): ContentSettingsT['fastScrollHotkey'] {
+    return this.settings.fastScrollHotkey;
+  }
+
+  getSlowScrollHotkey(): ContentSettingsT['slowScrollHotkey'] {
+    return this.settings.slowScrollHotkey;
+  }
+
   shouldShowTimelineOnHover(): boolean {
     return this.settings.showTimelineOnHover;
+  }
+
+  isTimelineSeekingEnabled(): boolean {
+    return this.settings.isTimelineSeekingEnabled;
+  }
+
+  shouldDragVideoToSeek(): boolean {
+    return (
+      this.settings.isTimelineSeekingEnabled && this.settings.dragVideoToSeek
+    );
+  }
+
+  shouldHideVideoControls(): boolean {
+    return (
+      this.settings.isTimelineSeekingEnabled && this.settings.hideVideoControls
+    );
+  }
+
+  shouldColorizeTimeline(): boolean {
+    return this.settings.colorizedTimeline;
   }
 
   getTimelinePosition(): 'top' | 'bottom' {
@@ -126,14 +191,6 @@ export class SettingsManager {
 
     const currentHostname = window.location.hostname.toLowerCase();
 
-    // When beta features are disabled, only allow YouTube
-    if (!this.settings.isBetaFeaturesEnabled) {
-      const isYouTube =
-        currentHostname === 'youtube.com' ||
-        currentHostname.endsWith('.youtube.com');
-      return isYouTube;
-    }
-
     let shouldRunDomain = false;
 
     // Filter enabled rules, but always include global rule
@@ -159,7 +216,7 @@ export class SettingsManager {
         // Check for exact match or subdomain match
         const isMatch =
           currentHostname === ruleDomain ||
-          currentHostname.endsWith('.' + ruleDomain);
+          currentHostname.endsWith(`.${ruleDomain}`);
 
         if (isMatch) {
           // Specific domain rule takes precedence
@@ -170,21 +227,5 @@ export class SettingsManager {
     }
 
     return shouldRunDomain;
-  }
-
-  // Merge existing rules with new defaults
-  private mergeDomainRules(existingRules: DomainConfigT[]): DomainConfigT[] {
-    const defaults = getDefaultDomainRules();
-    const merged = [...existingRules];
-
-    // Add any missing default domains
-    defaults.forEach((defaultRule) => {
-      const exists = merged.find((rule) => rule.domain === defaultRule.domain);
-      if (!exists) {
-        merged.push(defaultRule);
-      }
-    });
-
-    return merged;
   }
 }

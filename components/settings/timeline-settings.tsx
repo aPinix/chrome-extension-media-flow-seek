@@ -1,5 +1,7 @@
+import { AppSegmentedControl } from '@/components/app/app-segmented-control';
+import { SliderResetButton } from '@/components/app/slider-reset-button';
 import { TimelineHeightControl } from '@/components/timeline-height-control';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { DEFAULT_SETTINGS } from '@/helpers/popup-storage';
 import { cn } from '@/lib/utils';
 
 import { VideoPlayerPreview } from '../video-player-preview';
@@ -23,19 +25,19 @@ export function TimelineSettings({
 }: TimelineSettingsProps) {
   return (
     <div className="flex w-full flex-col gap-4 rounded-xl bg-slate-100 p-4 transition-all dark:bg-slate-800">
-      <div className="relative z-10 aspect-[16/9] overflow-hidden rounded-lg border bg-slate-100 dark:bg-slate-600">
+      <div className="relative z-10 aspect-video overflow-hidden rounded-lg border bg-slate-100 dark:bg-slate-600">
         <VideoPlayerPreview />
 
         {/* Active area highlight - using dynamic sizing */}
         <div
-          style={{
-            height: `${height}${unit}`,
-            top: position === 'top' ? '0px' : `calc(100% - ${height}${unit})`,
-          }}
           className={cn(
             'absolute inset-x-0 z-20 transition-all duration-300 ease-in-out',
             position === 'top' ? 'rounded-t-lg' : 'rounded-b-lg'
           )}
+          style={{
+            height: `${height}${unit}`,
+            top: position === 'top' ? '0px' : `calc(100% - ${height}${unit})`,
+          }}
         >
           {/* progress bar bg */}
 
@@ -44,8 +46,8 @@ export function TimelineSettings({
           {/* progress bar */}
           <div
             className={cn(
-              'bg-brand-400/70 dark:border-brand-300 dark:bg-brand-600/70 timeline-progress-animate absolute inset-x-0 h-full border transition-all',
-              height <= 10 && '!bg-brand-400/70 !border-0'
+              'timeline-progress-animate absolute inset-x-0 h-full bg-brand-400/70 transition-all dark:bg-brand-600/70',
+              height <= 10 && 'bg-brand-400/70!'
             )}
           />
         </div>
@@ -53,41 +55,42 @@ export function TimelineSettings({
 
       {/* Position */}
       <div className="flex items-center justify-between">
-        <span className="w-[70px] flex-none text-sm font-medium text-slate-700 dark:text-slate-300">
+        <span className="w-17.5 flex-none font-medium text-slate-700 text-sm dark:text-slate-300">
           Position
         </span>
-        <ToggleGroup
-          type="single"
+        <AppSegmentedControl
+          className="w-32"
+          label="Timeline position"
+          onValueChange={onPositionChange}
+          options={[
+            { label: 'Bottom', value: 'bottom' },
+            { label: 'Top', value: 'top' },
+          ]}
           value={position}
-          onValueChange={(value) =>
-            value && onPositionChange(value as 'top' | 'bottom')
-          }
-          variant="outline"
-          size="sm"
-        >
-          <ToggleGroupItem value="top" className="flex-none shrink">
-            Top
-          </ToggleGroupItem>
-          <ToggleGroupItem value="bottom" className="flex-none shrink">
-            Bottom
-          </ToggleGroupItem>
-        </ToggleGroup>
+        />
       </div>
 
-      <div className="bg-border mx-auto h-px w-full" />
+      <div className="mx-auto h-px w-full bg-border" />
 
       {/* Height */}
-      <div className="flex items-center justify-between">
-        <span className="w-[70px] flex-none text-sm font-medium text-slate-700 dark:text-slate-300">
-          Height
-        </span>
+      <div className="space-y-1">
+        <div className="flex items-center gap-1.5">
+          <span className="font-medium text-slate-700 text-sm dark:text-slate-300">
+            Height
+          </span>
+          <SliderResetButton
+            disabled={height === DEFAULT_SETTINGS.timelineHeight}
+            label="Reset height to default"
+            onClick={() => onHeightChange(DEFAULT_SETTINGS.timelineHeight)}
+          />
+        </div>
 
         <TimelineHeightControl
-          value={height}
-          unit={unit}
+          className="w-full px-2"
           onChange={onHeightChange}
           onUnitChange={onUnitChange}
-          className="flex-1"
+          unit={unit}
+          value={height}
         />
       </div>
     </div>

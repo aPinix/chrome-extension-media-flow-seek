@@ -1,11 +1,10 @@
 {
   "recommendations": [
+    "biomejs.biome",
     "bradlc.vscode-tailwindcss",
-    "dbaeumer.vscode-eslint",
     "dotenv.dotenv-vscode",
-    "editorconfig.editorconfig",
     "esbenp.prettier-vscode",
-    "lokalise.i18n-ally",
+    "lydanne.i18n-ally-next",
     "ms-playwright.playwright",
     "nhoizey.gremlins",
     "pflannery.vscode-versionlens",

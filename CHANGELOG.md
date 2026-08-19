@@ -1,6 +1,20 @@
-# Media Flow Seek - Changelog
+# Better Video Controls for YouTube, Instagram, TikTok & More - Changelog
 
 All notable changes to this project will be documented in this file.
+
+## Unreleased
+
+### Changed
+
+- Rebranded the extension as Better Video Controls for YouTube, Instagram, TikTok & More, with the compact name BetterVideo.
+
+### 🌟 New Features
+
+- **Configurable Scroll Speed Hotkeys**: Defaults to Alt for 3× seeking and Alt+Shift for ¼× precision, with both assignable from the popup.
+- **Toggle Shortcut**: Changed the suggested extension toggle shortcut to Ctrl+Shift+S (physical Control+Shift+S on macOS).
+- **Universal Video Support**: Enabled HTML5 video seeking on all websites by default, including Steam, Facebook, Instagram, Vimeo, and embedded players.
+- **Embedded and Dynamic Players**: Added all-frame injection, open shadow DOM discovery, and reliable handling for videos replaced by social feeds and carousels.
+- **Live/DVR Seeking**: Added support for seekable live-stream windows in addition to finite on-demand videos.
 
 ## [1.0.9] - 2025-08-12
 
