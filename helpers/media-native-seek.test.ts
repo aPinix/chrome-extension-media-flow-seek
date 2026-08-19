@@ -177,8 +177,14 @@ describe('native player seeking', () => {
     const seek = new DeferredMediaSeek(video, 150);
 
     try {
-      seek.schedule(96);
-      vi.advanceTimersByTime(2150);
+      seek.stage(30);
+      vi.advanceTimersByTime(500);
+      seek.stage(96);
+      vi.advanceTimersByTime(500);
+      expect(reactClickHandler).not.toHaveBeenCalled();
+
+      seek.commit();
+      vi.advanceTimersByTime(2000);
 
       expect(reactClickHandler).toHaveBeenCalledOnce();
       expect(clickedAt).toBeCloseTo(734);

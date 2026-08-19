@@ -80,6 +80,13 @@ export function VideoLayoutSettings({
       >
         <VideoPlayerPreview />
 
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute right-2 bottom-2 z-30 font-bold text-[8px] text-brand leading-none tracking-[0.12em] dark:text-brand-300"
+        >
+          PREVIEW
+        </span>
+
         <div
           aria-hidden="true"
           className={cn(

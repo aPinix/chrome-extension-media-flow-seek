@@ -17,9 +17,16 @@ import {
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 
+import { AppButton } from '@/components/app/app-button';
+import { AppInputText } from '@/components/app/app-input-text';
 import { SectionTitle } from '@/components/popup/section-title';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { normalizeSiteInput, reorderSiteRules } from '@/helpers/domains';
 import { cn } from '@/lib/utils';
 import type { DomainConfigT, DomainModeT } from '@/types/domains';
@@ -364,6 +371,33 @@ function SortableDomainRulesList({
     [onOrderChange]
   );
 
+  const handleRename = useCallback(
+    (domain: string, input: string): boolean => {
+      const normalizedDomain = normalizeSiteInput(input);
+      if (!normalizedDomain) return false;
+      if (normalizedDomain === domain) return true;
+
+      if (
+        siteRulesRef.current.some(
+          (rule) => rule.domain !== domain && rule.domain === normalizedDomain
+        )
+      ) {
+        requestAnimationFrame(() => highlightExisting(normalizedDomain));
+        return false;
+      }
+
+      const nextRules = siteRulesRef.current.map((rule) =>
+        rule.domain === domain ? { ...rule, domain: normalizedDomain } : rule
+      );
+      siteRulesRef.current = nextRules;
+      setSiteRules(nextRules);
+      onOrderChange(nextRules);
+      setAnnouncement(`${domain} renamed to ${normalizedDomain}.`);
+      return true;
+    },
+    [highlightExisting, onOrderChange]
+  );
+
   const normalizedEditorDomain = normalizeSiteInput(editorValue) ?? undefined;
   const trimmedSearchValue = searchValue.trim();
   const normalizedSearchValue = (
@@ -416,21 +450,15 @@ function SortableDomainRulesList({
             >
               <Redo2Icon className="size-3.5" />
             </Button>
-            <Button
+            <AppButton
               aria-label="Add website"
-              className="h-7 rounded-full bg-brand/10 px-3 font-medium text-brand text-xs transition-[color,background-color,transform] hover:scale-[1.02] hover:bg-brand/20 dark:bg-brand-300/10 dark:text-brand-200 dark:hover:bg-brand-300/20"
-              onClick={() => {
-                if (isAdding && isEditorVisible) {
-                  editorInputRef.current?.focus({ preventScroll: true });
-                } else {
-                  openEditor();
-                }
-              }}
+              disabled={isAdding}
+              onClick={openEditor}
+              size="sm"
               type="button"
-              variant="ghost"
             >
               Add +
-            </Button>
+            </AppButton>
           </div>
         </SectionTitle>
 
@@ -439,9 +467,9 @@ function SortableDomainRulesList({
             aria-hidden="true"
             className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-slate-400 dark:text-slate-500"
           />
-          <Input
+          <AppInputText
             aria-label="Search website settings"
-            className="h-8 rounded-xl border-slate-200 bg-white pr-8 pl-8 text-xs transition-[color,box-shadow,background-color,border-color] duration-[250ms] focus-visible:border-brand focus-visible:ring-0 dark:border-slate-600 dark:bg-slate-800/70 dark:focus-visible:border-brand"
+            className="h-8 pr-8 pl-8 text-xs"
             onChange={(event) => setSearchValue(event.target.value)}
             placeholder="Search domains or URLs"
             role="searchbox"
@@ -467,7 +495,7 @@ function SortableDomainRulesList({
         <form
           aria-hidden={!isEditorVisible || undefined}
           className={cn(
-            'relative grid h-13 min-h-0 origin-top grid-cols-[24px_minmax(0,1fr)_80px_28px_28px] items-center gap-2 overflow-hidden rounded-t-xl bg-white px-3 opacity-100 transition-[height,opacity,transform] duration-200 ease-out motion-reduce:transition-none dark:bg-slate-800/70',
+            'relative grid h-13 min-h-0 origin-top grid-cols-[20px_24px_minmax(0,1fr)_80px_28px] items-center gap-1 overflow-hidden rounded-t-xl bg-white pr-2 pl-2 opacity-100 transition-[height,opacity,transform] duration-200 ease-out motion-reduce:transition-none dark:bg-slate-800/70',
             siteRules.length &&
               "after:absolute after:right-3 after:bottom-0 after:left-3 after:h-px after:bg-slate-100/70 after:content-[''] dark:after:bg-white/5",
             editorError && 'h-18 pb-3',
@@ -482,11 +510,12 @@ function SortableDomainRulesList({
           }}
           onSubmit={submitEditor}
         >
+          <span aria-hidden="true" className="w-5" />
           <div className="flex h-full items-center justify-center">
             <DomainFavicon domain={normalizedEditorDomain} />
           </div>
           <div className="min-w-0">
-            <Input
+            <AppInputText
               aria-describedby={editorError ? 'site-editor-error' : undefined}
               aria-invalid={Boolean(editorError)}
               className="h-7 rounded-md px-2 text-xs"
@@ -504,28 +533,44 @@ function SortableDomainRulesList({
             onChange={setEditorMode}
             value={editorMode}
           />
-          <Button
-            aria-label="Discard website"
-            className="size-7 shrink-0 rounded-full bg-red-500/15 p-0 text-red-600 transition-[color,background-color,transform] hover:scale-105 hover:bg-red-500/25 hover:text-red-700 dark:bg-red-400/15 dark:text-red-300 dark:hover:bg-red-400/25 dark:hover:text-red-200"
-            onClick={closeEditor}
-            title="Discard"
-            type="button"
-            variant="ghost"
-          >
-            <XIcon className="size-4" />
-          </Button>
-          <Button
-            aria-label="Save website"
-            className="size-7 shrink-0 rounded-full bg-emerald-500/15 p-0 text-emerald-700 transition-[color,background-color,transform] hover:scale-105 hover:bg-emerald-500/25 hover:text-emerald-800 dark:bg-emerald-400/15 dark:text-emerald-300 dark:hover:bg-emerald-400/25 dark:hover:text-emerald-200"
-            title="Save"
-            type="submit"
-            variant="ghost"
-          >
-            <CheckIcon className="size-4" />
-          </Button>
+          <TooltipProvider>
+            <div className="flex h-full w-7 flex-col items-center justify-center gap-0.5">
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      aria-label="Discard website"
+                      className="size-5 shrink-0 rounded-md bg-red-500/15 p-0 text-red-600 transition-[color,background-color,transform] hover:scale-105 hover:bg-red-500/25 hover:text-red-700 dark:bg-red-400/15 dark:text-red-300 dark:hover:bg-red-400/25 dark:hover:text-red-200"
+                      onClick={closeEditor}
+                      type="button"
+                      variant="ghost"
+                    >
+                      <XIcon className="size-3" />
+                    </Button>
+                  }
+                />
+                <TooltipContent side="left">Discard (Esc)</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      aria-label="Create website"
+                      className="size-5 shrink-0 rounded-md bg-emerald-500/15 p-0 text-emerald-700 transition-[color,background-color,transform] hover:scale-105 hover:bg-emerald-500/25 hover:text-emerald-800 dark:bg-emerald-400/15 dark:text-emerald-300 dark:hover:bg-emerald-400/25 dark:hover:text-emerald-200"
+                      type="submit"
+                      variant="ghost"
+                    >
+                      <CheckIcon className="size-3" />
+                    </Button>
+                  }
+                />
+                <TooltipContent side="left">Create (Enter)</TooltipContent>
+              </Tooltip>
+            </div>
+          </TooltipProvider>
           {editorError ? (
             <span
-              className="absolute bottom-0.5 left-9 text-[9px] text-red-600 dark:text-red-300"
+              className="absolute bottom-0.5 left-14 text-[9px] text-red-600 dark:text-red-300"
               id="site-editor-error"
               role="alert"
             >
@@ -560,6 +605,7 @@ function SortableDomainRulesList({
                 else rowRefs.current.delete(domain);
               }}
               onRemove={onRemove}
+              onRename={handleRename}
               rule={rule}
               showDivider={index < visibleSiteRules.length - 1}
               sortingDisabled={isAdding || isFiltering}

@@ -184,12 +184,59 @@ describe('SiteAccessView', () => {
     const discard = await screen.findByRole('button', {
       name: 'Discard website',
     });
-    const save = await screen.findByRole('button', { name: 'Save website' });
+    const create = await screen.findByRole('button', {
+      name: 'Create website',
+    });
 
-    expect(discard.className).toContain('rounded-full');
+    expect(discard.className).toContain('size-5');
+    expect(discard.className).toContain('rounded-md');
     expect(discard.className).toContain('bg-red-500/15');
-    expect(save.className).toContain('rounded-full');
-    expect(save.className).toContain('bg-emerald-500/15');
+    expect(create.className).toContain('size-5');
+    expect(create.className).toContain('rounded-md');
+    expect(create.className).toContain('bg-emerald-500/15');
+
+    await user.hover(discard);
+    expect(await screen.findByText('Discard (Esc)')).toBeTruthy();
+    await user.hover(create);
+    expect(await screen.findByText('Create (Enter)')).toBeTruthy();
+  });
+
+  it('mutes domain suffixes and edits a saved domain from its favicon', async () => {
+    const user = userEvent.setup();
+    render(<SiteAccessHarness />);
+
+    const editDomain = screen.getByRole('button', {
+      name: 'Edit youtube.com',
+    });
+    const domainRow = editDomain.closest('li');
+    if (!domainRow) throw new Error('Expected a saved domain row');
+    expect(within(domainRow).getByText('.com').className).toContain(
+      'text-muted-foreground'
+    );
+    expect(editDomain.className).toContain('absolute');
+    expect(editDomain.className).toContain(
+      'group-hover/domain-edit:opacity-100'
+    );
+
+    await user.hover(editDomain);
+    expect(await screen.findByText('Edit youtube.com')).toBeTruthy();
+
+    await user.click(editDomain);
+    const input = screen.getByRole('textbox', {
+      name: 'Domain name for youtube.com',
+    });
+    expect((input as HTMLInputElement).value).toBe('youtube.com');
+    await user.clear(input);
+    await user.type(input, 'example.net{Enter}');
+
+    await waitFor(() =>
+      expect(readRules().some(({ domain }) => domain === 'example.net')).toBe(
+        true
+      )
+    );
+    expect(readRules().some(({ domain }) => domain === 'youtube.com')).toBe(
+      false
+    );
   });
 
   it('animates removal and keeps persistent undo and redo controls', async () => {
@@ -294,12 +341,16 @@ describe('SiteAccessView', () => {
     const user = userEvent.setup();
     render(<SiteAccessHarness />);
 
-    await user.click(screen.getByRole('button', { name: /Add website/i }));
+    const addButton = screen.getByRole('button', { name: /Add website/i });
+    await user.click(addButton);
     const editor = screen.getByPlaceholderText('example.com');
     await user.type(editor, 'https://news.bbc.co.uk/story{Enter}');
     expect(readRules()[1]?.domain).toBe('bbc.co.uk');
 
-    await user.click(screen.getByRole('button', { name: /Add website/i }));
+    await waitFor(() =>
+      expect((addButton as HTMLButtonElement).disabled).toBe(false)
+    );
+    await user.click(addButton);
     await user.type(
       screen.getByPlaceholderText('example.com'),
       'https://www.bbc.co.uk/another{Enter}'
@@ -320,7 +371,9 @@ describe('SiteAccessView', () => {
     const user = userEvent.setup();
     render(<SiteAccessHarness />);
 
-    await user.click(screen.getByRole('button', { name: /Add website/i }));
+    const addButton = screen.getByRole('button', { name: /Add website/i });
+    await user.click(addButton);
+    expect((addButton as HTMLButtonElement).disabled).toBe(true);
     const editor = screen.getByPlaceholderText('example.com');
     await user.type(editor, 'chrome://settings{Enter}');
     expect(screen.getByRole('alert').textContent).toContain('valid website');
@@ -328,6 +381,9 @@ describe('SiteAccessView', () => {
     await user.type(editor, '{Escape}');
     await waitFor(() =>
       expect(screen.queryByPlaceholderText('example.com')).toBeNull()
+    );
+    await waitFor(() =>
+      expect((addButton as HTMLButtonElement).disabled).toBe(false)
     );
   });
 
@@ -343,8 +399,12 @@ describe('SiteAccessView', () => {
     const filteredList = screen.getByRole('list', {
       name: 'Saved website settings',
     });
-    expect(within(filteredList).getByText('vimeo.com')).toBeTruthy();
-    expect(within(filteredList).queryByText('youtube.com')).toBeNull();
+    expect(
+      within(filteredList).getByRole('button', { name: 'Edit vimeo.com' })
+    ).toBeTruthy();
+    expect(
+      within(filteredList).queryByRole('button', { name: 'Edit youtube.com' })
+    ).toBeNull();
     expect(
       (
         within(filteredList).getByRole('button', {

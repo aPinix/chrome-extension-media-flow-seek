@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 
+import { AppInputText } from '@/components/app/app-input-text';
 import { AppSegmentedControl } from '@/components/app/app-segmented-control';
 import { AppSlider } from '@/components/app/app-slider';
-import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 
 type TimelineUnit = 'px' | '%';
@@ -53,9 +53,9 @@ const TimelineHeightControl = ({
         value={value}
       />
       <div className="relative h-7 w-32 shrink-0">
-        <Input
+        <AppInputText
           aria-label="Timeline height value"
-          className="h-7 w-full appearance-none rounded-full border-slate-200 bg-white/90 pr-20 pl-2 text-center font-mono text-slate-700 text-xs shadow-sm transition-[color,box-shadow,background-color,border-color] duration-[250ms] focus-visible:border-brand focus-visible:ring-0 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:focus-visible:border-brand [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          className="h-7 w-full appearance-none rounded-full pr-20 pl-2 text-center font-mono text-xs [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
           inputMode="numeric"
           max={100}
           min={0}

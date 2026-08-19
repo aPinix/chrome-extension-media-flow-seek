@@ -9,7 +9,7 @@ interface CardListItemPropsI {
   icon?: React.ElementType;
   iconToggle?: React.ElementType;
   iconIsToggled?: boolean;
-  description: string;
+  description: React.ReactNode;
   disabled?: boolean;
   disabledSoft?: boolean;
   onClick?: () => void;

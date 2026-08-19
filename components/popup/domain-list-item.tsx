@@ -1,15 +1,22 @@
-import { GripVerticalIcon, Trash2Icon } from 'lucide-react';
-import { useLayoutEffect, useRef } from 'react';
+import { GripVerticalIcon, PencilIcon, Trash2Icon } from 'lucide-react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
+import { parse } from 'tldts';
 
+import { AppInputText } from '@/components/app/app-input-text';
 import { Button } from '@/components/ui/button';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { getDomainMode } from '@/helpers/domains';
 import { cn } from '@/lib/utils';
 import type { DomainConfigT, DomainModeT } from '@/types/domains';
 
 import { DomainFavicon } from './domain-favicon';
 import { DomainModeControl } from './domain-mode-control';
-import { ItemRowText } from './item-row-text';
 
 export const DOMAIN_RULE_DRAG_TYPE = 'site-access-rule';
 
@@ -28,6 +35,7 @@ interface DomainListItemPropsI {
   onHoverMove: (domain: string, targetIndex: number) => void;
   onKeyboardMove: (index: number, direction: -1 | 1) => void;
   onModeChange: (domain: string, mode: DomainModeT) => void;
+  onRename: (domain: string, nextDomain: string) => boolean;
   onRegisterRow: (domain: string, element: HTMLLIElement | null) => void;
   onRemove: (domain: string) => void;
   rule: DomainConfigT;
@@ -45,6 +53,7 @@ export function DomainListItem({
   onHoverMove,
   onKeyboardMove,
   onModeChange,
+  onRename,
   onRegisterRow,
   onRemove,
   rule,
@@ -55,10 +64,49 @@ export function DomainListItem({
   const handleRef = useRef<HTMLButtonElement>(null);
   const dragPreviewRef = useRef<HTMLLIElement>(null);
   const dragPreviewResetFrameRef = useRef<number | null>(null);
+  const editInputRef = useRef<HTMLInputElement>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(rule.domain);
+  const [isEditInvalid, setIsEditInvalid] = useState(false);
+
+  const parsedDomain = parse(rule.domain);
+  const publicSuffix = parsedDomain.publicSuffix;
+  const suffix = publicSuffix ? `.${publicSuffix}` : '';
+  const domainName = suffix
+    ? rule.domain.slice(0, -suffix.length)
+    : rule.domain;
+
+  useEffect(() => {
+    if (!isEditing) return;
+    editInputRef.current?.focus({ preventScroll: true });
+    editInputRef.current?.select();
+  }, [isEditing]);
+
+  const startEditing = () => {
+    if (isRemoving) return;
+    setEditValue(rule.domain);
+    setIsEditInvalid(false);
+    setIsEditing(true);
+  };
+
+  const cancelEditing = () => {
+    setEditValue(rule.domain);
+    setIsEditInvalid(false);
+    setIsEditing(false);
+  };
+
+  const commitEditing = () => {
+    if (onRename(rule.domain, editValue)) {
+      setIsEditing(false);
+      setIsEditInvalid(false);
+      return;
+    }
+    setIsEditInvalid(true);
+  };
 
   const [{ isDragging }, connectDrag, connectDragPreview] = useDrag(
     () => ({
-      canDrag: !sortingDisabled,
+      canDrag: !(sortingDisabled || isEditing),
       collect: (monitor) => ({ isDragging: monitor.isDragging() }),
       end: (_item, monitor) => onDragEnd(monitor.didDrop()),
       item: () => {
@@ -88,7 +136,7 @@ export function DomainListItem({
       },
       type: DOMAIN_RULE_DRAG_TYPE,
     }),
-    [index, onDragEnd, onDragStart, rule.domain, sortingDisabled]
+    [index, isEditing, onDragEnd, onDragStart, rule.domain, sortingDisabled]
   );
   const [, connectDrop] = useDrop(
     () => ({
@@ -177,9 +225,10 @@ export function DomainListItem({
         aria-label={`Move ${rule.domain}. Hold Alt and press an arrow key to reorder.`}
         className={cn(
           'flex h-full w-5 cursor-grab touch-none items-center justify-center self-stretch rounded-sm text-slate-400 outline-none hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-brand/35 focus-visible:ring-inset active:cursor-grabbing dark:text-slate-500 dark:hover:text-slate-300',
-          (sortingDisabled || isRemoving) && 'cursor-not-allowed opacity-35'
+          (sortingDisabled || isEditing || isRemoving) &&
+            'cursor-not-allowed opacity-35'
         )}
-        disabled={sortingDisabled || isRemoving}
+        disabled={sortingDisabled || isEditing || isRemoving}
         onKeyDown={(event) => {
           if (!event.altKey) return;
           if (event.key === 'ArrowUp') {
@@ -196,9 +245,68 @@ export function DomainListItem({
         <GripVerticalIcon className="size-4" />
       </button>
 
-      <DomainFavicon domain={rule.domain} />
+      <div className="group/domain-edit relative size-6">
+        <DomainFavicon
+          className="transition-opacity duration-150 group-focus-within/domain-edit:opacity-0 group-hover/domain-edit:opacity-0"
+          domain={rule.domain}
+        />
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  aria-label={`Edit ${rule.domain}`}
+                  className="absolute inset-0 z-10 flex size-6 items-center justify-center rounded-md bg-brand-50 text-brand opacity-0 outline-none transition-[color,background-color,opacity] duration-150 hover:bg-brand-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-brand/35 group-hover/domain-edit:opacity-100 dark:bg-brand-900/60 dark:text-brand-200 dark:hover:bg-brand-800/70"
+                  onClick={startEditing}
+                  type="button"
+                >
+                  <PencilIcon className="size-3.5" />
+                </button>
+              }
+            />
+            <TooltipContent>{`Edit ${rule.domain}`}</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
 
-      <ItemRowText title={rule.domain} titleTooltip={rule.domain} />
+      {isEditing ? (
+        <form
+          className="min-w-0"
+          onSubmit={(event) => {
+            event.preventDefault();
+            commitEditing();
+          }}
+        >
+          <AppInputText
+            aria-invalid={isEditInvalid}
+            aria-label={`Domain name for ${rule.domain}`}
+            className="h-7 bg-transparent px-1 font-medium text-sm dark:bg-transparent"
+            onBlur={() => {
+              if (editValue === rule.domain) cancelEditing();
+              else commitEditing();
+            }}
+            onChange={(event) => {
+              setEditValue(event.target.value);
+              setIsEditInvalid(false);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                event.preventDefault();
+                cancelEditing();
+              }
+            }}
+            ref={editInputRef}
+            value={editValue}
+          />
+        </form>
+      ) : (
+        <div className="min-w-0 truncate font-medium text-slate-900 text-sm dark:text-white">
+          <span>{domainName}</span>
+          {suffix ? (
+            <span className="text-muted-foreground">{suffix}</span>
+          ) : null}
+        </div>
+      )}
 
       <DomainModeControl
         label={`Access for ${rule.domain}`}

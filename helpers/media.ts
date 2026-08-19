@@ -10,6 +10,7 @@ export type MediaSeekTargetT = {
 };
 
 export const MEDIA_SEEK_SETTLE_DELAY_MS = 150;
+export const MEDIA_SCROLL_SEEK_SETTLE_DELAY_MS = 300;
 
 const PLAYER_DURATION_ANCESTOR_LIMIT = 4;
 const PLAYER_TIME_TOLERANCE_SECONDS = 2;
@@ -567,7 +568,11 @@ export class DeferredMediaSeek {
     private readonly onError?: (error: unknown) => void
   ) {}
 
-  schedule(time: number): void {
+  /**
+   * Update a gesture's target without starting an unloaded media request.
+   * Buffered targets remain immediate so ordinary local scrubbing stays live.
+   */
+  stage(time: number): void {
     if (!Number.isFinite(time)) return;
 
     // A new gesture always supersedes a previously clamped target.
@@ -583,6 +588,12 @@ export class DeferredMediaSeek {
 
     this.pendingTime = time;
     this.clearTimeout();
+  }
+
+  schedule(time: number): void {
+    this.stage(time);
+    if (this.pendingTime === null) return;
+
     this.timeout = setTimeout(() => {
       this.timeout = null;
       this.commit();

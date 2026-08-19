@@ -10,6 +10,7 @@ import {
   getMediaProgress,
   getMediaSeekRange,
   getMediaSeekTarget,
+  MEDIA_SCROLL_SEEK_SETTLE_DELAY_MS,
   MEDIA_SEEK_SETTLE_DELAY_MS,
 } from '@/helpers/media';
 import {
@@ -52,6 +53,10 @@ const EXTENSION_UI_SELECTOR = [
 ].join(',');
 const SITE_INTERACTIVE_SELECTOR = [
   'button',
+  // Cross-origin controls are opaque to elementsFromPoint(). The iframe is
+  // the deepest site-owned element we can see, so it must receive the pointer
+  // before controls such as Google IMA's Skip Ad button can be clicked.
+  'iframe',
   'input',
   'select',
   'textarea',
@@ -476,7 +481,7 @@ export class OverlayCreator {
       },
       () => scrubTimeout,
       () => videoState.isHovering,
-      (time) => deferredSeek.schedule(time),
+      deferredSeek,
       debugMode
     );
 
@@ -1429,7 +1434,7 @@ export class OverlayCreator {
     if (progressBar) {
       progressBar.style.width = `${target.progress * 100}%`;
     }
-    deferredSeek.schedule(target.time);
+    deferredSeek.stage(target.time);
 
     if (debugMode) {
       console.log(`🖱️ ${source} seek target:`, target.time);
@@ -3403,12 +3408,48 @@ export class OverlayCreator {
     setScrubTimeout: (timeout: number | null) => void,
     getScrubTimeout: () => number | null,
     getIsHovering: () => boolean,
-    scheduleSeek: (time: number) => void,
+    deferredSeek: DeferredMediaSeek,
     debugMode: boolean
   ): () => void {
     const ownerDocument = video.ownerDocument;
     const ownerWindow = ownerDocument.defaultView ?? window;
     let seekSpeedLabelDismissTimeout: number | undefined;
+    let seekCommitTimeout: number | undefined;
+    let wheelGestureTimeout: number | undefined;
+    let isWheelGestureActive = false;
+
+    const clearSeekCommitTimeout = (): void => {
+      if (seekCommitTimeout === undefined) return;
+      ownerWindow.clearTimeout(seekCommitTimeout);
+      seekCommitTimeout = undefined;
+    };
+
+    const commitPendingSeek = (): void => {
+      clearSeekCommitTimeout();
+      const videoState = this.videoStateManager.get(video);
+      if (videoState) videoState.isUserScrubbing = false;
+      deferredSeek.commit();
+    };
+
+    const armSeekCommitFallback = (): void => {
+      clearSeekCommitTimeout();
+      seekCommitTimeout = ownerWindow.setTimeout(() => {
+        seekCommitTimeout = undefined;
+        commitPendingSeek();
+      }, MEDIA_SCROLL_SEEK_SETTLE_DELAY_MS);
+    };
+
+    const markWheelGestureActive = (): void => {
+      isWheelGestureActive = true;
+      if (wheelGestureTimeout !== undefined) {
+        ownerWindow.clearTimeout(wheelGestureTimeout);
+      }
+      wheelGestureTimeout = ownerWindow.setTimeout(() => {
+        wheelGestureTimeout = undefined;
+        isWheelGestureActive = false;
+        commitPendingSeek();
+      }, MEDIA_SCROLL_SEEK_SETTLE_DELAY_MS);
+    };
 
     const showSeekSpeedLabel = (multiplier: number): void => {
       const fullscreenElement = ownerDocument.fullscreenElement;
@@ -3459,11 +3500,12 @@ export class OverlayCreator {
     const handleOverlayWheel = (event: WheelEvent): void => {
       const fastScrollHotkey = this.settingsManager.getFastScrollHotkey();
       const slowScrollHotkey = this.settingsManager.getSlowScrollHotkey();
-      if (!hasScrollSpeedHotkey(event, fastScrollHotkey, slowScrollHotkey))
-        return;
-
       const delta = getWheelDeltaPixels(event, overlay.clientWidth);
       if (delta === 0) return;
+      markWheelGestureActive();
+
+      if (!hasScrollSpeedHotkey(event, fastScrollHotkey, slowScrollHotkey))
+        return;
 
       // Replace the browser's native wheel action so the requested multiplier
       // is applied exactly once.
@@ -3507,6 +3549,7 @@ export class OverlayCreator {
         hasSpeedHotkey
       );
       if (delta === 0) return;
+      markWheelGestureActive();
 
       event.preventDefault();
       const multiplier = getScrollSpeedMultiplier(
@@ -3545,7 +3588,8 @@ export class OverlayCreator {
       }
 
       const newTime = range.start + scrollProgress * range.duration;
-      scheduleSeek(newTime);
+      deferredSeek.stage(newTime);
+      armSeekCommitFallback();
 
       // Show timeline bar and update progress
       timeline.style.opacity = '1';
@@ -3560,11 +3604,11 @@ export class OverlayCreator {
         clearTimeout(currentTimeout);
       }
 
-      // Set flag to false after user stops scrubbing
+      // Timeline visibility settles independently from the later network seek.
+      // Keep isUserScrubbing true so media events cannot snap the staged bar
+      // back to the old playback position before the gesture is committed.
       const timeout = (video.ownerDocument.defaultView ?? window).setTimeout(
         () => {
-          videoState.isUserScrubbing = false;
-
           // Handle timeline visibility after scrubbing ends
           if (timeline) {
             const shouldShowOnHover =
@@ -3575,16 +3619,6 @@ export class OverlayCreator {
               timeline.dataset.mfsSettingsPreview === 'true';
             if (!(shouldShowOnHover || isSettingsPreviewVisible)) {
               timeline.style.opacity = '0';
-            } else {
-              // If timeline should remain visible, update progress to reflect actual video time
-              const currentRange = getMediaSeekRange(video);
-              const progress = currentRange
-                ? getMediaProgress(video, currentRange)
-                : 0;
-              const progressBar = timeline.firstElementChild as HTMLElement;
-              if (progressBar) {
-                progressBar.style.width = `${progress * 100}%`;
-              }
             }
           }
         },
@@ -3594,8 +3628,14 @@ export class OverlayCreator {
       setScrubTimeout(timeout);
     };
 
+    const handleScrollEnd = (): void => {
+      if (getIsSettingInitialScroll() || isWheelGestureActive) return;
+      commitPendingSeek();
+    };
+
     overlay.addEventListener('wheel', handleOverlayWheel, { passive: false });
     overlay.addEventListener('scroll', handleScroll);
+    overlay.addEventListener('scrollend', handleScrollEnd);
     ownerDocument.addEventListener('wheel', handlePlayerLayerWheel, {
       capture: true,
       passive: false,
@@ -3604,10 +3644,17 @@ export class OverlayCreator {
     return () => {
       overlay.removeEventListener('wheel', handleOverlayWheel);
       overlay.removeEventListener('scroll', handleScroll);
+      overlay.removeEventListener('scrollend', handleScrollEnd);
       ownerDocument.removeEventListener('wheel', handlePlayerLayerWheel, true);
       if (seekSpeedLabelDismissTimeout !== undefined) {
         ownerWindow.clearTimeout(seekSpeedLabelDismissTimeout);
       }
+      clearSeekCommitTimeout();
+      if (wheelGestureTimeout !== undefined) {
+        ownerWindow.clearTimeout(wheelGestureTimeout);
+      }
+      const videoState = this.videoStateManager.get(video);
+      if (videoState) videoState.isUserScrubbing = false;
       seekSpeedLabel.remove();
     };
   }

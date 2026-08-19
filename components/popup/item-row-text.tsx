@@ -31,14 +31,14 @@ export function ItemRowText({
         {title}
       </span>
       {description ? (
-        <span
+        <div
           className={cn(
             'whitespace-normal break-words text-muted-foreground text-xs leading-snug',
             descriptionClassName
           )}
         >
           {description}
-        </span>
+        </div>
       ) : null}
     </div>
   );

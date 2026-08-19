@@ -46,6 +46,9 @@ describe('VideoLayoutSettings', () => {
     render(<VideoLayoutSettings {...baseProps} {...createCallbacks()} />);
 
     expect(screen.getAllByTestId('video-layout-preview')).toHaveLength(1);
+    expect(
+      within(screen.getByTestId('video-layout-preview')).getByText('PREVIEW')
+    ).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Action Area' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Timeline' })).toBeTruthy();
     expect(

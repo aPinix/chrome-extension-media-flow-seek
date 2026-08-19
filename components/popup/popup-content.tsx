@@ -13,17 +13,14 @@ import {
   RotateCcwIcon,
   RotateCwIcon,
   SlidersHorizontalIcon,
+  TriangleAlertIcon,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { AppButton } from '@/components/app/app-button';
 import { AppSelect } from '@/components/app/app-select';
 import { AppSwitch } from '@/components/app/app-switch';
-import {
-  GitHubBrandIcon,
-  LinkedInBrandIcon,
-  XBrandIcon,
-} from '@/components/icons/icons';
+import { XBrandIcon } from '@/components/icons/icons';
 import { CardListItem } from '@/components/popup/card-list-item';
 import { SectionTitle } from '@/components/popup/section-title';
 import { SiteAccessView } from '@/components/popup/site-access-view';
@@ -84,10 +81,10 @@ function ScrollHotkeySelect({
   );
 }
 
-function ExperimentalBadge() {
+function BetaBadge() {
   return (
     <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 font-semibold text-[9px] text-amber-700 leading-none ring-1 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-400/25">
-      Experimental
+      Beta
     </span>
   );
 }
@@ -114,26 +111,6 @@ function HeaderLinks() {
         title="Follow aPinix on X"
       >
         <XBrandIcon className="size-3" />
-      </a>
-      <a
-        aria-label="View aPinix on GitHub"
-        className={headerLinkClassName}
-        href="https://github.com/aPinix"
-        rel="noopener noreferrer"
-        target="_blank"
-        title="View aPinix on GitHub"
-      >
-        <GitHubBrandIcon className="size-3.5" />
-      </a>
-      <a
-        aria-label="Connect with aPinix on LinkedIn"
-        className={headerLinkClassName}
-        href="https://www.linkedin.com/in/pinix/"
-        rel="noopener noreferrer"
-        target="_blank"
-        title="Connect with aPinix on LinkedIn"
-      >
-        <LinkedInBrandIcon className="size-3.5" />
       </a>
     </nav>
   );
@@ -837,12 +814,29 @@ export function PopupContent() {
                       components={{
                         RightSlot: (
                           <AppSwitch
+                            aria-label="Toggle timeline on hover"
                             checked={showTimelineOnHover}
+                            disabled={isTimelineSeekingEnabled}
                             onCheckedChange={handleTimelineHoverToggle}
                           />
                         ),
                       }}
-                      description="Show progress bar when hovering over videos"
+                      description={
+                        isTimelineSeekingEnabled ? (
+                          <span className="flex items-start gap-1 text-amber-700 dark:text-amber-300">
+                            <TriangleAlertIcon
+                              aria-hidden="true"
+                              className="mt-0.5 size-3 shrink-0"
+                            />
+                            <span>
+                              <strong>Interactive Timeline</strong> overrides
+                              this setting
+                            </span>
+                          </span>
+                        ) : (
+                          'Show progress bar when hovering over videos'
+                        )
+                      }
                       icon={EyeIcon}
                       iconIsToggled={!showTimelineOnHover}
                       iconToggle={EyeOffIcon}
@@ -866,6 +860,7 @@ export function PopupContent() {
                     />
 
                     <CardListItem
+                      className="pl-10"
                       components={{
                         RightSlot: (
                           <AppSwitch
@@ -881,28 +876,29 @@ export function PopupContent() {
                       title={
                         <span className="flex items-center gap-2">
                           Drag on Video Area
-                          <ExperimentalBadge />
+                          <BetaBadge />
                         </span>
                       }
                     />
 
                     <CardListItem
+                      className="pl-10"
                       components={{
                         RightSlot: (
                           <AppSwitch
-                            aria-label="Use minimalist player"
+                            aria-label="Use minimal player"
                             checked={hideVideoControls}
                             onCheckedChange={handleHideVideoControlsToggle}
                           />
                         ),
                       }}
-                      description="Hide video controls and use a minimalist player"
+                      description="Hide video controls and use a minimal player"
                       icon={EyeOffIcon}
                       iconIsToggled={hideVideoControls}
                       title={
                         <span className="flex items-center gap-2">
-                          Minimalist Player
-                          <ExperimentalBadge />
+                          Minimal Player
+                          <BetaBadge />
                         </span>
                       }
                     />

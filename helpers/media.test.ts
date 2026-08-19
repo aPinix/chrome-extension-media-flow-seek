@@ -182,6 +182,39 @@ describe('DeferredMediaSeek', () => {
     expect(soughtTimes).toEqual([300]);
   });
 
+  it('stages only the final unloaded gesture target until commit', () => {
+    vi.useFakeTimers();
+    const soughtTimes: number[] = [];
+    const media = createBufferedMedia([], (time) => soughtTimes.push(time));
+    const seek = new DeferredMediaSeek(media, 150);
+
+    seek.stage(30);
+    vi.advanceTimersByTime(500);
+    seek.stage(120);
+    vi.advanceTimersByTime(500);
+    seek.stage(300);
+    vi.advanceTimersByTime(500);
+
+    expect(soughtTimes).toEqual([]);
+
+    seek.commit();
+    expect(soughtTimes).toEqual([300]);
+  });
+
+  it('keeps staged buffered targets immediate', () => {
+    const soughtTimes: number[] = [];
+    const media = createBufferedMedia([[0, 60]], (time) =>
+      soughtTimes.push(time)
+    );
+    const seek = new DeferredMediaSeek(media, 150);
+
+    seek.stage(20);
+    seek.stage(40);
+    seek.commit();
+
+    expect(soughtTimes).toEqual([20, 40]);
+  });
+
   it('seeks immediately while the scrub target is already buffered', () => {
     vi.useFakeTimers();
     const soughtTimes: number[] = [];
@@ -220,6 +253,17 @@ describe('DeferredMediaSeek', () => {
     seek.schedule(300);
     seek.cancel();
     vi.runAllTimers();
+
+    expect(media.currentTime).toBe(0);
+  });
+
+  it('cancels an explicitly staged target when an overlay is removed', () => {
+    const media = { currentTime: 0 } as HTMLMediaElement;
+    const seek = new DeferredMediaSeek(media, 150);
+
+    seek.stage(300);
+    seek.cancel();
+    seek.commit();
 
     expect(media.currentTime).toBe(0);
   });

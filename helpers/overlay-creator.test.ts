@@ -384,6 +384,61 @@ describe('OverlayCreator page dialog guard', () => {
     });
   });
 
+  it('passes through nested ad iframes that hide their controls cross-origin', () => {
+    const videoStateManager = new VideoStateManager();
+    const overlayCreator = new OverlayCreator(
+      createSettingsManager({ isTimelineSeekingEnabled: true }),
+      videoStateManager,
+      () => {}
+    );
+    const { video, state } = createVideoState();
+    const adFrame = document.createElement('iframe');
+    const originalElementsFromPoint = document.elementsFromPoint;
+
+    state.overlay.className = 'scrub-overlay';
+    state.timeline.className = 'scrub-timeline';
+    adFrame.title = 'Advertisement';
+    adFrame.getBoundingClientRect = () =>
+      ({
+        bottom: 120,
+        height: 100,
+        left: 10,
+        right: 210,
+        top: 20,
+        width: 200,
+        x: 10,
+        y: 20,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    document.body.appendChild(adFrame);
+    videoStateManager.set(video, state);
+
+    Object.defineProperty(document, 'elementsFromPoint', {
+      configurable: true,
+      value: vi.fn(() => [state.overlay, adFrame]),
+    });
+
+    const methods = overlayCreator as unknown as {
+      updateSiteUiPointerPassthrough: (
+        ownerDocument: Document,
+        clientX: number,
+        clientY: number
+      ) => void;
+    };
+    methods.updateSiteUiPointerPassthrough(document, 100, 80);
+
+    expect(state.overlay.style.pointerEvents).toBe('none');
+    expect(state.overlay.style.getPropertyPriority('pointer-events')).toBe(
+      'important'
+    );
+    expect(state.timeline.style.pointerEvents).toBe('none');
+
+    Object.defineProperty(document, 'elementsFromPoint', {
+      configurable: true,
+      value: originalElementsFromPoint,
+    });
+  });
+
   it('keeps active volume controls above an underlying player button', () => {
     const videoStateManager = new VideoStateManager();
     const overlayCreator = new OverlayCreator(
@@ -476,7 +531,7 @@ describe('OverlayCreator seek speed label', () => {
       value: 1000,
     });
 
-    videoStateManager.set(video, {
+    const videoState = {
       debugIndicator: document.createElement('a'),
       isHovering: false,
       isUserScrubbing: false,
@@ -484,7 +539,9 @@ describe('OverlayCreator seek speed label', () => {
       scrollContent,
       timeline,
       wrapper,
-    });
+    };
+    videoStateManager.set(video, videoState);
+    const deferredSeek = new DeferredMediaSeek(video, 150);
 
     const methods = overlayCreator as unknown as {
       setupScrollHandling: (
@@ -498,7 +555,7 @@ describe('OverlayCreator seek speed label', () => {
         setScrubTimeout: (timeout: number | null) => void,
         getScrubTimeout: () => number | null,
         getIsHovering: () => boolean,
-        scheduleSeek: (time: number) => void,
+        deferredSeek: DeferredMediaSeek,
         debugMode: boolean
       ) => () => void;
     };
@@ -513,7 +570,7 @@ describe('OverlayCreator seek speed label', () => {
       () => {},
       () => null,
       () => false,
-      () => {},
+      deferredSeek,
       false
     );
 
@@ -545,6 +602,187 @@ describe('OverlayCreator seek speed label', () => {
 
     vi.advanceTimersByTime(700);
     expect(seekSpeedLabel.dataset.mfsVisible).toBe('false');
+    cleanup();
+    deferredSeek.cancel();
+  });
+});
+
+describe('OverlayCreator scroll gesture seeking', () => {
+  const setupScrollSeeking = (getIsSettingInitialScroll = () => false) => {
+    const settingsManager = createSettingsManager();
+    const videoStateManager = new VideoStateManager();
+    const overlayCreator = new OverlayCreator(
+      settingsManager,
+      videoStateManager,
+      () => {}
+    );
+    const video = document.createElement('video');
+    const overlay = document.createElement('div');
+    const scrollContent = document.createElement('div');
+    const timeline = document.createElement('div');
+    const seekSpeedLabel = document.createElement('div');
+    const wrapper = document.createElement('div');
+    const soughtTimes: number[] = [];
+    let currentTime = 25;
+    let scrubTimeout: number | null = null;
+
+    timeline.appendChild(document.createElement('div'));
+    wrapper.append(overlay, timeline, seekSpeedLabel);
+    document.body.append(video, wrapper);
+
+    Object.defineProperties(video, {
+      buffered: { configurable: true, value: { length: 0 } },
+      currentTime: {
+        configurable: true,
+        get: () => currentTime,
+        set: (time: number) => {
+          currentTime = time;
+          soughtTimes.push(time);
+        },
+      },
+      duration: { configurable: true, value: 100 },
+    });
+    Object.defineProperties(overlay, {
+      clientWidth: { configurable: true, value: 200 },
+      offsetWidth: { configurable: true, value: 200 },
+      scrollLeft: { configurable: true, value: 0, writable: true },
+    });
+    Object.defineProperty(scrollContent, 'offsetWidth', {
+      configurable: true,
+      value: 1000,
+    });
+
+    const videoState = {
+      debugIndicator: document.createElement('a'),
+      isHovering: false,
+      isUserScrubbing: false,
+      overlay,
+      scrollContent,
+      timeline,
+      wrapper,
+    };
+    videoStateManager.set(video, videoState);
+
+    const deferredSeek = new DeferredMediaSeek(video, 150);
+    const methods = overlayCreator as unknown as {
+      setupScrollHandling: (
+        targetVideo: HTMLVideoElement,
+        targetOverlay: HTMLDivElement,
+        targetScrollContent: HTMLDivElement,
+        targetTimeline: HTMLDivElement,
+        targetSeekSpeedLabel: HTMLDivElement,
+        isSettingInitialScroll: () => boolean,
+        setIsSettingInitialScroll: (value: boolean) => void,
+        setScrubTimeout: (timeout: number | null) => void,
+        getScrubTimeout: () => number | null,
+        getIsHovering: () => boolean,
+        seek: DeferredMediaSeek,
+        debugMode: boolean
+      ) => () => void;
+    };
+    const cleanupScroll = methods.setupScrollHandling(
+      video,
+      overlay,
+      scrollContent,
+      timeline,
+      seekSpeedLabel,
+      getIsSettingInitialScroll,
+      () => {},
+      (timeout) => {
+        scrubTimeout = timeout;
+      },
+      () => scrubTimeout,
+      () => false,
+      deferredSeek,
+      false
+    );
+
+    return {
+      cleanup: () => {
+        cleanupScroll();
+        deferredSeek.cancel();
+        if (scrubTimeout !== null) window.clearTimeout(scrubTimeout);
+      },
+      overlay,
+      soughtTimes,
+      videoState,
+    };
+  };
+
+  it('commits only the final target after a wheel gesture becomes idle', () => {
+    vi.useFakeTimers();
+    const { cleanup, overlay, soughtTimes, videoState } = setupScrollSeeking();
+
+    overlay.dispatchEvent(
+      new WheelEvent('wheel', { bubbles: true, deltaX: 10 })
+    );
+    overlay.scrollLeft = 100;
+    overlay.dispatchEvent(new Event('scroll'));
+    vi.advanceTimersByTime(200);
+
+    overlay.dispatchEvent(
+      new WheelEvent('wheel', { bubbles: true, deltaX: 10 })
+    );
+    overlay.scrollLeft = 600;
+    overlay.dispatchEvent(new Event('scroll'));
+
+    vi.advanceTimersByTime(299);
+    expect(soughtTimes).toEqual([]);
+    expect(videoState.isUserScrubbing).toBe(true);
+    expect(
+      (videoState.timeline.firstElementChild as HTMLElement).style.width
+    ).toBe('25%');
+
+    vi.advanceTimersByTime(1);
+    expect(soughtTimes).toEqual([25]);
+    expect(videoState.isUserScrubbing).toBe(false);
+    cleanup();
+  });
+
+  it('commits non-wheel scrolling as soon as scrollend fires', () => {
+    vi.useFakeTimers();
+    const { cleanup, overlay, soughtTimes, videoState } = setupScrollSeeking();
+
+    overlay.scrollLeft = 400;
+    overlay.dispatchEvent(new Event('scroll'));
+    expect(soughtTimes).toEqual([]);
+
+    overlay.dispatchEvent(new Event('scrollend'));
+    expect(soughtTimes).toEqual([50]);
+    expect(videoState.isUserScrubbing).toBe(false);
+    cleanup();
+  });
+
+  it('commits non-wheel scrolling after the inactivity fallback', () => {
+    vi.useFakeTimers();
+    const { cleanup, overlay, soughtTimes, videoState } = setupScrollSeeking();
+
+    overlay.scrollLeft = 600;
+    overlay.dispatchEvent(new Event('scroll'));
+    vi.advanceTimersByTime(299);
+    expect(soughtTimes).toEqual([]);
+    expect(videoState.isUserScrubbing).toBe(true);
+
+    vi.advanceTimersByTime(1);
+    expect(soughtTimes).toEqual([25]);
+    expect(videoState.isUserScrubbing).toBe(false);
+    cleanup();
+  });
+
+  it('does not commit programmatic scroll synchronization', () => {
+    vi.useFakeTimers();
+    let isSettingInitialScroll = true;
+    const { cleanup, overlay, soughtTimes } = setupScrollSeeking(
+      () => isSettingInitialScroll
+    );
+
+    overlay.scrollLeft = 400;
+    overlay.dispatchEvent(new Event('scroll'));
+    isSettingInitialScroll = false;
+    overlay.dispatchEvent(new Event('scrollend'));
+    vi.advanceTimersByTime(300);
+
+    expect(soughtTimes).toEqual([]);
     cleanup();
   });
 });
@@ -2598,6 +2836,69 @@ describe('OverlayCreator timeline seeking', () => {
     deferredSeek.cancel();
   });
 
+  it('commits a simple unloaded timeline click once on pointer release', () => {
+    const { controller, deferredSeek, state, video } =
+      setupTimelineSeeking(true);
+    const soughtTimes: number[] = [];
+    let currentTime = 25;
+    Object.defineProperty(video, 'currentTime', {
+      configurable: true,
+      get: () => currentTime,
+      set: (time: number) => {
+        currentTime = time;
+        soughtTimes.push(time);
+      },
+    });
+
+    state.timeline.dispatchEvent(
+      createPointerEvent('pointerdown', { clientX: 110 })
+    );
+    expect(soughtTimes).toEqual([]);
+
+    state.timeline.dispatchEvent(
+      createPointerEvent('pointerup', { clientX: 110 })
+    );
+    expect(soughtTimes).toEqual([50]);
+
+    controller.cleanup();
+    deferredSeek.cancel();
+  });
+
+  it('does not seek through intermediate unloaded targets during a slow timeline drag', () => {
+    vi.useFakeTimers();
+    const { controller, deferredSeek, state, video } =
+      setupTimelineSeeking(true);
+    const soughtTimes: number[] = [];
+    let currentTime = 25;
+    Object.defineProperty(video, 'currentTime', {
+      configurable: true,
+      get: () => currentTime,
+      set: (time: number) => {
+        currentTime = time;
+        soughtTimes.push(time);
+      },
+    });
+
+    state.timeline.dispatchEvent(
+      createPointerEvent('pointerdown', { clientX: 110 })
+    );
+    vi.advanceTimersByTime(500);
+    state.timeline.dispatchEvent(
+      createPointerEvent('pointermove', { clientX: 160 })
+    );
+    vi.advanceTimersByTime(500);
+
+    expect(soughtTimes).toEqual([]);
+
+    state.timeline.dispatchEvent(
+      createPointerEvent('pointerup', { clientX: 210 })
+    );
+    expect(soughtTimes).toEqual([100]);
+
+    controller.cleanup();
+    deferredSeek.cancel();
+  });
+
   it('commits the last drag target on cancellation and removes its listeners', () => {
     vi.useFakeTimers();
     const { controller, deferredSeek, state, video } =
@@ -2817,6 +3118,43 @@ describe('OverlayCreator video dragging seeking', () => {
     });
     state.overlay.dispatchEvent(syntheticClick);
     expect(syntheticClick.defaultPrevented).toBe(true);
+
+    controller.cleanup();
+    deferredSeek.cancel();
+  });
+
+  it('does not seek through intermediate unloaded targets during a slow video drag', () => {
+    vi.useFakeTimers();
+    const { controller, deferredSeek, state, video } = setupVideoDragging();
+    const soughtTimes: number[] = [];
+    let currentTime = 25;
+    Object.defineProperty(video, 'currentTime', {
+      configurable: true,
+      get: () => currentTime,
+      set: (time: number) => {
+        currentTime = time;
+        soughtTimes.push(time);
+      },
+    });
+
+    state.overlay.dispatchEvent(
+      createPointerEvent('pointerdown', { clientX: 60 })
+    );
+    state.overlay.dispatchEvent(
+      createPointerEvent('pointermove', { clientX: 160 })
+    );
+    vi.advanceTimersByTime(500);
+    state.overlay.dispatchEvent(
+      createPointerEvent('pointermove', { clientX: 180 })
+    );
+    vi.advanceTimersByTime(500);
+
+    expect(soughtTimes).toEqual([]);
+
+    state.overlay.dispatchEvent(
+      createPointerEvent('pointerup', { clientX: 210 })
+    );
+    expect(soughtTimes).toEqual([100]);
 
     controller.cleanup();
     deferredSeek.cancel();
