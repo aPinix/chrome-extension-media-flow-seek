@@ -20,6 +20,7 @@ export type VideoStateT = {
   cancelTimelineSeeking?: () => void;
   cancelVideoDragging?: () => void;
   syncMediaControls?: () => void;
+  preserveSourceVolume?: () => void;
   syncPlaybackFeedback?: () => void;
   syncCleanup?: () => void;
 };
@@ -29,8 +30,10 @@ export type ContentSettingsT = {
   isDebugEnabled: boolean;
   isBetaFeaturesEnabled: boolean;
   invertHorizontalScroll: boolean;
+  scrollSpeedFactor: number;
   fastScrollHotkey: ScrollHotkeyT;
   slowScrollHotkey: ScrollHotkeyT;
+  isPlayPauseWheelEnabled: boolean;
   showTimelineOnHover: boolean;
   isTimelineSeekingEnabled: boolean;
   dragVideoToSeek: boolean;
@@ -63,8 +66,10 @@ export type ChromeMessageT = {
   isDebugEnabled: boolean;
   isBetaFeaturesEnabled: boolean;
   invertHorizontalScroll: boolean;
+  scrollSpeedFactor?: number;
   fastScrollHotkey?: ContentSettingsT['fastScrollHotkey'];
   slowScrollHotkey?: ContentSettingsT['slowScrollHotkey'];
+  isPlayPauseWheelEnabled?: boolean;
   showTimelineOnHover: boolean;
   isTimelineSeekingEnabled?: boolean;
   dragVideoToSeek?: boolean;
@@ -85,4 +90,5 @@ export type DOMCheckOptionsT = {
   shouldRun: () => boolean;
   hasOverlay: (video: HTMLVideoElement) => boolean;
   createOverlay: (video: HTMLVideoElement) => void;
+  removeOverlay?: (video: HTMLVideoElement) => void;
 };

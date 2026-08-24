@@ -4,8 +4,10 @@ import {
 } from '@/helpers/domains';
 import {
   DEFAULT_FAST_SCROLL_HOTKEY,
+  DEFAULT_SCROLL_SPEED_FACTOR,
   DEFAULT_SLOW_SCROLL_HOTKEY,
   normalizeScrollHotkeys,
+  normalizeScrollSpeedFactor,
   type ScrollHotkeyT,
 } from '@/helpers/scroll-speed';
 import type { DomainConfigT } from '@/types/domains';
@@ -15,8 +17,10 @@ export type PopupSettings = {
   isDebugEnabled: boolean;
   isBetaFeaturesEnabled: boolean;
   invertHorizontalScroll: boolean;
+  scrollSpeedFactor: number;
   fastScrollHotkey: ScrollHotkeyT;
   slowScrollHotkey: ScrollHotkeyT;
+  isPlayPauseWheelEnabled: boolean;
   showTimelineOnHover: boolean;
   isTimelineSeekingEnabled: boolean;
   dragVideoToSeek: boolean;
@@ -35,8 +39,10 @@ export const DEFAULT_SETTINGS: Omit<PopupSettings, 'domainRules'> = {
   isDebugEnabled: false,
   isBetaFeaturesEnabled: true,
   invertHorizontalScroll: false,
+  scrollSpeedFactor: DEFAULT_SCROLL_SPEED_FACTOR,
   fastScrollHotkey: DEFAULT_FAST_SCROLL_HOTKEY,
   slowScrollHotkey: DEFAULT_SLOW_SCROLL_HOTKEY,
+  isPlayPauseWheelEnabled: true,
   showTimelineOnHover: false,
   isTimelineSeekingEnabled: true,
   dragVideoToSeek: false,
@@ -61,8 +67,10 @@ export const loadPopupSettings = (): Promise<PopupSettings> => {
         'isDebugEnabled',
         'isBetaFeaturesEnabled',
         'invertHorizontalScroll',
+        'scrollSpeedFactor',
         'fastScrollHotkey',
         'slowScrollHotkey',
+        'isPlayPauseWheelEnabled',
         'showTimelineOnHover',
         'isTimelineSeekingEnabled',
         'dragVideoToSeek',
@@ -104,7 +112,13 @@ export const loadPopupSettings = (): Promise<PopupSettings> => {
           invertHorizontalScroll:
             stored.invertHorizontalScroll ??
             DEFAULT_SETTINGS.invertHorizontalScroll,
+          scrollSpeedFactor: normalizeScrollSpeedFactor(
+            stored.scrollSpeedFactor
+          ),
           ...scrollHotkeys,
+          isPlayPauseWheelEnabled:
+            stored.isPlayPauseWheelEnabled ??
+            DEFAULT_SETTINGS.isPlayPauseWheelEnabled,
           showTimelineOnHover:
             stored.showTimelineOnHover ?? DEFAULT_SETTINGS.showTimelineOnHover,
           isTimelineSeekingEnabled:

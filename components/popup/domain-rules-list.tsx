@@ -417,7 +417,7 @@ function SortableDomainRulesList({
     >
       <div
         className={cn(
-          'sticky top-[95px] z-20 -mx-2 rounded-b-xl bg-slate-100/75 px-2 pt-6 pb-2 backdrop-blur-xl backdrop-saturate-150 dark:bg-slate-700/75',
+          'sticky top-[48px] z-20 -mx-2 rounded-b-xl bg-slate-100/75 px-2 pt-6 pb-2 backdrop-blur-xl backdrop-saturate-150 dark:bg-slate-700/75',
           isSticky && 'border-slate-200/80 border-b dark:border-slate-600/80'
         )}
         data-sticky={isSticky}
@@ -428,7 +428,7 @@ function SortableDomainRulesList({
           <div className="flex items-center gap-1">
             <Button
               aria-label="Undo website removal"
-              className="size-5 shrink-0 rounded-full bg-amber-500/15 p-0 text-amber-600 transition-colors hover:bg-amber-500/25 hover:text-amber-700 disabled:bg-amber-500/10 disabled:text-amber-500/45 dark:bg-amber-400/15 dark:text-amber-300 dark:disabled:bg-amber-400/10 dark:disabled:text-amber-300/40 dark:hover:bg-amber-400/25 dark:hover:text-amber-200"
+              className="size-5 shrink-0 rounded-full bg-amber-500/15 p-0 text-amber-600 transition-colors hover:bg-amber-500/25 hover:text-amber-700 disabled:bg-slate-300 disabled:text-slate-500 dark:bg-amber-400/15 dark:text-amber-300 dark:disabled:bg-slate-700 dark:disabled:text-slate-400 dark:hover:bg-amber-400/25 dark:hover:text-amber-200"
               disabled={!canUndo || Boolean(removingDomain)}
               onClick={onUndo}
               size="icon-xs"
@@ -440,7 +440,7 @@ function SortableDomainRulesList({
             </Button>
             <Button
               aria-label="Redo website removal"
-              className="size-5 shrink-0 rounded-full bg-amber-500/15 p-0 text-amber-600 transition-colors hover:bg-amber-500/25 hover:text-amber-700 disabled:bg-amber-500/10 disabled:text-amber-500/45 dark:bg-amber-400/15 dark:text-amber-300 dark:disabled:bg-amber-400/10 dark:disabled:text-amber-300/40 dark:hover:bg-amber-400/25 dark:hover:text-amber-200"
+              className="size-5 shrink-0 rounded-full bg-amber-500/15 p-0 text-amber-600 transition-colors hover:bg-amber-500/25 hover:text-amber-700 disabled:bg-slate-300 disabled:text-slate-500 dark:bg-amber-400/15 dark:text-amber-300 dark:disabled:bg-slate-700 dark:disabled:text-slate-400 dark:hover:bg-amber-400/25 dark:hover:text-amber-200"
               disabled={!canRedo || Boolean(removingDomain)}
               onClick={onRedo}
               size="icon-xs"

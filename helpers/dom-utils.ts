@@ -1,5 +1,21 @@
 import type { DOMCheckOptionsT } from '@/types/content';
 
+const YOUTUBE_HOVER_PREVIEW_SELECTOR = [
+  'ytd-moving-thumbnail-renderer',
+  'ytd-thumbnail',
+  'ytd-rich-item-renderer',
+  'ytd-video-renderer',
+  'ytd-grid-video-renderer',
+  'ytd-compact-video-renderer',
+  'ytd-playlist-video-renderer',
+  'ytd-reel-item-renderer',
+  'yt-lockup-view-model',
+  '.yt-lockup-view-model',
+  'yt-thumbnail-view-model',
+  '.yt-thumbnail-view-model',
+  'a#thumbnail',
+].join(',');
+
 // biome-ignore lint/complexity/noStaticOnlyClass: This class owns shared DOM discovery state as well as its related operations.
 export class DOMUtils {
   private static shadowRoots = new Set<ShadowRoot>();
@@ -62,6 +78,26 @@ export class DOMUtils {
   static isVideoVisible(video: HTMLVideoElement): boolean {
     const rect = video.getBoundingClientRect();
     return video.isConnected && rect.width > 0 && rect.height > 0;
+  }
+
+  /**
+   * YouTube creates short-lived videos inside grid/search/sidebar thumbnail
+   * links to implement its native hover previews. Inserting an interaction
+   * layer into those renderers can become the pointer target before YouTube's
+   * hover controller, causing the preview to stop or never start.
+   */
+  static isYouTubeHoverPreview(video: HTMLVideoElement): boolean {
+    if (video.closest(YOUTUBE_HOVER_PREVIEW_SELECTOR)) return true;
+
+    const hostname = video.ownerDocument.location.hostname.toLowerCase();
+    const isYouTube =
+      hostname === 'youtube.com' || hostname.endsWith('.youtube.com');
+
+    // YouTube has multiple concurrently deployed card implementations. Their
+    // tag/class names change, but thumbnail preview videos remain descendants
+    // of the card's navigation link. The watch-page and Shorts players are not
+    // nested in anchors.
+    return isYouTube && video.closest('a[href]') !== null;
   }
 
   static hasOverlayAttribute(video: HTMLVideoElement): boolean {
@@ -168,12 +204,14 @@ export class DOMUtils {
           const isVisible = DOMUtils.isVideoVisible(video);
           const hasAttribute = DOMUtils.hasOverlayAttribute(video);
           const hasConnectedOverlay = hasOverlay(video);
+          const isYouTubeHoverPreview = DOMUtils.isYouTubeHoverPreview(video);
 
           if (debugMode) {
             console.log(`📺 Video ${index + 1} analysis:`, {
               isVisible,
               hasAttribute,
               hasConnectedOverlay,
+              isYouTubeHoverPreview,
               offsetWidth: video.offsetWidth,
               offsetHeight: video.offsetHeight,
               readyState: video.readyState,
@@ -241,6 +279,7 @@ export class DOMUtils {
 
       const observer = new MutationObserver((mutations) => {
         let hasNewVideos = false;
+        let hasRemovedVideos = false;
 
         mutations.forEach((mutation) => {
           if (mutation.type === 'childList') {
@@ -272,8 +311,35 @@ export class DOMUtils {
                 }
               }
             });
+
+            // YouTube repeatedly removes its temporary preview video while
+            // leaving the thumbnail host connected. Trigger pruning in the
+            // same microtask so our sibling wrapper cannot linger over the
+            // thumbnail until the next mouse scan.
+            mutation.removedNodes.forEach((node) => {
+              if (node.nodeType !== Node.ELEMENT_NODE) return;
+
+              const element = node as Element;
+              if (
+                element.tagName === 'VIDEO' ||
+                element.querySelector('video') ||
+                element.shadowRoot?.querySelector('video')
+              ) {
+                hasRemovedVideos = true;
+                if (debugMode) {
+                  console.log('🗑️ Removed video element detected:', element);
+                }
+              }
+            });
           }
         });
+
+        if (hasRemovedVideos) {
+          if (debugMode) {
+            console.log('🧹 MutationObserver triggered overlay pruning');
+          }
+          callback();
+        }
 
         if (hasNewVideos) {
           if (debugMode) {
@@ -328,20 +394,27 @@ export class DOMUtils {
   static createMouseCheckThrottler(
     callback: () => void,
     debugMode: boolean = false
-  ): () => void {
+  ): (event?: MouseEvent) => void {
     let mouseCheckTimeout: number | null = null;
 
-    return () => {
+    return (event?: MouseEvent) => {
+      // Rebuilding or reconciling overlays after pointerdown can make the
+      // scrubber miss the beginning of a video-area drag. Pointer entry gets
+      // an immediate scan, but an already pressed pointer keeps its current
+      // interaction owner until the next unpressed movement.
+      if (event && event.buttons !== 0) return;
+
       // Throttle checks to avoid spam
       if (mouseCheckTimeout) return;
 
+      if (debugMode) {
+        console.log('🖱️ Mouse movement triggered video check');
+      }
+      callback();
+
       mouseCheckTimeout = window.setTimeout(() => {
-        if (debugMode) {
-          console.log('🖱️ Mouse movement triggered video check');
-        }
-        callback();
         mouseCheckTimeout = null;
-      }, 1000); // Check at most every 1 second
+      }, 1000); // Check immediately, then at most once per second
     };
   }
 }

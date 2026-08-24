@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  DEFAULT_SCROLL_SPEED_FACTOR,
   FAST_SCROLL_MULTIPLIER,
   getPlayerLayerWheelDeltaPixels,
   getScrollSpeedMultiplier,
@@ -8,6 +9,7 @@ import {
   hasScrollSpeedHotkey,
   isScrollSpeedHotkeyCode,
   normalizeScrollHotkeys,
+  normalizeScrollSpeedFactor,
   ScrollHotkeyE,
   SLOW_SCROLL_MULTIPLIER,
 } from '@/helpers/scroll-speed';
@@ -55,6 +57,42 @@ describe('scroll speed hotkeys', () => {
         ScrollHotkeyE.Alt
       )
     ).toBe(SLOW_SCROLL_MULTIPLIER);
+  });
+
+  it('scales normal, fast, and slow seeking from the configured base factor', () => {
+    expect(
+      getScrollSpeedMultiplier(
+        hotkeyState(),
+        ScrollHotkeyE.Alt,
+        ScrollHotkeyE.AltShift,
+        2
+      )
+    ).toBe(2);
+    expect(
+      getScrollSpeedMultiplier(
+        hotkeyState(true),
+        ScrollHotkeyE.Alt,
+        ScrollHotkeyE.AltShift,
+        2
+      )
+    ).toBe(2 * FAST_SCROLL_MULTIPLIER);
+    expect(
+      getScrollSpeedMultiplier(
+        hotkeyState(true, true),
+        ScrollHotkeyE.Alt,
+        ScrollHotkeyE.AltShift,
+        2
+      )
+    ).toBe(2 * SLOW_SCROLL_MULTIPLIER);
+  });
+
+  it('normalizes stored base factors to the supported slider range', () => {
+    expect(normalizeScrollSpeedFactor(undefined)).toBe(
+      DEFAULT_SCROLL_SPEED_FACTOR
+    );
+    expect(normalizeScrollSpeedFactor(0)).toBe(0.25);
+    expect(normalizeScrollSpeedFactor(1.12)).toBe(1);
+    expect(normalizeScrollSpeedFactor(10)).toBe(3);
   });
 
   it('normalizes invalid or conflicting stored hotkeys', () => {

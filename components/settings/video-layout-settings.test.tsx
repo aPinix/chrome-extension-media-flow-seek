@@ -9,7 +9,6 @@ import {
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-
 import { ActionAreaE } from '@/types/content';
 
 import { VideoLayoutSettings } from './video-layout-settings';
@@ -24,6 +23,7 @@ const createCallbacks = () => ({
   onHeightReset: vi.fn(),
   onPositionChange: vi.fn(),
   onUnitChange: vi.fn(),
+  onPlayPauseWheelEnabledChange: vi.fn(),
 });
 
 const baseProps = {
@@ -33,6 +33,7 @@ const baseProps = {
   height: 6,
   position: 'bottom' as const,
   unit: 'px' as const,
+  isPlayPauseWheelEnabled: true,
 };
 
 const getRangeInput = (root: HTMLElement) => {
@@ -85,7 +86,24 @@ describe('VideoLayoutSettings', () => {
     expect(
       getRangeInput(screen.getByRole('group', { name: 'Timeline height' }))
     ).toBeTruthy();
-    expect(screen.queryByRole('switch')).toBeNull();
+    const timelineHeightControl = screen.getByRole('group', {
+      name: 'Timeline height',
+    });
+    expect(
+      timelineHeightControl.querySelector('[data-slot="app-slider-track"]')
+        ?.className
+    ).toContain('h-3');
+    expect(
+      screen.getByRole('spinbutton', { name: 'Timeline height value' })
+        .className
+    ).toContain('bg-slate-100');
+    expect(
+      timelineHeightControl.querySelector('[data-slot="app-slider-thumb"]')
+        ?.className
+    ).toContain('after:opacity-0');
+    expect(screen.getAllByRole('switch')).toHaveLength(1);
+    expect(screen.getByRole('heading', { name: 'Wheel Actions' })).toBeTruthy();
+    expect(screen.queryByText('Volume')).toBeNull();
   });
 
   it('calls every settings callback from its explicit controls', async () => {
@@ -146,6 +164,11 @@ describe('VideoLayoutSettings', () => {
       screen.getByRole('button', { name: 'Reset height to default' })
     );
     expect(callbacks.onHeightReset).toHaveBeenCalledOnce();
+
+    await user.click(
+      screen.getByRole('switch', { name: 'Toggle play pause wheel action' })
+    );
+    expect(callbacks.onPlayPauseWheelEnabledChange).toHaveBeenCalledWith(false);
   });
 
   it('disables each reset button when its slider is at the default', () => {
@@ -157,12 +180,16 @@ describe('VideoLayoutSettings', () => {
       />
     );
 
-    expect(
-      screen.getByRole('button', { name: 'Reset area size to default' })
-    ).toHaveProperty('disabled', true);
-    expect(
-      screen.getByRole('button', { name: 'Reset height to default' })
-    ).toHaveProperty('disabled', true);
+    for (const resetButton of [
+      screen.getByRole('button', { name: 'Reset area size to default' }),
+      screen.getByRole('button', { name: 'Reset height to default' }),
+    ]) {
+      expect(resetButton).toHaveProperty('disabled', true);
+      expect(resetButton.className).toContain('disabled:bg-slate-300');
+      expect(resetButton.className).toContain('disabled:text-slate-500');
+      expect(resetButton.className).toContain('dark:disabled:bg-slate-700');
+      expect(resetButton.className).toContain('dark:disabled:text-slate-400');
+    }
   });
 
   it('positions every action-area state from the selected percentage', () => {

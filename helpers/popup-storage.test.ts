@@ -32,6 +32,28 @@ describe('timeline seeking storage', () => {
     expect(settings.hideVideoControls).toBe(false);
     expect(DEFAULT_SETTINGS.colorizedTimeline).toBe(false);
     expect(settings.colorizedTimeline).toBe(false);
+    expect(DEFAULT_SETTINGS.isPlayPauseWheelEnabled).toBe(true);
+    expect(settings.isPlayPauseWheelEnabled).toBe(true);
+    expect(DEFAULT_SETTINGS.scrollSpeedFactor).toBe(1);
+    expect(settings.scrollSpeedFactor).toBe(1);
+  });
+
+  it('loads a valid scroll speed factor and normalizes invalid values', async () => {
+    let storedFactor = 1.75;
+    vi.stubGlobal('chrome', {
+      storage: {
+        sync: {
+          get: vi.fn((_keys, callback) =>
+            callback({ scrollSpeedFactor: storedFactor })
+          ),
+          set: vi.fn(),
+        },
+      },
+    });
+
+    expect((await loadPopupSettings()).scrollSpeedFactor).toBe(1.75);
+    storedFactor = 99;
+    expect((await loadPopupSettings()).scrollSpeedFactor).toBe(3);
   });
 
   it('loads and saves an enabled timeline seeking preference', async () => {

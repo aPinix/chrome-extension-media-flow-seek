@@ -86,7 +86,7 @@ export function TimelineSettings({
         </div>
 
         <TimelineHeightControl
-          className="w-full px-2"
+          className="w-full"
           onChange={onHeightChange}
           onUnitChange={onUnitChange}
           unit={unit}

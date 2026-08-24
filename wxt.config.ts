@@ -14,7 +14,7 @@ export default defineConfig({
       },
     },
   }),
-  manifest: () => {
+  manifest: (env) => {
     return {
       name: 'Better Video Controls for YouTube, Instagram, TikTok & More',
       short_name: 'BetterVideo',
@@ -40,6 +40,16 @@ export default defineConfig({
         // 'sidePanel',
       ],
       host_permissions: ['<all_urls>'],
+      ...(env.browser === 'firefox'
+        ? {
+            browser_specific_settings: {
+              gecko: {
+                id: 'bettervideo@apinix.com',
+                data_collection_permissions: { required: ['none'] },
+              },
+            },
+          }
+        : {}),
       commands: {
         'toggle-extension': {
           suggested_key: {

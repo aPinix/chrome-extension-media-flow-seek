@@ -32,7 +32,11 @@ const createTimeRanges = (ranges: Array<[number, number]>): TimeRanges => ({
   end: (index: number) => ranges[index]?.[1] ?? 0,
 });
 
-const createIncrementalPlayer = (withTrack = true) => {
+const createIncrementalPlayer = (
+  withTrack = true,
+  duration = Infinity,
+  clampDirectSeek = false
+) => {
   const player = document.createElement('div');
   const video = document.createElement('video');
   const clock = document.createElement('span');
@@ -64,10 +68,10 @@ const createIncrementalPlayer = (withTrack = true) => {
       get: () => currentTime,
       set: (time: number) => {
         directAssignments.push(time);
-        currentTime = time;
+        currentTime = clampDirectSeek ? Math.min(time, 10) : time;
       },
     },
-    duration: { configurable: true, value: Infinity },
+    duration: { configurable: true, value: duration },
     seekable: {
       configurable: true,
       value: createTimeRanges([[0, 10]]),
@@ -145,6 +149,25 @@ describe('native player seeking', () => {
 
     expect(video.currentTime).toBe(96);
     expect(directAssignments).toEqual([]);
+  });
+
+  it('uses the native timeline when a finite-duration player clamps an unloaded seek', () => {
+    vi.useFakeTimers();
+    const { control, directAssignments, setCurrentTimeFromPlayer, video } =
+      createIncrementalPlayer(true, 120, true);
+    const nativeClick = vi.fn((event: Event) => {
+      setCurrentTimeFromPlayer(96);
+      event.preventDefault();
+    });
+    control.addEventListener('click', nativeClick);
+    const seek = new DeferredMediaSeek(video, 150);
+
+    seek.schedule(96);
+    vi.advanceTimersByTime(150);
+
+    expect(directAssignments).toEqual([96]);
+    expect(nativeClick).toHaveBeenCalledOnce();
+    expect(video.currentTime).toBe(96);
   });
 
   it('does not overwrite a seek the site confirms it handled', () => {

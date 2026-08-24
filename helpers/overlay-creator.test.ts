@@ -20,6 +20,7 @@ const createSettingsManager = ({
   timelinePosition = 'bottom',
   actionArea = 'full',
   actionAreaSize = 30,
+  isPlayPauseWheelEnabled = true,
 }: {
   isTimelineSeekingEnabled?: boolean;
   dragVideoToSeek?: boolean;
@@ -32,6 +33,7 @@ const createSettingsManager = ({
   timelinePosition?: 'top' | 'bottom';
   actionArea?: 'full' | 'top' | 'middle' | 'bottom';
   actionAreaSize?: number;
+  isPlayPauseWheelEnabled?: boolean;
 } = {}): SettingsManager =>
   ({
     getActionArea: () => actionArea,
@@ -49,6 +51,7 @@ const createSettingsManager = ({
     shouldShowTimelineOnHover: () => showTimelineOnHover,
     getFastScrollHotkey: () => 'alt',
     getSlowScrollHotkey: () => 'alt+shift',
+    isPlayPauseWheelEnabled: () => isPlayPauseWheelEnabled,
     updateSetting: () => {},
   }) as unknown as SettingsManager;
 
@@ -704,7 +707,9 @@ describe('OverlayCreator scroll gesture seeking', () => {
         if (scrubTimeout !== null) window.clearTimeout(scrubTimeout);
       },
       overlay,
+      overlayCreator,
       soughtTimes,
+      video,
       videoState,
     };
   };
@@ -736,6 +741,114 @@ describe('OverlayCreator scroll gesture seeking', () => {
     vi.advanceTimersByTime(1);
     expect(soughtTimes).toEqual([25]);
     expect(videoState.isUserScrubbing).toBe(false);
+    cleanup();
+  });
+
+  it('contains horizontal wheel gestures at the scrubber edges', () => {
+    vi.useFakeTimers();
+    const { cleanup, overlay } = setupScrollSeeking();
+    overlay.scrollLeft = 0;
+
+    const wheel = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      deltaX: -20,
+    });
+    overlay.dispatchEvent(wheel);
+
+    expect(wheel.defaultPrevented).toBe(true);
+    cleanup();
+  });
+
+  it('leaves ordinary vertical wheel gestures available to the page', () => {
+    vi.useFakeTimers();
+    const { cleanup, overlay } = setupScrollSeeking();
+
+    const wheel = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      deltaY: 20,
+    });
+    overlay.dispatchEvent(wheel);
+
+    expect(wheel.defaultPrevented).toBe(false);
+    expect(overlay.scrollLeft).toBe(0);
+    cleanup();
+  });
+
+  it('toggles playback once per Primary horizontal gesture without seeking', () => {
+    vi.useFakeTimers();
+    const { cleanup, overlay, video } = setupScrollSeeking();
+    const play = vi.fn(() => Promise.resolve());
+    Object.defineProperty(video, 'play', { configurable: true, value: play });
+    const primaryKey = /Mac|iPhone|iPad|iPod/i.test(navigator.platform)
+      ? { metaKey: true }
+      : { ctrlKey: true };
+    const createWheel = () =>
+      new WheelEvent('wheel', {
+        ...primaryKey,
+        bubbles: true,
+        cancelable: true,
+        deltaX: 20,
+      });
+
+    const firstWheel = createWheel();
+    overlay.dispatchEvent(firstWheel);
+    overlay.dispatchEvent(createWheel());
+
+    expect(firstWheel.defaultPrevented).toBe(true);
+    expect(play).toHaveBeenCalledOnce();
+    expect(overlay.scrollLeft).toBe(0);
+
+    vi.advanceTimersByTime(500);
+    overlay.dispatchEvent(createWheel());
+    expect(play).toHaveBeenCalledTimes(2);
+    cleanup();
+  });
+
+  it('controls a passive YouTube thumbnail through document wheel hit-testing', () => {
+    vi.useFakeTimers();
+    const { cleanup, overlay, overlayCreator, video, videoState } =
+      setupScrollSeeking();
+    const thumbnail = document.createElement('ytd-thumbnail');
+    thumbnail.appendChild(video);
+    document.body.appendChild(thumbnail);
+    overlay.getBoundingClientRect = () =>
+      ({
+        bottom: 120,
+        height: 100,
+        left: 10,
+        right: 210,
+        top: 20,
+        width: 200,
+        x: 10,
+        y: 20,
+        toJSON: () => ({}),
+      }) as DOMRect;
+
+    const methods = overlayCreator as unknown as {
+      updateOverlayPointerEvents: (
+        targetVideo: HTMLVideoElement,
+        state: VideoStateT
+      ) => void;
+    };
+    methods.updateOverlayPointerEvents(video, videoState);
+
+    const wheel = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 50,
+      clientY: 50,
+      deltaX: 20,
+    });
+    document.dispatchEvent(wheel);
+
+    expect(overlay.style.getPropertyValue('pointer-events')).toBe('none');
+    expect(overlay.style.getPropertyPriority('pointer-events')).toBe(
+      'important'
+    );
+    expect(wheel.defaultPrevented).toBe(true);
+    expect(overlay.scrollLeft).toBe(20);
     cleanup();
   });
 
@@ -1033,7 +1146,7 @@ describe('OverlayCreator hover tracking', () => {
     expect(state.timeline.style.opacity).toBe('1');
   });
 
-  it('reveals controls from an unfocused wheel event and expires the lease', () => {
+  it('keeps volume dim during wheel-derived video hover', () => {
     vi.useFakeTimers();
     const settingsManager = createSettingsManager({
       hideVideoControls: true,
@@ -1067,7 +1180,7 @@ describe('OverlayCreator hover tracking', () => {
 
     expect(state.isHovering).toBe(true);
     expect(state.isWheelHovering).toBe(true);
-    expect(state.mediaControls.dataset.mfsVisible).toBe('true');
+    expect(state.mediaControls.dataset.mfsVisible).not.toBe('true');
 
     vi.advanceTimersByTime(1499);
     expect(state.isHovering).toBe(true);
@@ -1076,6 +1189,91 @@ describe('OverlayCreator hover tracking', () => {
     expect(state.isHovering).toBe(false);
     expect(state.isWheelHovering).toBe(false);
     expect(state.mediaControls.dataset.mfsVisible).toBe('false');
+  });
+
+  it('brightens volume only while the pointer is directly over it', () => {
+    const videoStateManager = new VideoStateManager();
+    const overlayCreator = new OverlayCreator(
+      createSettingsManager({
+        hideVideoControls: true,
+        isTimelineSeekingEnabled: true,
+      }),
+      videoStateManager,
+      () => {}
+    );
+    const { video, state } = createVideoState();
+    const mediaControls = document.createElement('div');
+    state.mediaControls = mediaControls;
+    mediaControls.dataset.mfsActive = 'true';
+    mediaControls.dataset.mfsVisible = 'false';
+    mediaControls.getBoundingClientRect = () =>
+      ({
+        bottom: 103,
+        height: 86,
+        left: 174,
+        right: 202,
+        top: 17,
+        width: 28,
+        x: 174,
+        y: 17,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    document.body.appendChild(mediaControls);
+    videoStateManager.set(video, state);
+
+    const hoverTracking = overlayCreator as unknown as {
+      setupDocumentHoverTracking: (ownerDocument: Document) => void;
+    };
+    hoverTracking.setupDocumentHoverTracking(document);
+
+    document.body.dispatchEvent(
+      new MouseEvent('pointermove', {
+        bubbles: true,
+        clientX: 100,
+        clientY: 70,
+      })
+    );
+    expect(state.isHovering).toBe(true);
+    expect(mediaControls.dataset.mfsVideoHovered).toBe('true');
+    expect(mediaControls.dataset.mfsVisible).toBe('false');
+
+    document.body.dispatchEvent(
+      new MouseEvent('pointermove', {
+        bubbles: true,
+        clientX: 205,
+        clientY: 70,
+      })
+    );
+    expect(mediaControls.dataset.mfsVideoHovered).toBe('true');
+    expect(mediaControls.dataset.mfsVisible).toBe('false');
+
+    document.body.dispatchEvent(
+      new MouseEvent('pointermove', {
+        bubbles: true,
+        clientX: 180,
+        clientY: 70,
+      })
+    );
+    expect(mediaControls.dataset.mfsVideoHovered).toBe('true');
+    expect(mediaControls.dataset.mfsVisible).toBe('true');
+
+    document.body.dispatchEvent(
+      new MouseEvent('pointermove', {
+        bubbles: true,
+        clientX: 100,
+        clientY: 70,
+      })
+    );
+    expect(mediaControls.dataset.mfsVisible).toBe('false');
+
+    document.body.dispatchEvent(
+      new MouseEvent('pointermove', {
+        bubbles: true,
+        clientX: 150,
+        clientY: 70,
+      })
+    );
+    expect(mediaControls.dataset.mfsVisible).toBe('false');
   });
 
   it('renews wheel visibility and yields to the next pointer movement', () => {
@@ -1642,7 +1840,7 @@ describe('OverlayCreator timeline seeking', () => {
     expect(state.wrapper.style.getPropertyValue('z-index')).toBe('');
     expect(state.mediaControls.parentElement).toBe(document.documentElement);
     expect(state.mediaControls.dataset.mfsPortaled).toBe('true');
-    expect(state.mediaControls.style.left).toBe('174px');
+    expect(state.mediaControls.style.left).toBe('190px');
     expect(state.mediaControls.style.top).toBe('70px');
 
     const hoverMethods = overlayCreator as unknown as {
@@ -1653,7 +1851,7 @@ describe('OverlayCreator timeline seeking', () => {
       ) => void;
     };
     hoverMethods.updateTimelineHoverState(video, state, true);
-    expect(state.mediaControls.dataset.mfsVisible).toBe('true');
+    expect(state.mediaControls.dataset.mfsVisible).toBe('false');
 
     isTimelineSeekingEnabled = false;
     overlayCreator.updateVideoControlsVisibility();
@@ -1779,7 +1977,7 @@ describe('OverlayCreator timeline seeking', () => {
     expect(getComputedStyle(effectBadge).visibility).toBe('hidden');
     expect(getComputedStyle(soundAttribution).visibility).toBe('hidden');
     expect(state.mediaControls.hidden).toBe(false);
-    expect(getComputedStyle(state.mediaControls).visibility).not.toBe('hidden');
+    expect(getComputedStyle(state.mediaControls).visibility).toBe('hidden');
 
     videoStateManager.delete(video);
     expect(player.dataset.mfsTiktokPlayer).toBeUndefined();
@@ -2291,7 +2489,7 @@ describe('OverlayCreator timeline seeking', () => {
     playbackController.cleanup();
   });
 
-  it('renders a fully rounded iOS-style volume pill and synchronizes it', () => {
+  it('renders a compact frosted volume pill and synchronizes it', () => {
     vi.useFakeTimers();
     const overlayCreator = new OverlayCreator(
       createSettingsManager({
@@ -2330,8 +2528,11 @@ describe('OverlayCreator timeline seeking', () => {
       '[data-mfs-action="volume"]'
     );
     const fill = controls.querySelector<HTMLElement>('.mfs-volume-fill');
+    const icon = controls.querySelector<HTMLElement>('.mfs-volume-icon');
     expect(volume).not.toBeNull();
     expect(fill).not.toBeNull();
+    expect(icon).not.toBeNull();
+    expect(controls.querySelector('.mfs-volume-thumb')).toBeNull();
     expect(controls.querySelector('.mfs-volume-icon')).not.toBeNull();
     expect(controls.querySelectorAll('.mfs-volume-icon-wave')).toHaveLength(3);
     expect(controls.querySelectorAll('.mfs-volume-icon-muted')).toHaveLength(1);
@@ -2340,25 +2541,40 @@ describe('OverlayCreator timeline seeking', () => {
     expect(controls.querySelector('[data-mfs-action="fullscreen"]')).toBeNull();
     expect(volume?.style.getPropertyValue('--mfs-volume')).toBe('80%');
     expect(volume?.dataset.mfsVolumeLevel).toBe('high');
-    expect(getComputedStyle(controls).borderRadius).toBe('999px');
-    expect(getComputedStyle(controls).width).toBe('28px');
-    expect(getComputedStyle(controls).right).toBe('8px');
+    expect(getComputedStyle(controls).borderRadius).toBe('8px 0 0 8px');
+    expect(getComputedStyle(controls).width).toBe('20px');
+    expect(getComputedStyle(controls).right).toBe('0px');
+    expect(getComputedStyle(icon as HTMLElement).left).toBe('50%');
+    expect(getComputedStyle(icon as HTMLElement).transform).toBe(
+      'translateX(-50%)'
+    );
     expect(getComputedStyle(controls).top).toBe('50%');
     expect(getComputedStyle(controls).bottom).toBe('auto');
     expect(getComputedStyle(controls).borderWidth).toBe('0px');
-    expect(getComputedStyle(controls).backgroundColor).toContain('0.2');
+    expect(getComputedStyle(controls).height).toBe('min(72px, 100% - 16px)');
+    expect(getComputedStyle(controls).backgroundColor).toContain('0.28');
+    expect(getComputedStyle(controls).opacity).toBe('0');
+    expect(getComputedStyle(controls).visibility).toBe('hidden');
+    expect(getComputedStyle(controls).pointerEvents).toBe('none');
+    controls.dataset.mfsActive = 'true';
+    controls.dataset.mfsVideoHovered = 'true';
+    expect(getComputedStyle(controls).opacity).toBe('0.3');
+    expect(getComputedStyle(controls).pointerEvents).toBe('auto');
+    controls.dataset.mfsVisible = 'true';
+    expect(getComputedStyle(controls).opacity).toBe('1');
+    controls.dataset.mfsVisible = 'false';
     expect(getComputedStyle(controls).boxShadow).toBe('none');
     expect(getComputedStyle(volume as HTMLElement).overflow).toBe('hidden');
     expect(getComputedStyle(controls).backdropFilter).toBe(
-      'blur(8px) saturate(140%)'
+      'blur(6px) saturate(130%)'
     );
     expect(getComputedStyle(fill as HTMLElement).backgroundColor).toContain(
-      '0.3'
+      '0.42'
     );
     expect(getComputedStyle(fill as HTMLElement).borderRadius).toBe('0px');
     expect(getComputedStyle(fill as HTMLElement).boxShadow).toBe('none');
     expect(getComputedStyle(fill as HTMLElement).backdropFilter).toBe(
-      'blur(8px) saturate(140%)'
+      'blur(6px) saturate(130%)'
     );
     expect(document.head.querySelector('style')?.textContent).toContain(
       '.mfs-volume-fill'
@@ -2373,19 +2589,14 @@ describe('OverlayCreator timeline seeking', () => {
     volume?.click();
     expect(video.muted).toBe(true);
     expect(volume?.getAttribute('aria-label')).toBe('Unmute');
-    expect(volume?.style.getPropertyValue('--mfs-volume')).toBe('0%');
+    expect(volume?.style.getPropertyValue('--mfs-volume')).toBe('80%');
+    expect(volume?.getAttribute('aria-valuenow')).toBe('80');
     expect(volume?.dataset.mfsMuted).toBe('true');
     expect(volume?.dataset.mfsVolumeLevel).toBe('muted');
     volume?.click();
     expect(video.muted).toBe(false);
     expect(volume?.dataset.mfsMuted).toBe('false');
     expect(volume?.dataset.mfsVolumeLevel).toBe('high');
-
-    (
-      overlayCreator as unknown as {
-        mediaVolumePreferences: Map<string, { muted: boolean; volume: number }>;
-      }
-    ).mediaVolumePreferences.clear();
 
     video.volume = 0.2;
     video.dispatchEvent(new Event('volumechange'));
@@ -2436,12 +2647,18 @@ describe('OverlayCreator timeline seeking', () => {
       volume.dispatchEvent(
         createPointerEvent('pointerdown', { clientX: 30, clientY: 120 })
       );
+      expect(controls.dataset.mfsInteracting).toBe('true');
+      expect(controls.dataset.mfsVisible).toBe('true');
       volume.dispatchEvent(
         createPointerEvent('pointermove', { clientX: 30, clientY: 30 })
       );
+      expect(volume.dataset.mfsDragging).toBe('true');
+      expect(controls.dataset.mfsVisible).toBe('true');
       volume.dispatchEvent(
         createPointerEvent('pointerup', { clientX: 30, clientY: 30 })
       );
+      expect(controls.dataset.mfsInteracting).toBeUndefined();
+      expect(controls.dataset.mfsVisible).toBe('true');
     }
     expect(video.volume).toBeCloseTo(0.8);
     expect(volume?.style.getPropertyValue('--mfs-volume')).toBe('80%');
@@ -2502,7 +2719,73 @@ describe('OverlayCreator timeline seeking', () => {
     controller.cleanup();
   });
 
-  it('shares and persists volume changes for the next videos on the site', () => {
+  it('preserves YouTube thumbnail mute and volume in minimal-player mode', () => {
+    vi.useFakeTimers();
+    const videoStateManager = new VideoStateManager();
+    const overlayCreator = new OverlayCreator(
+      createSettingsManager({
+        hideVideoControls: true,
+        isTimelineSeekingEnabled: true,
+      }),
+      videoStateManager,
+      () => {}
+    );
+    const { video: previewVideo, state: previewState } = createVideoState();
+    const thumbnail = document.createElement('ytd-thumbnail');
+    document.body.appendChild(thumbnail);
+    Object.defineProperties(previewVideo, {
+      muted: { configurable: true, value: true, writable: true },
+      volume: { configurable: true, value: 0.25, writable: true },
+    });
+    videoStateManager.set(previewVideo, previewState);
+
+    const methods = overlayCreator as unknown as {
+      createMediaControlsElement: (ownerDocument: Document) => HTMLDivElement;
+      setupMediaControls: (
+        controls: HTMLDivElement,
+        targetVideo: HTMLVideoElement,
+        debugMode: boolean
+      ) => {
+        cleanup: () => void;
+        preserveSourceVolume: () => void;
+        sync: () => void;
+      };
+    };
+    const controls = methods.createMediaControlsElement(document);
+    previewState.wrapper.appendChild(controls);
+    const controller = methods.setupMediaControls(
+      controls,
+      previewVideo,
+      false
+    );
+
+    // YouTube can create the media before moving it into its thumbnail host.
+    // Minimal Player must leave its audio state untouched throughout.
+    controller.sync();
+    expect(previewVideo.muted).toBe(true);
+    expect(previewVideo.volume).toBe(0.25);
+
+    thumbnail.appendChild(previewVideo);
+    previewVideo.dispatchEvent(new Event('volumechange'));
+    previewVideo.dispatchEvent(new Event('play'));
+    vi.runAllTimers();
+
+    expect(previewVideo.muted).toBe(true);
+    expect(previewVideo.volume).toBe(0.25);
+
+    // Later source-owned volume changes become the new preserved state.
+    previewVideo.volume = 0.4;
+    previewVideo.muted = false;
+    previewVideo.dispatchEvent(new Event('volumechange'));
+    previewVideo.volume = 0.9;
+    previewVideo.muted = true;
+    controller.preserveSourceVolume();
+    expect(previewVideo.muted).toBe(false);
+    expect(previewVideo.volume).toBe(0.4);
+    controller.cleanup();
+  });
+
+  it('changes only the current video volume', () => {
     vi.useFakeTimers();
     const videoStateManager = new VideoStateManager();
     const overlayCreator = new OverlayCreator(
@@ -2528,23 +2811,12 @@ describe('OverlayCreator timeline seeking', () => {
 
     const methods = overlayCreator as unknown as {
       createMediaControlsElement: (ownerDocument: Document) => HTMLDivElement;
-      loadMediaVolume: (
-        target: HTMLVideoElement
-      ) => Promise<{ muted: boolean; volume: number } | null>;
-      persistMediaVolume: (
-        target: HTMLVideoElement,
-        volumeState: { muted: boolean; volume: number }
-      ) => Promise<void>;
       setupMediaControls: (
         controls: HTMLDivElement,
         target: HTMLVideoElement,
         debugMode: boolean
       ) => { cleanup: () => void };
     };
-    vi.spyOn(methods, 'loadMediaVolume').mockResolvedValue(null);
-    const persistVolume = vi
-      .spyOn(methods, 'persistMediaVolume')
-      .mockResolvedValue();
     const controls = methods.createMediaControlsElement(document);
     state.wrapper.appendChild(controls);
     const controller = methods.setupMediaControls(controls, video, false);
@@ -2559,17 +2831,13 @@ describe('OverlayCreator timeline seeking', () => {
         })
       );
 
-    expect(nextVideo.volume).toBeCloseTo(0.82);
-    expect(nextVideo.muted).toBe(false);
-    vi.advanceTimersByTime(120);
-    expect(persistVolume).toHaveBeenCalledWith(video, {
-      muted: false,
-      volume: 0.8200000000000001,
-    });
+    expect(video.volume).toBeCloseTo(0.82);
+    expect(nextVideo.volume).toBe(1);
+    expect(nextVideo.muted).toBe(true);
     controller.cleanup();
   });
 
-  it('restores the saved site volume when a later video is discovered', async () => {
+  it('never overrides the video volume during setup or playback', async () => {
     const overlayCreator = new OverlayCreator(
       createSettingsManager({
         hideVideoControls: true,
@@ -2586,44 +2854,42 @@ describe('OverlayCreator timeline seeking', () => {
 
     const methods = overlayCreator as unknown as {
       createMediaControlsElement: (ownerDocument: Document) => HTMLDivElement;
-      loadMediaVolume: (
-        target: HTMLVideoElement
-      ) => Promise<{ muted: boolean; volume: number } | null>;
       setupMediaControls: (
         controls: HTMLDivElement,
         target: HTMLVideoElement,
         debugMode: boolean
       ) => { cleanup: () => void };
     };
-    vi.spyOn(methods, 'loadMediaVolume').mockResolvedValue({
-      muted: false,
-      volume: 0.42,
-    });
     const controls = methods.createMediaControlsElement(document);
     state.wrapper.appendChild(controls);
     const controller = methods.setupMediaControls(controls, video, false);
 
     await Promise.resolve();
 
-    expect(video.volume).toBe(0.42);
-    expect(video.muted).toBe(false);
+    expect(video.volume).toBe(1);
+    expect(video.muted).toBe(true);
     expect(
       controls
         .querySelector<HTMLButtonElement>('[data-mfs-action="volume"]')
         ?.style.getPropertyValue('--mfs-volume')
-    ).toBe('42%');
+    ).toBe('100%');
 
     video.volume = 0.1;
     video.muted = true;
     video.dispatchEvent(new Event('volumechange'));
-    expect(video.volume).toBe(0.42);
-    expect(video.muted).toBe(false);
+    expect(video.volume).toBe(0.1);
+    expect(video.muted).toBe(true);
+    expect(
+      controls
+        .querySelector<HTMLButtonElement>('[data-mfs-action="volume"]')
+        ?.style.getPropertyValue('--mfs-volume')
+    ).toBe('10%');
 
     video.volume = 0.2;
     video.muted = true;
     video.dispatchEvent(new Event('play'));
-    expect(video.volume).toBe(0.42);
-    expect(video.muted).toBe(false);
+    expect(video.volume).toBe(0.2);
+    expect(video.muted).toBe(true);
     controller.cleanup();
   });
 
@@ -3036,10 +3302,12 @@ describe('OverlayCreator video dragging seeking', () => {
     return {
       controller,
       deferredSeek,
+      overlayCreator,
       releasePointerCapture,
       setPointerCapture,
       state,
       video,
+      videoStateManager,
     };
   };
 
@@ -3121,6 +3389,157 @@ describe('OverlayCreator video dragging seeking', () => {
 
     controller.cleanup();
     deferredSeek.cancel();
+  });
+
+  it('holds at either video edge while dragging outside until pointerup', () => {
+    vi.useFakeTimers();
+    const { controller, deferredSeek, state, video } = setupVideoDragging();
+
+    state.overlay.dispatchEvent(
+      createPointerEvent('pointerdown', { clientX: 60 })
+    );
+    document.dispatchEvent(
+      createPointerEvent('pointermove', { clientX: -100 })
+    );
+
+    expect(state.isVideoDragging).toBe(true);
+    expect(state.isUserScrubbing).toBe(true);
+    expect((state.timeline.firstElementChild as HTMLElement).style.width).toBe(
+      '0%'
+    );
+    expect(video.currentTime).toBe(25);
+
+    document.dispatchEvent(createPointerEvent('pointermove', { clientX: 500 }));
+
+    expect(state.isVideoDragging).toBe(true);
+    expect((state.timeline.firstElementChild as HTMLElement).style.width).toBe(
+      '100%'
+    );
+    expect(video.currentTime).toBe(25);
+
+    const pointerUp = createPointerEvent('pointerup', { clientX: 500 });
+    document.dispatchEvent(pointerUp);
+
+    expect(pointerUp.defaultPrevented).toBe(true);
+    expect(video.currentTime).toBe(100);
+    expect(state.isVideoDragging).toBe(false);
+    expect(state.isUserScrubbing).toBe(false);
+
+    const syntheticClick = new MouseEvent('click', {
+      bubbles: true,
+      button: 0,
+      cancelable: true,
+    });
+    document.body.dispatchEvent(syntheticClick);
+    expect(syntheticClick.defaultPrevented).toBe(true);
+
+    controller.cleanup();
+    deferredSeek.cancel();
+  });
+
+  it('continues document tracking if pointer capture is lost outside', () => {
+    vi.useFakeTimers();
+    const { controller, deferredSeek, state, video } = setupVideoDragging();
+
+    state.overlay.dispatchEvent(
+      createPointerEvent('pointerdown', { clientX: 60 })
+    );
+    state.overlay.dispatchEvent(
+      createPointerEvent('pointermove', { clientX: 160 })
+    );
+    state.overlay.dispatchEvent(
+      createPointerEvent('lostpointercapture', { clientX: 220 })
+    );
+
+    expect(state.isVideoDragging).toBe(true);
+    expect(state.isUserScrubbing).toBe(true);
+
+    document.dispatchEvent(createPointerEvent('pointermove', { clientX: 500 }));
+    document.dispatchEvent(createPointerEvent('pointerup', { clientX: 500 }));
+
+    expect(video.currentTime).toBe(100);
+    expect(state.isVideoDragging).toBe(false);
+    expect(state.isUserScrubbing).toBe(false);
+
+    controller.cleanup();
+    deferredSeek.cancel();
+  });
+
+  it('keeps the clamped pointer target authoritative over overlay scrolling', () => {
+    vi.useFakeTimers();
+    const { controller, deferredSeek, overlayCreator, state, video } =
+      setupVideoDragging();
+    Object.defineProperties(state.overlay, {
+      clientWidth: { configurable: true, value: 200 },
+      offsetWidth: { configurable: true, value: 200 },
+      scrollLeft: { configurable: true, value: 400, writable: true },
+    });
+    Object.defineProperty(state.scrollContent, 'offsetWidth', {
+      configurable: true,
+      value: 1000,
+    });
+
+    let scrubTimeout: number | null = null;
+    const seekSpeedLabel = document.createElement('div');
+    state.wrapper.appendChild(seekSpeedLabel);
+    const scrollMethods = overlayCreator as unknown as {
+      setupScrollHandling: (
+        targetVideo: HTMLVideoElement,
+        overlay: HTMLDivElement,
+        scrollContent: HTMLDivElement,
+        timeline: HTMLDivElement,
+        seekSpeedLabel: HTMLDivElement,
+        getIsSettingInitialScroll: () => boolean,
+        setIsSettingInitialScroll: (value: boolean) => void,
+        setScrubTimeout: (timeout: number | null) => void,
+        getScrubTimeout: () => number | null,
+        getIsHovering: () => boolean,
+        seek: DeferredMediaSeek,
+        debugMode: boolean
+      ) => () => void;
+    };
+    const cleanupScroll = scrollMethods.setupScrollHandling(
+      video,
+      state.overlay,
+      state.scrollContent,
+      state.timeline,
+      seekSpeedLabel,
+      () => false,
+      () => {},
+      (timeout) => {
+        scrubTimeout = timeout;
+      },
+      () => scrubTimeout,
+      () => true,
+      deferredSeek,
+      false
+    );
+
+    // Arm the scroll-settle timer before dragging, then simulate native
+    // overlay scrolling after the pointer has clamped beyond the right edge.
+    state.overlay.dispatchEvent(new Event('scroll'));
+    state.overlay.dispatchEvent(
+      createPointerEvent('pointerdown', { clientX: 60 })
+    );
+    document.dispatchEvent(createPointerEvent('pointermove', { clientX: 500 }));
+    state.overlay.scrollLeft = 800;
+    state.overlay.dispatchEvent(new Event('scroll'));
+    vi.advanceTimersByTime(300);
+
+    expect(state.isVideoDragging).toBe(true);
+    expect(state.isUserScrubbing).toBe(true);
+    expect((state.timeline.firstElementChild as HTMLElement).style.width).toBe(
+      '100%'
+    );
+    expect(video.currentTime).toBe(25);
+
+    document.dispatchEvent(createPointerEvent('pointerup', { clientX: 500 }));
+    expect(video.currentTime).toBe(100);
+
+    cleanupScroll();
+    controller.cleanup();
+    deferredSeek.cancel();
+    if (scrubTimeout !== null) window.clearTimeout(scrubTimeout);
   });
 
   it('does not seek through intermediate unloaded targets during a slow video drag', () => {

@@ -18,6 +18,7 @@ import { DomainFavicon } from './domain-favicon';
 import { DomainModeControl } from './domain-mode-control';
 import { DomainRulesList } from './domain-rules-list';
 import { ItemRowText } from './item-row-text';
+import { ViewTitle } from './view-title';
 
 interface DeletionHistoryEntryI {
   rule: DomainConfigT;
@@ -156,7 +157,15 @@ export function SiteAccessView({
         className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain px-6 pb-20"
         data-testid="site-access-scroll-container"
       >
-        <div className="pt-34" data-testid="site-access-intro">
+        <div
+          className="flex flex-col gap-6 pt-22"
+          data-testid="site-access-intro"
+        >
+          <ViewTitle
+            description="Choose where BetterVideo runs"
+            title="Domains"
+          />
+
           <CardListItemWrapper>
             <div className="card-list-item flex min-h-14 items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 transition-all dark:border-slate-600 dark:bg-slate-800/70">
               <div

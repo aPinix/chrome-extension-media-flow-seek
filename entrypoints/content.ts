@@ -3,6 +3,7 @@ import { DOMUtils } from '@/helpers/dom-utils';
 import { getProgressColorSync } from '@/helpers/favicon-color';
 import { InputEventProbe } from '@/helpers/input-event-probe';
 import { OverlayCreator } from '@/helpers/overlay-creator';
+import { normalizeScrollSpeedFactor } from '@/helpers/scroll-speed';
 import { SettingsManager } from '@/helpers/settings-manager';
 import { VideoStateManager } from '@/helpers/video-state';
 import { MessageHandler } from '@/lib/message-handler';
@@ -55,6 +56,9 @@ export default defineContentScript({
         shouldRun: () => settingsManager.shouldRun(),
         hasOverlay: (video) => videoStateManager.hasConnectedOverlay(video),
         createOverlay: createScrubOverlay,
+        removeOverlay: (video) => {
+          videoStateManager.delete(video);
+        },
       });
     };
 
@@ -64,6 +68,26 @@ export default defineContentScript({
       videoStateManager,
       checkForVideos
     );
+    // Popup messages only reach the tab that was active when a setting was
+    // changed. Listen to synced storage as well so already-open background
+    // tabs update immediately without needing a reload or another toggle.
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName !== 'sync') return;
+
+      const colorizedTimeline = changes.colorizedTimeline?.newValue;
+      if (typeof colorizedTimeline === 'boolean') {
+        settingsManager.updateSetting('colorizedTimeline', colorizedTimeline);
+        overlayCreator.updateTimelineColorization();
+      }
+
+      const scrollSpeedFactor = changes.scrollSpeedFactor?.newValue;
+      if (typeof scrollSpeedFactor === 'number') {
+        settingsManager.updateSetting(
+          'scrollSpeedFactor',
+          normalizeScrollSpeedFactor(scrollSpeedFactor)
+        );
+      }
+    });
 
     // Create overlay function that uses the overlay creator
     const createScrubOverlay = (video: HTMLVideoElement): void => {
@@ -98,8 +122,16 @@ export default defineContentScript({
           '📜 Loaded scroll inversion setting:',
           settings.invertHorizontalScroll
         );
+        console.log(
+          '📜 Loaded scroll speed factor:',
+          settings.scrollSpeedFactor
+        );
         console.log('📜 Loaded fast scroll hotkey:', settings.fastScrollHotkey);
         console.log('📜 Loaded slow scroll hotkey:', settings.slowScrollHotkey);
+        console.log('📜 Loaded play/pause wheel action:', {
+          enabled: settings.isPlayPauseWheelEnabled,
+          modifier: navigator.platform.includes('Mac') ? 'Command' : 'Ctrl',
+        });
         console.log(
           '📜 Loaded timeline hover setting:',
           settings.showTimelineOnHover

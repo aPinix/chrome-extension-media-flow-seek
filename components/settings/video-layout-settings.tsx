@@ -1,9 +1,11 @@
 import { ActionAreaSizeControl } from '@/components/action-area-size-control';
 import { AppSegmentedControl } from '@/components/app/app-segmented-control';
+import { AppSwitch } from '@/components/app/app-switch';
 import { SliderResetButton } from '@/components/app/slider-reset-button';
 import { TimelineHeightControl } from '@/components/timeline-height-control';
 import { VideoPlayerPreview } from '@/components/video-player-preview';
 import { DEFAULT_SETTINGS } from '@/helpers/popup-storage';
+import { getPrimaryModifierLabel } from '@/helpers/wheel-actions';
 import { cn } from '@/lib/utils';
 import { ActionAreaE, type ActionAreaT } from '@/types/content';
 
@@ -22,6 +24,8 @@ interface VideoLayoutSettingsPropsI {
   onHeightReset: () => void;
   onPositionChange: (position: TimelinePositionT) => void;
   onUnitChange: (unit: TimelineUnitT) => void;
+  isPlayPauseWheelEnabled: boolean;
+  onPlayPauseWheelEnabledChange: (enabled: boolean) => void;
   position: TimelinePositionT;
   unit: TimelineUnitT;
 }
@@ -52,6 +56,8 @@ export function VideoLayoutSettings({
   onHeightReset,
   onPositionChange,
   onUnitChange,
+  isPlayPauseWheelEnabled,
+  onPlayPauseWheelEnabledChange,
   position,
   unit,
 }: VideoLayoutSettingsPropsI) {
@@ -69,6 +75,7 @@ export function VideoLayoutSettings({
               ? `${(100 - actionAreaSize) / 2}%`
               : `${100 - actionAreaSize}%`,
       };
+  const primaryModifierLabel = getPrimaryModifierLabel();
 
   return (
     <div className="flex w-full flex-col gap-4">
@@ -213,12 +220,43 @@ export function VideoLayoutSettings({
             />
           </div>
           <TimelineHeightControl
-            className="w-full px-2"
+            className="w-full"
             onChange={onHeightChange}
             onUnitChange={onUnitChange}
             unit={unit}
             value={height}
           />
+        </div>
+      </section>
+
+      <div className="h-px w-full bg-slate-100/40 dark:bg-white/[0.03]" />
+
+      <section aria-labelledby="wheel-actions-heading" className="space-y-4">
+        <h4
+          className="font-semibold text-slate-800 text-sm dark:text-slate-100"
+          id="wheel-actions-heading"
+        >
+          Wheel Actions
+        </h4>
+
+        <div>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="font-medium text-slate-700 text-sm dark:text-slate-300">
+                Play / Pause
+              </div>
+              <p className="text-slate-500 text-xs dark:text-slate-400">
+                Hold {primaryModifierLabel} and scroll horizontally
+              </p>
+            </div>
+            <AppSwitch
+              aria-label="Toggle play pause wheel action"
+              checked={isPlayPauseWheelEnabled}
+              onCheckedChange={(checked) =>
+                onPlayPauseWheelEnabledChange(checked)
+              }
+            />
+          </div>
         </div>
       </section>
     </div>

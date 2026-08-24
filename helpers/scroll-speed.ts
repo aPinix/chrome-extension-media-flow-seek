@@ -1,5 +1,9 @@
 export const FAST_SCROLL_MULTIPLIER = 3;
 export const SLOW_SCROLL_MULTIPLIER = 0.25;
+export const DEFAULT_SCROLL_SPEED_FACTOR = 1;
+export const MIN_SCROLL_SPEED_FACTOR = 0.25;
+export const MAX_SCROLL_SPEED_FACTOR = 3;
+export const SCROLL_SPEED_FACTOR_STEP = 0.25;
 
 export const ScrollHotkeyE = {
   Alt: 'alt',
@@ -21,6 +25,20 @@ export type ScrollHotkeyConfigT = {
 
 export const isScrollHotkey = (value: unknown): value is ScrollHotkeyT =>
   Object.values(ScrollHotkeyE).includes(value as ScrollHotkeyT);
+
+export const normalizeScrollSpeedFactor = (value: unknown): number => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return DEFAULT_SCROLL_SPEED_FACTOR;
+  }
+
+  const clamped = Math.min(
+    MAX_SCROLL_SPEED_FACTOR,
+    Math.max(MIN_SCROLL_SPEED_FACTOR, value)
+  );
+  return (
+    Math.round(clamped / SCROLL_SPEED_FACTOR_STEP) * SCROLL_SPEED_FACTOR_STEP
+  );
+};
 
 export const normalizeScrollHotkeys = (
   fastScrollHotkey: unknown,
@@ -84,15 +102,17 @@ export const hasScrollSpeedHotkey = (
 export const getScrollSpeedMultiplier = (
   state: ScrollHotkeyState,
   fastScrollHotkey: ScrollHotkeyT = DEFAULT_FAST_SCROLL_HOTKEY,
-  slowScrollHotkey: ScrollHotkeyT = DEFAULT_SLOW_SCROLL_HOTKEY
+  slowScrollHotkey: ScrollHotkeyT = DEFAULT_SLOW_SCROLL_HOTKEY,
+  baseFactor = DEFAULT_SCROLL_SPEED_FACTOR
 ): number => {
+  const normalizedBaseFactor = normalizeScrollSpeedFactor(baseFactor);
   if (matchesHotkey(state, fastScrollHotkey)) {
-    return FAST_SCROLL_MULTIPLIER;
+    return normalizedBaseFactor * FAST_SCROLL_MULTIPLIER;
   }
   if (matchesHotkey(state, slowScrollHotkey)) {
-    return SLOW_SCROLL_MULTIPLIER;
+    return normalizedBaseFactor * SLOW_SCROLL_MULTIPLIER;
   }
-  return 1;
+  return normalizedBaseFactor;
 };
 
 export const getWheelDeltaPixels = (

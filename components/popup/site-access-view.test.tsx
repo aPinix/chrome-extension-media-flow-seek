@@ -68,8 +68,12 @@ describe('SiteAccessView', () => {
     expect(classNames).not.toContain('gap-6');
     expect(classNames).not.toContain('pt-34');
     expect(screen.getByTestId('site-access-intro').className).toContain(
-      'pt-34'
+      'pt-22'
     );
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Domains' })
+    ).toBeTruthy();
+    expect(screen.getByText('Choose where BetterVideo runs')).toBeTruthy();
   });
 
   it('keeps the website settings actions and search in one sticky block', () => {
@@ -79,7 +83,7 @@ describe('SiteAccessView', () => {
     const classNames = controls.className.split(/\s+/);
 
     expect(classNames).toContain('sticky');
-    expect(classNames).toContain('top-[95px]');
+    expect(classNames).toContain('top-[48px]');
     expect(classNames).toContain('pt-6');
     expect(classNames).toContain('z-20');
     expect(classNames).toContain('backdrop-blur-xl');
@@ -251,6 +255,12 @@ describe('SiteAccessView', () => {
     }) as HTMLButtonElement;
     expect(undoButton.disabled).toBe(true);
     expect(redoButton.disabled).toBe(true);
+    for (const historyButton of [undoButton, redoButton]) {
+      expect(historyButton.className).toContain('disabled:bg-slate-300');
+      expect(historyButton.className).toContain('disabled:text-slate-500');
+      expect(historyButton.className).toContain('dark:disabled:bg-slate-700');
+      expect(historyButton.className).toContain('dark:disabled:text-slate-400');
+    }
 
     const currentControl = screen.getByRole('group', {
       name: 'Access for current website example.com',

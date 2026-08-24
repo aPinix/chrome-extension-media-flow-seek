@@ -4,7 +4,10 @@ import {
   mergeAndMigrateDomainRules,
 } from '@/helpers/domains';
 import { DEFAULT_SETTINGS } from '@/helpers/popup-storage';
-import { normalizeScrollHotkeys } from '@/helpers/scroll-speed';
+import {
+  normalizeScrollHotkeys,
+  normalizeScrollSpeedFactor,
+} from '@/helpers/scroll-speed';
 import type { ContentSettingsT } from '@/types/content';
 import type { DomainConfigT } from '@/types/domains';
 import { DomainRuleTypeE } from '@/types/domains';
@@ -28,8 +31,10 @@ export class SettingsManager {
           'isDebugEnabled',
           'isBetaFeaturesEnabled',
           'invertHorizontalScroll',
+          'scrollSpeedFactor',
           'fastScrollHotkey',
           'slowScrollHotkey',
+          'isPlayPauseWheelEnabled',
           'showTimelineOnHover',
           'isTimelineSeekingEnabled',
           'dragVideoToSeek',
@@ -58,7 +63,13 @@ export class SettingsManager {
             invertHorizontalScroll:
               stored.invertHorizontalScroll ??
               this.defaultSettings.invertHorizontalScroll,
+            scrollSpeedFactor: normalizeScrollSpeedFactor(
+              stored.scrollSpeedFactor
+            ),
             ...scrollHotkeys,
+            isPlayPauseWheelEnabled:
+              stored.isPlayPauseWheelEnabled ??
+              this.defaultSettings.isPlayPauseWheelEnabled,
             showTimelineOnHover:
               stored.showTimelineOnHover ??
               this.defaultSettings.showTimelineOnHover,
@@ -129,12 +140,20 @@ export class SettingsManager {
     return this.settings.invertHorizontalScroll;
   }
 
+  getScrollSpeedFactor(): number {
+    return this.settings.scrollSpeedFactor;
+  }
+
   getFastScrollHotkey(): ContentSettingsT['fastScrollHotkey'] {
     return this.settings.fastScrollHotkey;
   }
 
   getSlowScrollHotkey(): ContentSettingsT['slowScrollHotkey'] {
     return this.settings.slowScrollHotkey;
+  }
+
+  isPlayPauseWheelEnabled(): boolean {
+    return this.settings.isPlayPauseWheelEnabled;
   }
 
   shouldShowTimelineOnHover(): boolean {

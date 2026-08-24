@@ -42,7 +42,7 @@ const TimelineHeightControl = ({
     <div className={cn('flex items-center gap-3', className)}>
       <AppSlider
         aria-label="Timeline height"
-        className="flex-1"
+        className="flex-1 rounded-full has-focus-visible:ring-2 has-focus-visible:ring-brand/35"
         max={100}
         min={0}
         onValueChange={(nextValue) => {
@@ -50,12 +50,14 @@ const TimelineHeightControl = ({
             typeof nextValue === 'number' ? nextValue : (nextValue[0] ?? value)
           );
         }}
+        thumbClassName="after:opacity-0"
+        trackClassName="h-3"
         value={value}
       />
       <div className="relative h-7 w-32 shrink-0">
         <AppInputText
           aria-label="Timeline height value"
-          className="h-7 w-full appearance-none rounded-full pr-20 pl-2 text-center font-mono text-xs [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          className="h-7 w-full appearance-none rounded-full bg-slate-100 pr-20 pl-2 text-center font-mono text-xs [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
           inputMode="numeric"
           max={100}
           min={0}

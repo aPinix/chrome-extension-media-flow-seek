@@ -1,7 +1,10 @@
 import { DOMUtils } from '@/helpers/dom-utils';
 import { showToggleNotification } from '@/helpers/notification-helper';
 import type { OverlayCreator } from '@/helpers/overlay-creator';
-import { normalizeScrollHotkeys } from '@/helpers/scroll-speed';
+import {
+  normalizeScrollHotkeys,
+  normalizeScrollSpeedFactor,
+} from '@/helpers/scroll-speed';
 import type { SettingsManager } from '@/helpers/settings-manager';
 import type { VideoStateManager } from '@/helpers/video-state';
 import type { ChromeMessageT } from '@/types/content';
@@ -61,6 +64,14 @@ export class MessageHandler {
 
       case 'updateScrollHotkeys':
         this.handleUpdateScrollHotkeys(message, sendResponse);
+        break;
+
+      case 'updateScrollSpeedFactor':
+        this.handleUpdateScrollSpeedFactor(message, sendResponse);
+        break;
+
+      case 'updateWheelActions':
+        this.handleUpdateWheelActions(message, sendResponse);
         break;
 
       case 'updateTimelineHover':
@@ -162,6 +173,11 @@ export class MessageHandler {
   ): void {
     const { settingsManager } = this.dependencies;
 
+    if (typeof message.scrollSpeedFactor !== 'number') {
+      sendResponse({ success: false, error: 'Invalid scroll speed factor' });
+      return;
+    }
+
     settingsManager.updateSetting(
       'invertHorizontalScroll',
       message.invertHorizontalScroll
@@ -192,6 +208,35 @@ export class MessageHandler {
 
     if (settingsManager.isDebugEnabled()) {
       console.log('📤 Updated scroll hotkeys from popup:', hotkeys);
+    }
+
+    sendResponse({ success: true });
+  }
+
+  private handleUpdateScrollSpeedFactor(
+    message: ChromeMessageT,
+    sendResponse: SendResponse
+  ): void {
+    const { settingsManager } = this.dependencies;
+
+    settingsManager.updateSetting(
+      'scrollSpeedFactor',
+      normalizeScrollSpeedFactor(message.scrollSpeedFactor)
+    );
+    sendResponse({ success: true });
+  }
+
+  private handleUpdateWheelActions(
+    message: ChromeMessageT,
+    sendResponse: SendResponse
+  ): void {
+    const { settingsManager } = this.dependencies;
+
+    if (typeof message.isPlayPauseWheelEnabled === 'boolean') {
+      settingsManager.updateSetting(
+        'isPlayPauseWheelEnabled',
+        message.isPlayPauseWheelEnabled
+      );
     }
 
     sendResponse({ success: true });
@@ -541,6 +586,12 @@ export class MessageHandler {
           settings.invertHorizontalScroll
         );
       }
+      if (typeof settings.scrollSpeedFactor === 'number') {
+        settingsManager.updateSetting(
+          'scrollSpeedFactor',
+          normalizeScrollSpeedFactor(settings.scrollSpeedFactor)
+        );
+      }
       if (settings.fastScrollHotkey && settings.slowScrollHotkey) {
         const hotkeys = normalizeScrollHotkeys(
           settings.fastScrollHotkey,
@@ -553,6 +604,12 @@ export class MessageHandler {
         settingsManager.updateSetting(
           'slowScrollHotkey',
           hotkeys.slowScrollHotkey
+        );
+      }
+      if (typeof settings.isPlayPauseWheelEnabled === 'boolean') {
+        settingsManager.updateSetting(
+          'isPlayPauseWheelEnabled',
+          settings.isPlayPauseWheelEnabled
         );
       }
       if (typeof settings.showTimelineOnHover === 'boolean') {

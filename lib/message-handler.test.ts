@@ -7,6 +7,39 @@ import { MessageHandler } from '@/lib/message-handler';
 import type { ChromeMessageT } from '@/types/content';
 
 describe('MessageHandler timeline seeking updates', () => {
+  it('applies a normalized scroll speed factor immediately', () => {
+    const updateSetting = vi.fn();
+    const handler = new MessageHandler({
+      checkForVideos: vi.fn(),
+      getDebugColorBackground: () => '',
+      getDebugImageBackground: () => '',
+      overlayCreator: {} as OverlayCreator,
+      settingsManager: {
+        isDebugEnabled: () => false,
+        updateSetting,
+      } as unknown as SettingsManager,
+      videoStateManager: {} as VideoStateManager,
+    });
+    const sendResponse = vi.fn();
+    const testHandler = handler as unknown as {
+      handleMessage: (
+        message: ChromeMessageT,
+        respond: (response: { success: boolean; error?: string }) => void
+      ) => void;
+    };
+
+    testHandler.handleMessage(
+      {
+        action: 'updateScrollSpeedFactor',
+        scrollSpeedFactor: 1.75,
+      } as ChromeMessageT,
+      sendResponse
+    );
+
+    expect(updateSetting).toHaveBeenCalledWith('scrollSpeedFactor', 1.75);
+    expect(sendResponse).toHaveBeenCalledWith({ success: true });
+  });
+
   it('applies popup timeline seeking messages to existing overlays', () => {
     const updateSetting = vi.fn();
     const updateTimelineSeekingState = vi.fn();

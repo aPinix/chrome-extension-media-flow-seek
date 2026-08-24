@@ -451,11 +451,12 @@ const requestMainWorldNativeSeek = (
 
 const tryNativePlayerSeekResult = (
   video: HTMLVideoElement,
-  time: number
+  time: number,
+  force = false
 ): NativeSeekResultT => {
   if (
     !Number.isFinite(time) ||
-    Number.isFinite(video.duration) ||
+    (!force && Number.isFinite(video.duration)) ||
     isMediaTimeBuffered(video, time)
   )
     return 'none';
@@ -514,7 +515,7 @@ export const installNativePlayerSeekBridge = (
 export const tryNativePlayerSeek = (
   video: HTMLVideoElement,
   time: number
-): boolean => tryNativePlayerSeekResult(video, time) !== 'none';
+): boolean => tryNativePlayerSeekResult(video, time, true) !== 'none';
 
 /**
  * Seek immediately inside already buffered media, while coalescing unbuffered
@@ -636,6 +637,27 @@ export class DeferredMediaSeek {
         Math.abs(actualTime - time) > FORCED_SEEK_TOLERANCE_SECONDS;
 
       if (wasClamped && !isMediaTimeBuffered(this.media, time)) {
+        // Some finite-duration streaming players expose the full timeline but
+        // clamp direct currentTime assignments to the appended buffer. Once
+        // that behavior is observed, ask the site's own timeline to load the
+        // segment around the final target instead of walking the buffer toward
+        // it a progress event at a time.
+        if (allowNativeSeek && isVideoElement(this.media)) {
+          const nativeSeekResult = tryNativePlayerSeekResult(
+            this.media,
+            time,
+            true
+          );
+          if (nativeSeekResult === 'handled') {
+            this.stopForcedSeek();
+            return;
+          }
+          if (nativeSeekResult === 'tentative') {
+            this.startNativeSeekFallback(time);
+            return;
+          }
+        }
+
         this.startForcedSeek(time);
       } else {
         this.stopForcedSeek();

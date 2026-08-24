@@ -14,6 +14,7 @@ import {
   MEDIA_SEEK_SETTLE_DELAY_MS,
 } from '@/helpers/media';
 import {
+  DEFAULT_SCROLL_SPEED_FACTOR,
   getPlayerLayerWheelDeltaPixels,
   getScrollSpeedMultiplier,
   getWheelDeltaPixels,
@@ -23,6 +24,10 @@ import {
 import type { SettingsManager } from '@/helpers/settings-manager';
 import type { VideoStateManager } from '@/helpers/video-state';
 import {
+  isHorizontalWheelAction,
+  matchesPrimaryWheelModifier,
+} from '@/helpers/wheel-actions';
+import {
   ActionAreaE,
   type ActionAreaT,
   type VideoStateT,
@@ -31,12 +36,11 @@ import {
 const MIN_INTERACTIVE_TIMELINE_HEIGHT_PX = 10;
 const VIDEO_DRAG_START_THRESHOLD_PX = 5;
 const VOLUME_DRAG_START_THRESHOLD_PX = 3;
-const VOLUME_CONTROL_WIDTH_PX = 28;
-const VOLUME_EDGE_GAP_PX = 8;
+const VOLUME_CONTROL_WIDTH_PX = 20;
+const VOLUME_EDGE_GAP_PX = 0;
+const VOLUME_CONTROL_HEIGHT_PX = 72;
 const VOLUME_KEY_STEP = 0.05;
 const VOLUME_WHEEL_SENSITIVITY = 0.001;
-const VOLUME_PERSIST_DELAY_MS = 120;
-const MEDIA_VOLUME_STORAGE_PREFIX = 'mfs-media-volume:';
 const PAGE_DIALOG_SELECTOR = [
   'dialog[open]',
   '[role="dialog" i]',
@@ -77,14 +81,11 @@ const SITE_INTERACTIVE_SELECTOR = [
 const PLAYER_SINGLE_CLICK_DELAY_MS = 220;
 const WHEEL_HOVER_LEASE_MS = 1500;
 const SEEK_SPEED_LABEL_DISMISS_DELAY_MS = 700;
+const PLAY_PAUSE_WHEEL_GESTURE_END_MS = 500;
 const DEFAULT_TIMELINE_PROGRESS_BACKGROUND = 'rgb(255 255 255 / 0.3)';
 const SETTINGS_LAYOUT_TRANSITION_MS = 320;
 const ACTION_AREA_PREVIEW_MS = 1200;
 const ACTION_AREA_PREVIEW_BACKGROUND = 'rgb(126 34 206 / 0.4)';
-type StoredMediaVolumeT = {
-  muted: boolean;
-  volume: number;
-};
 const isPlaybackToggleHotkey = (event: KeyboardEvent): boolean =>
   event.code === 'Space' ||
   event.key === ' ' ||
@@ -128,7 +129,6 @@ export class OverlayCreator {
   private actionAreaPreviewTimeouts = new WeakMap<HTMLDivElement, number>();
   private actionAreaOriginalBackgrounds = new WeakMap<HTMLDivElement, string>();
   private actionAreaOriginalTransitions = new WeakMap<HTMLDivElement, string>();
-  private mediaVolumePreferences = new Map<string, StoredMediaVolumeT>();
   private nextVideoId = 1;
 
   constructor(
@@ -385,6 +385,7 @@ export class OverlayCreator {
       isUserScrubbing: false,
     };
     this.videoStateManager.set(video, videoState);
+    this.updateOverlayPointerEvents(video, videoState);
     this.setupDocumentDialogGuard(ownerDocument);
     this.updateDocumentDialogGuard(ownerDocument);
 
@@ -417,6 +418,8 @@ export class OverlayCreator {
       debugMode
     );
     videoState.syncMediaControls = mediaControlsController.sync;
+    videoState.preserveSourceVolume =
+      mediaControlsController.preserveSourceVolume;
     mediaControlsController.sync();
 
     this.updateVideoControlsForVideo(video, videoState);
@@ -482,7 +485,8 @@ export class OverlayCreator {
       () => scrubTimeout,
       () => videoState.isHovering,
       deferredSeek,
-      debugMode
+      debugMode,
+      playbackController.togglePlayback
     );
 
     // Setup video sync events
@@ -664,7 +668,7 @@ export class OverlayCreator {
         .mfs-media-controls {
           all: initial;
           width: ${VOLUME_CONTROL_WIDTH_PX}px;
-          height: min(86px, calc(100% - 16px));
+          height: min(${VOLUME_CONTROL_HEIGHT_PX}px, calc(100% - 16px));
           position: absolute;
           right: ${VOLUME_EDGE_GAP_PX}px;
           top: 50%;
@@ -673,15 +677,16 @@ export class OverlayCreator {
           box-sizing: border-box;
           overflow: hidden;
           border: 0;
-          border-radius: 999px;
-          background: rgb(255 255 255 / 0.2);
+          border-radius: 8px 0 0 8px;
+          background: rgb(255 255 255 / 0.28);
           color: white;
           box-shadow: none;
+          visibility: hidden;
           opacity: 0;
-          transform: translateY(calc(-50% + 4px));
+          transform: translateY(-50%);
           transition: opacity 140ms ease, transform 140ms ease;
-          -webkit-backdrop-filter: blur(8px) saturate(140%);
-          backdrop-filter: blur(8px) saturate(140%);
+          -webkit-backdrop-filter: blur(6px) saturate(130%);
+          backdrop-filter: blur(6px) saturate(130%);
           pointer-events: none;
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         }
@@ -690,8 +695,17 @@ export class OverlayCreator {
           display: none !important;
         }
 
-        .mfs-media-controls[data-mfs-visible="true"],
-        .mfs-media-controls:focus-within {
+        .mfs-media-controls[data-mfs-active="true"][data-mfs-video-hovered="true"] {
+          visibility: visible;
+          opacity: 0.3;
+          pointer-events: auto;
+        }
+
+        .mfs-media-controls[data-mfs-active="true"][data-mfs-visible="true"],
+        .mfs-media-controls[data-mfs-active="true"][data-mfs-interacting="true"],
+        .mfs-media-controls[data-mfs-active="true"]:hover,
+        .mfs-media-controls[data-mfs-active="true"]:focus-within {
+          visibility: visible;
           opacity: 1;
           transform: translateY(-50%);
           pointer-events: auto !important;
@@ -720,7 +734,7 @@ export class OverlayCreator {
           bottom: 0;
           left: 0;
           z-index: 2;
-          border-radius: 999px;
+          border-radius: inherit;
         }
 
         .mfs-volume-pill:focus-visible {
@@ -740,12 +754,12 @@ export class OverlayCreator {
           bottom: 0;
           left: 0;
           z-index: 0;
-          background: rgb(255 255 255 / 0.3);
+          background: rgb(255 255 255 / 0.42);
           border-radius: 0;
           box-shadow: none;
           transition: height 120ms ease-out;
-          -webkit-backdrop-filter: blur(8px) saturate(140%);
-          backdrop-filter: blur(8px) saturate(140%);
+          -webkit-backdrop-filter: blur(6px) saturate(130%);
+          backdrop-filter: blur(6px) saturate(130%);
           pointer-events: none;
         }
 
@@ -754,15 +768,16 @@ export class OverlayCreator {
         }
 
         .mfs-volume-icon {
-          width: 16px;
-          height: 16px;
+          width: 14px;
+          height: 14px;
           position: absolute;
-          right: 6px;
-          bottom: 8px;
+          left: 50%;
+          bottom: 6px;
           z-index: 3;
           display: block;
           color: white;
-          filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.35));
+          filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.25));
+          transform: translateX(-50%);
           pointer-events: none;
         }
 
@@ -821,6 +836,7 @@ export class OverlayCreator {
 
         @media (hover: none), (pointer: coarse) {
           .mfs-media-controls[data-mfs-active="true"] {
+            visibility: visible;
             opacity: 1;
             transform: translateY(-50%);
             pointer-events: auto !important;
@@ -1138,6 +1154,7 @@ export class OverlayCreator {
     timeline: HTMLDivElement
   ): boolean {
     const isInteractive =
+      !DOMUtils.isYouTubeHoverPreview(video) &&
       this.settingsManager.isTimelineSeekingEnabled() &&
       getMediaSeekRange(video) !== null;
 
@@ -1795,9 +1812,13 @@ export class OverlayCreator {
 
     const handleLostPointerCapture = (event: PointerEvent): void => {
       if (event.pointerId !== activePointerId) return;
+
+      // Pointer capture is an optimization, not the owner of the drag
+      // lifecycle. Players can move or restyle the overlay while the pointer
+      // is outside the video, which makes Chromium release capture even though
+      // the mouse button is still down. The document-level listeners above
+      // continue tracking that pointer until pointerup or pointercancel.
       suppressNextClick = true;
-      finishDragging(true);
-      queueClickSuppressionReset();
     };
 
     const handleClick = (event: MouseEvent): void => {
@@ -2035,25 +2056,34 @@ export class OverlayCreator {
     controls: HTMLDivElement,
     video: HTMLVideoElement,
     _debugMode: boolean
-  ): { cleanup: () => void; sync: () => void } {
+  ): {
+    cleanup: () => void;
+    preserveSourceVolume: () => void;
+    sync: () => void;
+  } {
     const ownerWindow = video.ownerDocument.defaultView ?? window;
     const volumePill = controls.querySelector<HTMLButtonElement>(
       '[data-mfs-action="volume"]'
     );
 
     if (!volumePill) {
-      return { cleanup: () => {}, sync: () => {} };
+      return {
+        cleanup: () => {},
+        preserveSourceVolume: () => {},
+        sync: () => {},
+      };
     }
     let lastAudibleVolume = video.volume > 0 ? video.volume : 1;
     let pointerStartY: number | null = null;
     let activePointerId: number | null = null;
     let suppressNextClick = false;
     let suppressClickTimeout: number | null = null;
-    let persistVolumeTimeout: number | null = null;
-    let playbackVolumeTimeout: number | null = null;
-    let pendingPersistedVolume: StoredMediaVolumeT | null = null;
-    let hasUserAdjustedVolume = false;
-    const volumeStorageKey = this.getMediaVolumeStorageKey(video);
+    let sourceVolumeState = {
+      muted: video.muted,
+      volume: video.volume,
+    };
+    const preservesSiteVolume = (): boolean =>
+      DOMUtils.isYouTubeHoverPreview(video);
 
     const syncVolume = (): void => {
       const volumePercent = Math.round(video.volume * 100);
@@ -2067,10 +2097,7 @@ export class OverlayCreator {
             : 'high';
 
       if (video.volume > 0 && !video.muted) lastAudibleVolume = video.volume;
-      volumePill.style.setProperty(
-        '--mfs-volume',
-        isMuted ? '0%' : `${volumePercent}%`
-      );
+      volumePill.style.setProperty('--mfs-volume', `${volumePercent}%`);
       volumePill.dataset.mfsMuted = String(isMuted);
       volumePill.dataset.mfsVolumeLevel = volumeLevel;
       volumePill.setAttribute(
@@ -2078,10 +2105,7 @@ export class OverlayCreator {
         isMuted ? 'Unmute' : `Volume ${volumePercent}%, click to mute`
       );
       volumePill.setAttribute('aria-pressed', String(isMuted));
-      volumePill.setAttribute(
-        'aria-valuenow',
-        String(isMuted ? 0 : volumePercent)
-      );
+      volumePill.setAttribute('aria-valuenow', String(volumePercent));
       volumePill.setAttribute('aria-valuemin', '0');
       volumePill.setAttribute('aria-valuemax', '100');
       volumePill.title = isMuted
@@ -2089,72 +2113,35 @@ export class OverlayCreator {
         : `Volume ${volumePercent}% · drag or scroll to adjust · click to mute`;
     };
 
-    const applyPreferredVolume = (): void => {
-      const preferredVolume = this.mediaVolumePreferences.get(volumeStorageKey);
-      if (!preferredVolume) {
+    const syncPreferredVolume = (): void => {
+      if (preservesSiteVolume()) {
+        // Once YouTube owns this element as a thumbnail preview, subsequent
+        // source-side changes become the state we preserve. The extension
+        // must not freeze an earlier mute/volume snapshot over YouTube.
+        sourceVolumeState = {
+          muted: video.muted,
+          volume: video.volume,
+        };
         syncVolume();
         return;
-      }
-
-      if (video.volume !== preferredVolume.volume) {
-        video.volume = preferredVolume.volume;
-      }
-      if (video.muted !== preferredVolume.muted) {
-        video.muted = preferredVolume.muted;
-      }
-      if (preferredVolume.volume > 0) {
-        lastAudibleVolume = preferredVolume.volume;
       }
       syncVolume();
     };
 
-    const syncPreferredVolume = (): void => {
-      if (this.settingsManager.shouldHideVideoControls()) {
-        applyPreferredVolume();
-      } else {
-        syncVolume();
-      }
-    };
-
     const handlePlaybackStart = (): void => {
-      if (!this.settingsManager.shouldHideVideoControls()) return;
-      applyPreferredVolume();
-      if (playbackVolumeTimeout !== null) {
-        ownerWindow.clearTimeout(playbackVolumeTimeout);
+      if (preservesSiteVolume()) {
+        preserveSourceVolume();
+        return;
       }
-      playbackVolumeTimeout = ownerWindow.setTimeout(() => {
-        playbackVolumeTimeout = null;
-        applyPreferredVolume();
-      }, 0);
+      syncVolume();
     };
 
-    const persistPendingVolume = (): void => {
-      if (!pendingPersistedVolume) return;
-      const volumeState = pendingPersistedVolume;
-      pendingPersistedVolume = null;
-      persistVolumeTimeout = null;
-      void this.persistMediaVolume(video, volumeState);
-    };
-
-    const commitVolumePreference = (): void => {
-      hasUserAdjustedVolume = true;
-      const volumeState = {
-        muted: video.muted || video.volume === 0,
-        volume: video.volume,
-      };
-      this.mediaVolumePreferences.set(
-        this.getMediaVolumeStorageKey(video),
-        volumeState
-      );
-      this.applyMediaVolumeToMatchingVideos(video, volumeState);
-      pendingPersistedVolume = volumeState;
-      if (persistVolumeTimeout !== null) {
-        ownerWindow.clearTimeout(persistVolumeTimeout);
+    const handleVolumeChange = (): void => {
+      if (preservesSiteVolume()) {
+        syncPreferredVolume();
+        return;
       }
-      persistVolumeTimeout = ownerWindow.setTimeout(
-        persistPendingVolume,
-        VOLUME_PERSIST_DELAY_MS
-      );
+      syncVolume();
     };
 
     const toggleMute = (): void => {
@@ -2166,7 +2153,6 @@ export class OverlayCreator {
         video.muted = true;
       }
       syncVolume();
-      commitVolumePreference();
     };
 
     const setVolume = (nextVolume: number): void => {
@@ -2174,7 +2160,6 @@ export class OverlayCreator {
       video.muted = video.volume === 0;
       if (video.volume > 0) lastAudibleVolume = video.volume;
       syncVolume();
-      commitVolumePreference();
     };
 
     const setVolumeFromClientY = (clientY: number): void => {
@@ -2198,6 +2183,8 @@ export class OverlayCreator {
       pointerStartY = event.clientY;
       activePointerId = event.pointerId;
       suppressNextClick = false;
+      controls.dataset.mfsInteracting = 'true';
+      controls.dataset.mfsVisible = 'true';
       try {
         volumePill.setPointerCapture?.(event.pointerId);
       } catch {
@@ -2236,6 +2223,15 @@ export class OverlayCreator {
       activePointerId = null;
       pointerStartY = null;
       volumePill.dataset.mfsDragging = 'false';
+      delete controls.dataset.mfsInteracting;
+      const controlsRect = volumePill.getBoundingClientRect();
+      controls.dataset.mfsVisible = String(
+        event.type !== 'pointercancel' &&
+          event.clientX >= controlsRect.left &&
+          event.clientX <= controlsRect.right &&
+          event.clientY >= controlsRect.top &&
+          event.clientY <= controlsRect.bottom
+      );
       if (suppressNextClick) {
         if (suppressClickTimeout !== null) {
           ownerWindow.clearTimeout(suppressClickTimeout);
@@ -2289,6 +2285,9 @@ export class OverlayCreator {
           (event.key === 'ArrowUp' ? VOLUME_KEY_STEP : -VOLUME_KEY_STEP)
       );
     };
+
+    syncVolume();
+
     const stoppedEvents = [
       'pointerdown',
       'mousedown',
@@ -2310,28 +2309,25 @@ export class OverlayCreator {
     volumePill.addEventListener('click', handleClick);
     volumePill.addEventListener('wheel', handleWheel, { passive: false });
     volumePill.addEventListener('keydown', handleKeyDown);
-    video.addEventListener('volumechange', syncPreferredVolume);
+    video.addEventListener('volumechange', handleVolumeChange);
     video.addEventListener('play', handlePlaybackStart);
 
-    void this.loadMediaVolume(video).then((storedVolume) => {
-      if (!storedVolume || hasUserAdjustedVolume || !video.isConnected) return;
-      this.mediaVolumePreferences.set(volumeStorageKey, storedVolume);
-      syncPreferredVolume();
-    });
+    function preserveSourceVolume(): void {
+      if (!preservesSiteVolume()) return;
+      if (video.volume !== sourceVolumeState.volume) {
+        video.volume = sourceVolumeState.volume;
+      }
+      if (video.muted !== sourceVolumeState.muted) {
+        video.muted = sourceVolumeState.muted;
+      }
+      syncVolume();
+    }
 
     return {
       cleanup: () => {
         if (suppressClickTimeout !== null) {
           ownerWindow.clearTimeout(suppressClickTimeout);
           suppressClickTimeout = null;
-        }
-        if (persistVolumeTimeout !== null) {
-          ownerWindow.clearTimeout(persistVolumeTimeout);
-          persistPendingVolume();
-        }
-        if (playbackVolumeTimeout !== null) {
-          ownerWindow.clearTimeout(playbackVolumeTimeout);
-          playbackVolumeTimeout = null;
         }
         stoppedEvents.forEach((eventName) => {
           controls.removeEventListener(eventName, stopPlayerInteraction);
@@ -2343,9 +2339,11 @@ export class OverlayCreator {
         volumePill.removeEventListener('click', handleClick);
         volumePill.removeEventListener('wheel', handleWheel);
         volumePill.removeEventListener('keydown', handleKeyDown);
-        video.removeEventListener('volumechange', syncPreferredVolume);
+        video.removeEventListener('volumechange', handleVolumeChange);
         video.removeEventListener('play', handlePlaybackStart);
+        delete controls.dataset.mfsInteracting;
       },
+      preserveSourceVolume,
       sync: syncPreferredVolume,
     };
   }
@@ -2393,7 +2391,7 @@ export class OverlayCreator {
     video: HTMLVideoElement,
     debugMode: boolean,
     getIsHovering: () => boolean = () => false
-  ): { cleanup: () => void; sync: () => void } {
+  ): { cleanup: () => void; sync: () => void; togglePlayback: () => void } {
     const ownerDocument = video.ownerDocument;
     const ownerWindow = ownerDocument.defaultView ?? window;
     let feedbackElement: HTMLDivElement | null = null;
@@ -2653,6 +2651,7 @@ export class OverlayCreator {
         clearFeedback();
       },
       sync: syncPausedFeedback,
+      togglePlayback,
     };
   }
 
@@ -2925,6 +2924,7 @@ export class OverlayCreator {
     state: VideoStateT
   ): boolean {
     const canDragVideo =
+      !DOMUtils.isYouTubeHoverPreview(video) &&
       (this.settingsManager.shouldDragVideoToSeek?.() ?? false) &&
       getMediaSeekRange(video) !== null;
 
@@ -2958,6 +2958,7 @@ export class OverlayCreator {
     state: VideoStateT
   ): void {
     const shouldHide =
+      !DOMUtils.isYouTubeHoverPreview(video) &&
       this.settingsManager.shouldHideVideoControls() &&
       getMediaSeekRange(video) !== null;
 
@@ -2967,6 +2968,7 @@ export class OverlayCreator {
         state.mediaControls.hidden = true;
         state.mediaControls.dataset.mfsActive = 'false';
         state.mediaControls.dataset.mfsVisible = 'false';
+        state.mediaControls.dataset.mfsVideoHovered = 'false';
       }
       this.updateMediaControlsPlacement(video, state);
       if (state.videoControlsBeforeHide !== undefined) {
@@ -3004,7 +3006,10 @@ export class OverlayCreator {
     if (state.mediaControls) {
       state.mediaControls.hidden = false;
       state.mediaControls.dataset.mfsActive = 'true';
-      state.mediaControls.dataset.mfsVisible = String(state.isHovering);
+      state.mediaControls.dataset.mfsVisible = 'false';
+      state.mediaControls.dataset.mfsVideoHovered = String(
+        state.isPointerHovering === true
+      );
     }
     this.updateMediaControlsPlacement(video, state);
 
@@ -3167,72 +3172,6 @@ export class OverlayCreator {
     }
 
     return null;
-  }
-
-  private getMediaVolumeStorageKey(video: HTMLVideoElement): string {
-    return `${MEDIA_VOLUME_STORAGE_PREFIX}${video.ownerDocument.location.hostname.toLowerCase()}`;
-  }
-
-  private async loadMediaVolume(
-    video: HTMLVideoElement
-  ): Promise<StoredMediaVolumeT | null> {
-    const key = this.getMediaVolumeStorageKey(video);
-    const cached = this.mediaVolumePreferences.get(key);
-    if (cached) return cached;
-    if (typeof chrome === 'undefined' || !chrome.storage?.local) return null;
-
-    try {
-      const result = await chrome.storage.local.get(key);
-      const stored = result[key] as Partial<StoredMediaVolumeT> | undefined;
-      if (
-        typeof stored?.volume !== 'number' ||
-        !Number.isFinite(stored.volume) ||
-        stored.volume < 0 ||
-        stored.volume > 1 ||
-        typeof stored.muted !== 'boolean'
-      )
-        return null;
-
-      const volumeState = { muted: stored.muted, volume: stored.volume };
-      this.mediaVolumePreferences.set(key, volumeState);
-      return volumeState;
-    } catch {
-      return null;
-    }
-  }
-
-  private async persistMediaVolume(
-    video: HTMLVideoElement,
-    volumeState: StoredMediaVolumeT
-  ): Promise<void> {
-    if (typeof chrome === 'undefined' || !chrome.storage?.local) return;
-
-    try {
-      this.mediaVolumePreferences.set(
-        this.getMediaVolumeStorageKey(video),
-        volumeState
-      );
-      await chrome.storage.local.set({
-        [this.getMediaVolumeStorageKey(video)]: volumeState,
-      });
-    } catch {
-      // Losing a preference write should never interrupt media controls.
-    }
-  }
-
-  private applyMediaVolumeToMatchingVideos(
-    sourceVideo: HTMLVideoElement,
-    volumeState: StoredMediaVolumeT
-  ): void {
-    const hostname = sourceVideo.ownerDocument.location.hostname.toLowerCase();
-    this.videoStateManager.forEach((state, video) => {
-      if (video.ownerDocument.location.hostname.toLowerCase() !== hostname)
-        return;
-
-      video.volume = volumeState.volume;
-      video.muted = volumeState.muted;
-      state.syncMediaControls?.();
-    });
   }
 
   private findInstagramPlayerContainer(
@@ -3409,13 +3348,16 @@ export class OverlayCreator {
     getScrubTimeout: () => number | null,
     getIsHovering: () => boolean,
     deferredSeek: DeferredMediaSeek,
-    debugMode: boolean
+    debugMode: boolean,
+    togglePlayback?: () => void
   ): () => void {
     const ownerDocument = video.ownerDocument;
     const ownerWindow = ownerDocument.defaultView ?? window;
     let seekSpeedLabelDismissTimeout: number | undefined;
     let seekCommitTimeout: number | undefined;
     let wheelGestureTimeout: number | undefined;
+    let playPauseGestureTimeout: number | undefined;
+    let isPlayPauseGestureLocked = false;
     let isWheelGestureActive = false;
 
     const clearSeekCommitTimeout = (): void => {
@@ -3427,6 +3369,10 @@ export class OverlayCreator {
     const commitPendingSeek = (): void => {
       clearSeekCommitTimeout();
       const videoState = this.videoStateManager.get(video);
+      // A pointer drag owns the shared staged seek until pointerup. A stale
+      // wheel/scroll settle timer must not commit it or release the visual lock
+      // while the pointer is still held down.
+      if (videoState?.isVideoDragging) return;
       if (videoState) videoState.isUserScrubbing = false;
       deferredSeek.commit();
     };
@@ -3497,25 +3443,88 @@ export class OverlayCreator {
       }, SEEK_SPEED_LABEL_DISMISS_DELAY_MS);
     };
 
+    const handleWheelAction = (event: WheelEvent): boolean => {
+      if (
+        this.settingsManager.isPlayPauseWheelEnabled() &&
+        isHorizontalWheelAction(event) &&
+        matchesPrimaryWheelModifier(event)
+      ) {
+        // Consume the complete gesture before the seeking path below. A
+        // Command/Ctrl play-pause gesture must never move the timeline too.
+        event.preventDefault();
+        if (!isPlayPauseGestureLocked) {
+          isPlayPauseGestureLocked = true;
+          if (togglePlayback) {
+            togglePlayback();
+          } else if (video.paused) {
+            void video.play().catch((error) => {
+              if (debugMode) {
+                console.warn('Unable to play video from wheel action:', error);
+              }
+            });
+          } else {
+            video.pause();
+          }
+        }
+
+        if (playPauseGestureTimeout !== undefined) {
+          ownerWindow.clearTimeout(playPauseGestureTimeout);
+        }
+        playPauseGestureTimeout = ownerWindow.setTimeout(() => {
+          playPauseGestureTimeout = undefined;
+          isPlayPauseGestureLocked = false;
+        }, PLAY_PAUSE_WHEEL_GESTURE_END_MS);
+        return true;
+      }
+
+      return false;
+    };
+
     const handleOverlayWheel = (event: WheelEvent): void => {
+      if (handleWheelAction(event)) return;
+
       const fastScrollHotkey = this.settingsManager.getFastScrollHotkey();
       const slowScrollHotkey = this.settingsManager.getSlowScrollHotkey();
-      const delta = getWheelDeltaPixels(event, overlay.clientWidth);
-      if (delta === 0) return;
-      markWheelGestureActive();
-
-      if (!hasScrollSpeedHotkey(event, fastScrollHotkey, slowScrollHotkey))
-        return;
-
-      // Replace the browser's native wheel action so the requested multiplier
-      // is applied exactly once.
-      event.preventDefault();
-      const multiplier = getScrollSpeedMultiplier(
+      const hasSpeedHotkey = hasScrollSpeedHotkey(
         event,
         fastScrollHotkey,
         slowScrollHotkey
       );
-      showSeekSpeedLabel(multiplier);
+
+      // Leave an ordinary vertical wheel gesture available to the page. A
+      // horizontal gesture belongs to the scrubber, including at either end of
+      // its range, where native scroll chaining can otherwise become the
+      // browser's Back or Forward navigation gesture.
+      if (event.deltaX === 0 && !hasSpeedHotkey) return;
+
+      const delta = getWheelDeltaPixels(event, overlay.clientWidth);
+      if (delta === 0) return;
+
+      // Captured pointer movement can make a scrollable overlay produce wheel
+      // or synthetic scroll input near the viewport edge. Keep the pointer's
+      // clamped target authoritative until release.
+      if (this.videoStateManager.get(video)?.isVideoDragging) {
+        event.preventDefault();
+        return;
+      }
+
+      markWheelGestureActive();
+
+      // Replace native horizontal scrolling so the event remains contained at
+      // the scrubber's edges and an optional speed multiplier is applied once.
+      event.preventDefault();
+      const multiplier = getScrollSpeedMultiplier(
+        event,
+        fastScrollHotkey,
+        slowScrollHotkey,
+        this.settingsManager.getScrollSpeedFactor?.() ??
+          DEFAULT_SCROLL_SPEED_FACTOR
+      );
+      if (hasSpeedHotkey) {
+        showSeekSpeedLabel(
+          getScrollSpeedMultiplier(event, fastScrollHotkey, slowScrollHotkey)
+        );
+      }
       overlay.scrollLeft += delta * multiplier;
     };
 
@@ -3535,6 +3544,8 @@ export class OverlayCreator {
         event.clientY <= overlayRect.bottom;
       if (!isInsideActionArea) return;
 
+      if (handleWheelAction(event)) return;
+
       const fastScrollHotkey = this.settingsManager.getFastScrollHotkey();
       const slowScrollHotkey = this.settingsManager.getSlowScrollHotkey();
       const hasSpeedHotkey = hasScrollSpeedHotkey(
@@ -3549,15 +3560,27 @@ export class OverlayCreator {
         hasSpeedHotkey
       );
       if (delta === 0) return;
+
+      if (this.videoStateManager.get(video)?.isVideoDragging) {
+        event.preventDefault();
+        return;
+      }
+
       markWheelGestureActive();
 
       event.preventDefault();
       const multiplier = getScrollSpeedMultiplier(
         event,
         fastScrollHotkey,
-        slowScrollHotkey
+        slowScrollHotkey,
+        this.settingsManager.getScrollSpeedFactor?.() ??
+          DEFAULT_SCROLL_SPEED_FACTOR
       );
-      if (hasSpeedHotkey) showSeekSpeedLabel(multiplier);
+      if (hasSpeedHotkey) {
+        showSeekSpeedLabel(
+          getScrollSpeedMultiplier(event, fastScrollHotkey, slowScrollHotkey)
+        );
+      }
       overlay.scrollLeft += delta * multiplier;
     };
 
@@ -3575,6 +3598,7 @@ export class OverlayCreator {
 
       const videoState = this.videoStateManager.get(video);
       if (!videoState) return;
+      if (videoState.isVideoDragging) return;
 
       videoState.isUserScrubbing = true;
 
@@ -3629,7 +3653,12 @@ export class OverlayCreator {
     };
 
     const handleScrollEnd = (): void => {
-      if (getIsSettingInitialScroll() || isWheelGestureActive) return;
+      if (
+        getIsSettingInitialScroll() ||
+        isWheelGestureActive ||
+        this.videoStateManager.get(video)?.isVideoDragging
+      )
+        return;
       commitPendingSeek();
     };
 
@@ -3652,6 +3681,9 @@ export class OverlayCreator {
       clearSeekCommitTimeout();
       if (wheelGestureTimeout !== undefined) {
         ownerWindow.clearTimeout(wheelGestureTimeout);
+      }
+      if (playPauseGestureTimeout !== undefined) {
+        ownerWindow.clearTimeout(playPauseGestureTimeout);
       }
       const videoState = this.videoStateManager.get(video);
       if (videoState) videoState.isUserScrubbing = false;
@@ -3807,7 +3839,7 @@ export class OverlayCreator {
       }
 
       state.wrapper.style.removeProperty('visibility');
-      state.overlay.style.setProperty('pointer-events', 'auto');
+      this.updateOverlayPointerEvents(video, state);
       state.timeline.style.removeProperty('visibility');
       state.mediaControls?.style.removeProperty('visibility');
       state.mediaControls?.style.removeProperty('pointer-events');
@@ -3866,6 +3898,10 @@ export class OverlayCreator {
         if (video.ownerDocument === ownerDocument) {
           this.clearWheelHoverLease(video, state);
           state.isPointerHovering = false;
+          if (state.mediaControls) {
+            state.mediaControls.dataset.mfsVisible = 'false';
+            state.mediaControls.dataset.mfsVideoHovered = 'false';
+          }
           this.updateTimelineHoverState(video, state, false);
         }
       });
@@ -3974,10 +4010,28 @@ export class OverlayCreator {
         return;
       }
 
-      state.overlay.style.setProperty('pointer-events', 'auto');
+      this.updateOverlayPointerEvents(video, state);
       state.mediaControls?.style.removeProperty('pointer-events');
       this.updateTimelineInteractivityForVideo(video, state.timeline);
     });
+  }
+
+  private updateOverlayPointerEvents(
+    video: HTMLVideoElement,
+    state: VideoStateT
+  ): void {
+    if (DOMUtils.isYouTubeHoverPreview(video)) {
+      // YouTube's temporary thumbnail player must remain underneath the
+      // pointer so its own hover lifecycle keeps running. Wheel gestures are
+      // still captured by setupScrollHandling's document-level hit test.
+      state.overlay.style.setProperty('pointer-events', 'none', 'important');
+      state.overlay.dataset.mfsPassivePreview = 'true';
+      state.preserveSourceVolume?.();
+      return;
+    }
+
+    state.overlay.style.setProperty('pointer-events', 'auto');
+    delete state.overlay.dataset.mfsPassivePreview;
   }
 
   private updatePointerHoveredVideosAtPoint(
@@ -3995,6 +4049,12 @@ export class OverlayCreator {
         clientX,
         clientY
       );
+      if (state.mediaControls) {
+        state.mediaControls.dataset.mfsVideoHovered = String(
+          state.isPointerHovering
+        );
+      }
+      this.updateMediaControlsRevealAtPoint(state, clientX, clientY);
       this.updateTimelineHoverState(video, state, state.isPointerHovering);
     });
   }
@@ -4071,6 +4131,30 @@ export class OverlayCreator {
     );
   }
 
+  private updateMediaControlsRevealAtPoint(
+    state: VideoStateT,
+    clientX: number,
+    clientY: number
+  ): void {
+    const controls = state.mediaControls;
+    if (!controls || controls.hidden || controls.dataset.mfsActive !== 'true') {
+      return;
+    }
+
+    const controlsRect = controls.getBoundingClientRect();
+    const isOverControls =
+      controlsRect.width > 0 &&
+      controlsRect.height > 0 &&
+      clientX >= controlsRect.left &&
+      clientX <= controlsRect.right &&
+      clientY >= controlsRect.top &&
+      clientY <= controlsRect.bottom;
+
+    const isInteracting = controls.dataset.mfsInteracting === 'true';
+
+    controls.dataset.mfsVisible = String(isOverControls || isInteracting);
+  }
+
   private shouldShowPausedPlaybackUi(video: HTMLVideoElement): boolean {
     return (
       (this.settingsManager.shouldHideVideoControls?.() ?? false) &&
@@ -4085,9 +4169,6 @@ export class OverlayCreator {
     isHovering: boolean
   ): void {
     state.isHovering = isHovering;
-    if (state.mediaControls && !state.mediaControls.hidden) {
-      state.mediaControls.dataset.mfsVisible = String(isHovering);
-    }
     state.syncPlaybackFeedback?.();
 
     const isSettingsPreviewVisible =
