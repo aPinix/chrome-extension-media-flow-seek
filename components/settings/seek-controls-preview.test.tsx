@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { ActionAreaE } from '@/types/content';
@@ -188,6 +189,44 @@ describe('SeekControlsPreview', () => {
         .getByTestId('scroll-fingers')
         .style.getPropertyValue('--seek-finger-x')
     ).toBe('0px');
+  });
+
+  it('advances the scroll input device cycle when the preview is activated', async () => {
+    const user = userEvent.setup();
+    render(
+      <SeekControlsPreview
+        actionArea={ActionAreaE.Full}
+        actionAreaSize={30}
+        colorizedTimeline={false}
+        focusedMethod="scroll"
+        isDragSeekingEnabled={false}
+        isScrollSeekingEnabled={true}
+        isSeekbarSeekingEnabled={false}
+        timelineHeight={6}
+        timelinePosition="bottom"
+        timelineUnit="px"
+      />
+    );
+
+    const advanceButton = screen.getByRole('button', {
+      name: 'Show next scroll input device',
+    });
+
+    expect(screen.getByTestId('scroll-device').dataset.scrollDevice).toBe(
+      'trackpad'
+    );
+    await user.click(advanceButton);
+    expect(screen.getByTestId('scroll-device').dataset.scrollDevice).toBe(
+      'magic-mouse'
+    );
+    await user.click(advanceButton);
+    expect(screen.getByTestId('scroll-device').dataset.scrollDevice).toBe(
+      'mouse'
+    );
+    await user.click(advanceButton);
+    expect(screen.getByTestId('scroll-device').dataset.scrollDevice).toBe(
+      'trackpad'
+    );
   });
 
   it('anchors the seekbar cursor to the live timeline edge', () => {

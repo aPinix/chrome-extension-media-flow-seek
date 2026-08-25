@@ -348,100 +348,6 @@
   animation: timeline-progress 30s ease-in-out infinite;
 }
 
-@keyframes seek-preview-scroll-device-morph {
-  0%,
-  28% {
-    width: 3.5rem;
-    height: 2.5rem;
-    border-radius: 6px;
-    background-color: transparent;
-  }
-  33.333%,
-  61.667% {
-    width: 1.75rem;
-    height: 3rem;
-    border-radius: 12px;
-    background-color: rgb(255 255 255 / 0.1);
-    box-shadow: inset 0 2px 4px 0 rgb(0 0 0 / 0.06);
-  }
-  66.667%,
-  95% {
-    width: 1.75rem;
-    height: 3rem;
-    border-radius: 18px;
-    background-color: rgb(255 255 255 / 0.1);
-    box-shadow: inset 0 2px 4px 0 rgb(0 0 0 / 0.06);
-  }
-  100% {
-    width: 3.5rem;
-    height: 2.5rem;
-    border-radius: 6px;
-    background-color: transparent;
-    box-shadow: none;
-  }
-}
-
-@keyframes seek-preview-scroll-fingers-morph {
-  0%,
-  28% {
-    top: 50%;
-    left: 50%;
-    gap: 4px;
-    opacity: 1;
-  }
-  33.333%,
-  61.667% {
-    top: 10px;
-    left: 50%;
-    gap: 0;
-    opacity: 1;
-  }
-  66.667%,
-  95% {
-    top: 12px;
-    left: 50%;
-    gap: 0;
-    opacity: 0;
-  }
-  100% {
-    top: 50%;
-    left: 50%;
-    gap: 4px;
-    opacity: 1;
-  }
-}
-
-@keyframes seek-preview-scroll-secondary-finger {
-  0%,
-  28% {
-    opacity: 1;
-    width: 8px;
-  }
-  33.333%,
-  95% {
-    opacity: 0;
-    width: 0;
-  }
-  100% {
-    opacity: 1;
-    width: 8px;
-  }
-}
-
-@keyframes seek-preview-scroll-wheel-visibility {
-  0%,
-  61.667% {
-    opacity: 0;
-  }
-  66.667%,
-  95% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-  }
-}
-
 @keyframes seek-preview-drag-press {
   0%,
   100% {
@@ -455,29 +361,15 @@
   }
 }
 
-.seek-preview-scroll-device {
-  animation: seek-preview-scroll-device-morph
-    var(--seek-scroll-cycle-duration, 19.2s) ease-in-out infinite;
-}
-
 .seek-preview-scroll-fingers {
   display: flex;
-  animation: seek-preview-scroll-fingers-morph
-    var(--seek-scroll-cycle-duration, 19.2s) ease-in-out infinite;
   transform: translate(-50%, -50%)
     translateX(clamp(-3px, var(--seek-finger-x), 3px));
-}
-
-.seek-preview-scroll-finger-secondary {
-  animation: seek-preview-scroll-secondary-finger
-    var(--seek-scroll-cycle-duration, 19.2s) ease-in-out infinite;
 }
 
 .seek-preview-scroll-wheel {
   top: 12px;
   left: 50%;
-  animation: seek-preview-scroll-wheel-visibility
-    var(--seek-scroll-cycle-duration, 19.2s) ease-in-out infinite;
   transform: translate(-50%, -50%) translateX(var(--seek-wheel-x));
   will-change: transform;
 }
@@ -488,31 +380,11 @@
 
 @media (prefers-reduced-motion: reduce) {
   .timeline-progress-animate,
-  .seek-preview-scroll-device,
-  .seek-preview-scroll-fingers,
-  .seek-preview-scroll-finger-secondary,
-  .seek-preview-scroll-wheel,
   .seek-preview-drag-press {
     animation: none;
   }
 
   .timeline-progress-animate {
     width: 52%;
-  }
-
-  .seek-preview-scroll-device {
-    width: 3.5rem;
-    height: 2.5rem;
-    border-radius: 6px;
-  }
-
-  .seek-preview-scroll-fingers {
-    top: 50%;
-    left: 50%;
-    gap: 4px;
-  }
-
-  .seek-preview-scroll-wheel {
-    opacity: 0;
   }
 }

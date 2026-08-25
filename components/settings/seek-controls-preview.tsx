@@ -19,6 +19,8 @@ const methodPreviewLabels: Record<SeekControlMethodT, string> = {
   seekbar: 'Click & Drag Seekbar',
 };
 
+const scrollDeviceNames = ['trackpad', 'magic-mouse', 'mouse'] as const;
+
 const actionAreaLabels: Record<ActionAreaT, string> = {
   [ActionAreaE.Full]: 'full',
   [ActionAreaE.Top]: 'top',
@@ -27,12 +29,18 @@ const actionAreaLabels: Record<ActionAreaT, string> = {
 };
 
 function ScrollGestureCue({
+  deviceIndex,
   fingersRef,
   wheelRef,
 }: {
+  deviceIndex: number;
   fingersRef: RefObject<HTMLDivElement | null>;
   wheelRef: RefObject<HTMLSpanElement | null>;
 }) {
+  const device = scrollDeviceNames[deviceIndex] ?? scrollDeviceNames[0];
+  const isTrackpad = device === 'trackpad';
+  const isMagicMouse = device === 'magic-mouse';
+
   return (
     <div
       className="relative h-18 w-20 text-white"
@@ -44,29 +52,56 @@ function ScrollGestureCue({
           data-testid="scroll-device-container"
         >
           <div
-            className="seek-preview-scroll-device relative overflow-hidden border-2 border-white/80 [corner-shape:squircle]"
+            className="seek-preview-scroll-device relative overflow-hidden border-2 border-white/80 transition-[width,height,border-radius,background-color,box-shadow] duration-700 ease-in-out [corner-shape:squircle] motion-reduce:transition-none"
+            data-scroll-device={device}
             data-testid="scroll-device"
+            style={{
+              backgroundColor: isTrackpad
+                ? 'transparent'
+                : 'rgb(255 255 255 / 0.1)',
+              borderRadius: isTrackpad
+                ? '6px'
+                : isMagicMouse
+                  ? '50% / 40%'
+                  : '50px',
+              boxShadow: isTrackpad
+                ? 'none'
+                : 'inset 0 2px 4px 0 rgb(0 0 0 / 0.06)',
+              height: isTrackpad ? '2.5rem' : '3rem',
+              width: isTrackpad ? '3.5rem' : '1.75rem',
+            }}
           >
             <div
-              className="seek-preview-scroll-fingers absolute"
+              className="seek-preview-scroll-fingers absolute transition-[top,left,gap,opacity] duration-700 ease-in-out motion-reduce:transition-none"
               data-testid="scroll-fingers"
               ref={fingersRef}
               style={
                 {
                   '--seek-finger-x': '0px',
+                  gap: isTrackpad ? '4px' : '0px',
+                  left: '50%',
+                  opacity: device === 'mouse' ? 0 : 1,
+                  top: isTrackpad ? '50%' : isMagicMouse ? '10px' : '12px',
                 } as React.CSSProperties
               }
             >
               <span className="block size-2 rounded-full bg-white shadow-sm" />
-              <span className="seek-preview-scroll-finger-secondary block size-2 rounded-full bg-white shadow-sm" />
+              <span
+                className="seek-preview-scroll-finger-secondary block h-2 rounded-full bg-white shadow-sm transition-[width,opacity] duration-700 ease-in-out motion-reduce:transition-none"
+                style={{
+                  opacity: isTrackpad ? 1 : 0,
+                  width: isTrackpad ? '8px' : '0px',
+                }}
+              />
             </div>
             <span
-              className="seek-preview-scroll-wheel absolute block h-4 w-2 rounded-full bg-white shadow-sm"
+              className="seek-preview-scroll-wheel absolute block h-4 w-2 rounded-full bg-white shadow-sm transition-opacity duration-700 ease-in-out motion-reduce:transition-none"
               data-testid="scroll-wheel"
               ref={wheelRef}
               style={
                 {
                   '--seek-wheel-x': '0px',
+                  opacity: device === 'mouse' ? 1 : 0,
                 } as React.CSSProperties
               }
             />
@@ -116,6 +151,8 @@ const PREVIEW_PROGRESS_MIN = 0.34;
 const PREVIEW_PROGRESS_MAX = 0.72;
 const PREVIEW_STATIC_PROGRESS =
   (PREVIEW_PROGRESS_MIN + PREVIEW_PROGRESS_MAX) / 2;
+const SCROLL_DEVICE_PHASE_SECONDS = 6.4;
+const SCROLL_DEVICE_PHASE_COUNT = 3;
 const VIDEO_SEEK_INTERVAL_MS = 80;
 
 export function getSeekPreviewProgress(
@@ -186,6 +223,7 @@ export function SeekControlsPreview({
   timelineUnit,
 }: SeekControlsPreviewPropsI) {
   const [isVideoReady, setIsVideoReady] = useState(false);
+  const [scrollDeviceIndex, setScrollDeviceIndex] = useState(0);
   const dragCueRef = useRef<HTMLDivElement>(null);
   const progressRef = useRef<HTMLDivElement>(null);
   const scrollFingersRef = useRef<HTMLDivElement>(null);
@@ -225,6 +263,28 @@ export function SeekControlsPreview({
       : timelineUnit === '%'
         ? `${100 - timelineHeight / 2}%`
         : `calc(100% - ${timelineHeight / 2}px)`;
+
+  useEffect(() => {
+    if (focusedMethod !== 'scroll') {
+      setScrollDeviceIndex(0);
+      return;
+    }
+    if (
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ??
+      false
+    ) {
+      return;
+    }
+
+    const cycleTimer = window.setTimeout(
+      () =>
+        setScrollDeviceIndex(
+          (scrollDeviceIndex + 1) % SCROLL_DEVICE_PHASE_COUNT
+        ),
+      (SCROLL_DEVICE_PHASE_SECONDS * 1000) / normalizedScrollSpeedFactor
+    );
+    return () => window.clearTimeout(cycleTimer);
+  }, [focusedMethod, normalizedScrollSpeedFactor, scrollDeviceIndex]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -385,110 +445,121 @@ export function SeekControlsPreview({
   ]);
 
   return (
-    <div
-      aria-label={previewLabel}
-      className="relative aspect-video overflow-hidden rounded-xl bg-black"
-      data-focused-method={focusedMethod}
-      data-scroll-inverted={scrollInverted}
-      data-scroll-speed-factor={normalizedScrollSpeedFactor}
-      data-testid="seek-controls-preview"
-      role="img"
-      style={
-        {
-          '--seek-scroll-cycle-duration': `${19.2 / normalizedScrollSpeedFactor}s`,
-        } as React.CSSProperties
-      }
-    >
-      <video
-        aria-hidden="true"
-        autoPlay
-        className="absolute inset-0 size-full object-cover"
-        data-testid="seek-preview-video"
-        loop
-        muted
-        playsInline
-        ref={videoRef}
-        src="/video/video-preview.mp4"
-        tabIndex={-1}
-      />
-
+    <div className="relative">
       <div
-        aria-hidden="true"
-        className={cn(
-          'absolute inset-x-0 z-10 border-2 border-violet-300/90 bg-violet-400/25 transition-[top,height] duration-300 ease-in-out motion-reduce:transition-none dark:border-violet-400/80 dark:bg-violet-600/30',
-          isFullActionArea && 'inset-0 h-full rounded-lg',
-          actionArea === ActionAreaE.Top && 'top-0 rounded-t-lg',
-          actionArea === ActionAreaE.Middle && 'rounded',
-          actionArea === ActionAreaE.Bottom && 'rounded-b-lg'
-        )}
-        data-testid="action-area-overlay"
-        style={actionAreaStyle}
-      />
-
-      <div
-        aria-hidden="true"
-        className="absolute inset-0 z-40 grid place-items-center"
-        data-testid="gesture-cue-layer"
+        aria-label={previewLabel}
+        className="relative aspect-video overflow-hidden rounded-xl bg-black"
+        data-focused-method={focusedMethod}
+        data-scroll-inverted={scrollInverted}
+        data-scroll-speed-factor={normalizedScrollSpeedFactor}
+        data-testid="seek-controls-preview"
+        role="img"
       >
-        {focusedMethod === 'scroll' ? (
-          <ScrollGestureCue
-            fingersRef={scrollFingersRef}
-            key={`${normalizedScrollSpeedFactor}-${scrollInverted}`}
-            wheelRef={scrollWheelRef}
-          />
-        ) : null}
-        {focusedMethod === 'drag' ? (
-          <DragGestureCue cueRef={dragCueRef} />
-        ) : null}
-        {focusedMethod === 'seekbar' ? (
-          <span
-            className="absolute z-30 block size-5 -translate-y-1/2"
-            data-testid="seekbar-gesture-cue"
-            ref={seekbarCueRef}
-            style={{
-              left: '34%',
-              top: seekbarCursorTop,
-            }}
-          >
-            <MousePointer2Icon className="size-full translate-x-[-3.333px] fill-white text-white drop-shadow-lg" />
-          </span>
-        ) : null}
-      </div>
-
-      <span
-        aria-hidden="true"
-        className="absolute top-3 left-3 z-50 rounded-md bg-slate-950/50 px-2 py-1 font-semibold text-[10px] text-white shadow-sm backdrop-blur-md"
-        data-testid="focused-method-label"
-      >
-        {methodPreviewLabels[focusedMethod]}
-      </span>
-
-      <div
-        aria-hidden="true"
-        className={cn(
-          'absolute inset-x-0 z-20 overflow-hidden bg-white/20 backdrop-blur-sm backdrop-saturate-[1.4] transition-[top,height] duration-300 ease-in-out motion-reduce:transition-none',
-          timelinePosition === 'top' ? 'rounded-t-lg' : 'rounded-b-lg'
-        )}
-        data-testid="timeline-overlay"
-        style={{
-          height: `${timelineHeight}${timelineUnit}`,
-          top:
-            timelinePosition === 'top'
-              ? '0px'
-              : `calc(100% - ${timelineHeight}${timelineUnit})`,
-        }}
-      >
-        <div
-          className={cn(
-            'absolute inset-y-0 left-0 w-[34%] overflow-visible backdrop-blur-sm backdrop-saturate-[1.4]',
-            colorizedTimeline
-              ? 'bg-violet-400/80 dark:bg-violet-600/80'
-              : 'bg-white/30'
-          )}
-          data-testid="timeline-progress"
-          ref={progressRef}
+        <video
+          aria-hidden="true"
+          autoPlay
+          className="absolute inset-0 size-full object-cover"
+          data-testid="seek-preview-video"
+          loop
+          muted
+          playsInline
+          ref={videoRef}
+          src="/video/video-preview.mp4"
+          tabIndex={-1}
         />
+
+        <div
+          aria-hidden="true"
+          className={cn(
+            'absolute inset-x-0 z-10 border-2 border-violet-300/90 bg-violet-400/25 transition-[top,height] duration-300 ease-in-out motion-reduce:transition-none dark:border-violet-400/80 dark:bg-violet-600/30',
+            isFullActionArea && 'inset-0 h-full rounded-lg',
+            actionArea === ActionAreaE.Top && 'top-0 rounded-t-lg',
+            actionArea === ActionAreaE.Middle && 'rounded',
+            actionArea === ActionAreaE.Bottom && 'rounded-b-lg'
+          )}
+          data-testid="action-area-overlay"
+          style={actionAreaStyle}
+        />
+
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 z-40 grid place-items-center"
+          data-testid="gesture-cue-layer"
+        >
+          {focusedMethod === 'scroll' ? (
+            <ScrollGestureCue
+              deviceIndex={scrollDeviceIndex}
+              fingersRef={scrollFingersRef}
+              key={`${normalizedScrollSpeedFactor}-${scrollInverted}`}
+              wheelRef={scrollWheelRef}
+            />
+          ) : null}
+          {focusedMethod === 'drag' ? (
+            <DragGestureCue cueRef={dragCueRef} />
+          ) : null}
+          {focusedMethod === 'seekbar' ? (
+            <span
+              className="absolute z-30 block size-5 -translate-y-1/2"
+              data-testid="seekbar-gesture-cue"
+              ref={seekbarCueRef}
+              style={{
+                left: '34%',
+                top: seekbarCursorTop,
+              }}
+            >
+              <MousePointer2Icon className="size-full translate-x-[-3.333px] fill-white text-white drop-shadow-lg" />
+            </span>
+          ) : null}
+        </div>
+
+        <span
+          aria-hidden="true"
+          className="absolute top-3 left-3 z-50 rounded-md bg-slate-950/50 px-2 py-1 font-semibold text-[10px] text-white shadow-sm backdrop-blur-md"
+          data-testid="focused-method-label"
+        >
+          {methodPreviewLabels[focusedMethod]}
+        </span>
+
+        <div
+          aria-hidden="true"
+          className={cn(
+            'absolute inset-x-0 z-20 overflow-hidden bg-white/20 backdrop-blur-sm backdrop-saturate-[1.4] transition-[top,height] duration-300 ease-in-out motion-reduce:transition-none',
+            timelinePosition === 'top' ? 'rounded-t-lg' : 'rounded-b-lg'
+          )}
+          data-testid="timeline-overlay"
+          style={{
+            height: `${timelineHeight}${timelineUnit}`,
+            top:
+              timelinePosition === 'top'
+                ? '0px'
+                : `calc(100% - ${timelineHeight}${timelineUnit})`,
+          }}
+        >
+          <div
+            className={cn(
+              'absolute inset-y-0 left-0 w-[34%] overflow-visible backdrop-blur-sm backdrop-saturate-[1.4]',
+              colorizedTimeline
+                ? 'bg-violet-400/80 dark:bg-violet-600/80'
+                : 'bg-white/30'
+            )}
+            data-testid="timeline-progress"
+            ref={progressRef}
+          />
+        </div>
       </div>
+
+      {focusedMethod === 'scroll' ? (
+        <button
+          aria-label="Show next scroll input device"
+          className="absolute inset-0 z-[60] cursor-pointer rounded-xl bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/90 focus-visible:ring-inset"
+          onClick={() =>
+            setScrollDeviceIndex(
+              (current) => (current + 1) % SCROLL_DEVICE_PHASE_COUNT
+            )
+          }
+          type="button"
+        />
+      ) : null}
     </div>
   );
 }
