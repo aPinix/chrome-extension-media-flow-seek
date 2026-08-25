@@ -1,30 +1,21 @@
 import {
   BugIcon,
-  EyeIcon,
   EyeOffIcon,
-  GaugeIcon,
   GlobeIcon,
-  LayoutTemplateIcon,
-  MousePointer2Icon,
-  MoveHorizontalIcon,
   PaletteIcon,
   PowerIcon,
-  RotateCcwIcon,
-  RotateCwIcon,
   SlidersHorizontalIcon,
-  TriangleAlertIcon,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { AppSelect } from '@/components/app/app-select';
+import { AppBetaBadge } from '@/components/app/app-beta-badge';
 import { AppSwitch } from '@/components/app/app-switch';
 import { XBrandIcon } from '@/components/icons/icons';
 import { CardListItem } from '@/components/popup/card-list-item';
 import { SectionTitle } from '@/components/popup/section-title';
 import { SiteAccessView } from '@/components/popup/site-access-view';
 import { ViewTitle } from '@/components/popup/view-title';
-import { ScrollSpeedFactorControl } from '@/components/scroll-speed-factor-control';
-import { VideoLayoutSettings } from '@/components/settings/video-layout-settings';
+import { SeekControlsSettings } from '@/components/settings/seek-controls-settings';
 import { useTheme } from '@/components/theme-provider';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -36,11 +27,7 @@ import {
   sendMessageToCurrentTab,
   subscribeToEnabledChanges,
 } from '@/helpers/popup-storage';
-import {
-  isScrollHotkey,
-  ScrollHotkeyE,
-  type ScrollHotkeyT,
-} from '@/helpers/scroll-speed';
+import type { ScrollHotkeyT } from '@/helpers/scroll-speed';
 import { getCurrentDomain } from '@/lib/popup-utils';
 import { cn } from '@/lib/utils';
 import { getExtensionVersion } from '@/lib/version';
@@ -52,42 +39,6 @@ import { CardListItemWrapper } from './card-list-item-wrapper';
 
 const headerLinkClassName =
   'flex size-6 items-center justify-center rounded-md border border-transparent text-slate-400 transition-[color,background-color,border-color] hover:border-brand-100 hover:bg-brand-50 hover:text-brand focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2 dark:text-slate-400 dark:hover:border-brand-800 dark:hover:bg-brand-900/50 dark:hover:text-brand-300';
-
-const scrollHotkeyItems = [
-  { label: 'Alt', value: ScrollHotkeyE.Alt },
-  { label: 'Shift', value: ScrollHotkeyE.Shift },
-  { label: 'Alt + Shift', value: ScrollHotkeyE.AltShift },
-];
-
-function ScrollHotkeySelect({
-  label,
-  onChange,
-  value,
-}: {
-  label: string;
-  onChange: (value: ScrollHotkeyT) => void;
-  value: ScrollHotkeyT;
-}) {
-  return (
-    <AppSelect
-      className="min-w-28"
-      items={scrollHotkeyItems}
-      label={label}
-      onValueChange={(nextValue) => {
-        if (isScrollHotkey(nextValue)) onChange(nextValue);
-      }}
-      value={value}
-    />
-  );
-}
-
-function BetaBadge() {
-  return (
-    <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 font-semibold text-[9px] text-amber-700 leading-none ring-1 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-400/25">
-      Beta
-    </span>
-  );
-}
 
 const shortcutKeySymbols: Record<string, string> = {
   Alt: '⌥',
@@ -189,13 +140,8 @@ function PopupHeader() {
   const version = getExtensionVersion();
 
   return (
-    <header className="absolute inset-x-3 top-2 z-40 h-14 overflow-hidden rounded-full border border-white/45 bg-white/65 px-3 py-2 shadow-[0_8px_28px_-12px_rgba(15,23,42,0.7)] backdrop-blur-xl backdrop-saturate-150 dark:border-white/10 dark:bg-slate-800/65">
-      <div
-        aria-hidden="true"
-        className="absolute -top-14 -left-8 size-28 rounded-full bg-brand-200/25 blur-2xl dark:bg-brand-600/20"
-      />
-
-      <div className="relative flex h-full items-center gap-3">
+    <header className="absolute inset-x-3 top-2 z-50 h-14 px-3 py-2">
+      <div className="flex h-full items-center gap-3">
         <a
           aria-label="View Better Video Controls on Chrome Web Store"
           className="shrink-0 transition-transform hover:scale-105 focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2"
@@ -211,12 +157,12 @@ function PopupHeader() {
           />
         </a>
 
-        <div className="flex min-w-0 flex-1 items-baseline gap-1.5 leading-none">
+        <div className="flex min-w-0 flex-1 flex-col justify-center leading-none">
           <span className="truncate font-bold text-slate-900 text-sm dark:text-white">
-            BetterVideo
+            Better Video
           </span>
           {version ? (
-            <span className="shrink-0 text-[9px] text-slate-400 dark:text-slate-500">
+            <span className="mt-1 shrink-0 text-[9px] text-slate-500 dark:text-slate-400">
               v{version}
             </span>
           ) : null}
@@ -234,16 +180,26 @@ export function PopupContent() {
   const programmaticViewRef = useRef<boolean | null>(null);
   const [isEnabled, setIsEnabled] = useState(true);
   const [isDebugEnabled, setIsDebugEnabled] = useState(false);
+  const [isScrollSeekingEnabled, setIsScrollSeekingEnabled] = useState(
+    DEFAULT_SETTINGS.isScrollSeekingEnabled
+  );
   const [invertHorizontalScroll, setInvertHorizontalScroll] = useState(false);
   const [scrollSpeedFactor, setScrollSpeedFactor] = useState(
     DEFAULT_SETTINGS.scrollSpeedFactor
   );
   const [showTimelineOnHover, setShowTimelineOnHover] = useState(false);
-  const [isTimelineSeekingEnabled, setIsTimelineSeekingEnabled] =
-    useState(false);
-  const [dragVideoToSeek, setDragVideoToSeek] = useState(false);
-  const [hideVideoControls, setHideVideoControls] = useState(false);
-  const [colorizedTimeline, setColorizedTimeline] = useState(false);
+  const [isTimelineSeekingEnabled, setIsTimelineSeekingEnabled] = useState(
+    DEFAULT_SETTINGS.isTimelineSeekingEnabled
+  );
+  const [dragVideoToSeek, setDragVideoToSeek] = useState(
+    DEFAULT_SETTINGS.dragVideoToSeek
+  );
+  const [hideVideoControls, setHideVideoControls] = useState(
+    DEFAULT_SETTINGS.hideVideoControls
+  );
+  const [colorizedTimeline, setColorizedTimeline] = useState(
+    DEFAULT_SETTINGS.colorizedTimeline
+  );
   const [timelinePosition, setTimelinePosition] = useState<'top' | 'bottom'>(
     'bottom'
   );
@@ -267,20 +223,21 @@ export function PopupContent() {
     'px'
   );
   const [actionArea, setActionArea] = useState<ActionAreaT>(ActionAreaE.Full);
-  const [actionAreaSize, setActionAreaSize] = useState<number>(30);
+  const [actionAreaSize, setActionAreaSize] = useState(
+    DEFAULT_SETTINGS.actionAreaSize
+  );
+  const [actionAreaSizeUnit, setActionAreaSizeUnit] = useState<'px' | '%'>(
+    DEFAULT_SETTINGS.actionAreaSizeUnit
+  );
 
   // Check if extension settings are at defaults
   const isExtensionAtDefaults =
     isEnabled === DEFAULT_SETTINGS.isEnabled &&
     (!IS_DEVELOPMENT || isDebugEnabled === DEFAULT_SETTINGS.isDebugEnabled);
 
-  const isScrollSpeedAndHotkeysAtDefaults =
-    scrollSpeedFactor === DEFAULT_SETTINGS.scrollSpeedFactor &&
-    fastScrollHotkey === DEFAULT_SETTINGS.fastScrollHotkey &&
-    slowScrollHotkey === DEFAULT_SETTINGS.slowScrollHotkey;
-
   // Check if settings are at defaults
   const isSettingsAtDefaults =
+    isScrollSeekingEnabled === DEFAULT_SETTINGS.isScrollSeekingEnabled &&
     invertHorizontalScroll === DEFAULT_SETTINGS.invertHorizontalScroll &&
     scrollSpeedFactor === DEFAULT_SETTINGS.scrollSpeedFactor &&
     fastScrollHotkey === DEFAULT_SETTINGS.fastScrollHotkey &&
@@ -295,7 +252,8 @@ export function PopupContent() {
     timelineHeight === DEFAULT_SETTINGS.timelineHeight &&
     timelineHeightUnit === DEFAULT_SETTINGS.timelineHeightUnit &&
     actionArea === DEFAULT_SETTINGS.actionArea &&
-    actionAreaSize === DEFAULT_SETTINGS.actionAreaSize;
+    actionAreaSize === DEFAULT_SETTINGS.actionAreaSize &&
+    actionAreaSizeUnit === DEFAULT_SETTINGS.actionAreaSizeUnit;
 
   useEffect(() => {
     // Get current tab domain
@@ -305,6 +263,7 @@ export function PopupContent() {
       const settings = await loadPopupSettings();
       setIsEnabled(settings.isEnabled);
       setIsDebugEnabled(settings.isDebugEnabled);
+      setIsScrollSeekingEnabled(settings.isScrollSeekingEnabled);
       setInvertHorizontalScroll(settings.invertHorizontalScroll);
       setScrollSpeedFactor(settings.scrollSpeedFactor);
       setFastScrollHotkey(settings.fastScrollHotkey);
@@ -320,7 +279,8 @@ export function PopupContent() {
       setTimelineHeightUnit(settings.timelineHeightUnit);
       setDomainRules(settings.domainRules);
       setActionArea(settings.actionArea || 'full');
-      setActionAreaSize(settings.actionAreaSize || 30);
+      setActionAreaSize(settings.actionAreaSize);
+      setActionAreaSizeUnit(settings.actionAreaSizeUnit);
     };
 
     const loadShortcuts = async () => {
@@ -382,6 +342,15 @@ export function PopupContent() {
     });
   };
 
+  const handleScrollSeekingToggle = (checked: boolean) => {
+    setIsScrollSeekingEnabled(checked);
+    saveSettings({ isScrollSeekingEnabled: checked });
+    sendMessageToCurrentTab({
+      action: 'updateScrollSeeking',
+      isScrollSeekingEnabled: checked,
+    });
+  };
+
   const handleScrollSpeedFactorChange = (factor: number) => {
     setScrollSpeedFactor(factor);
     saveSettings({ scrollSpeedFactor: factor });
@@ -414,32 +383,6 @@ export function PopupContent() {
       next === fastScrollHotkey ? slowScrollHotkey : fastScrollHotkey,
       next
     );
-  };
-
-  const handleResetScrollSpeedAndHotkeys = () => {
-    const {
-      fastScrollHotkey: defaultFastHotkey,
-      scrollSpeedFactor: defaultSpeedFactor,
-      slowScrollHotkey: defaultSlowHotkey,
-    } = DEFAULT_SETTINGS;
-
-    setScrollSpeedFactor(defaultSpeedFactor);
-    setFastScrollHotkey(defaultFastHotkey);
-    setSlowScrollHotkey(defaultSlowHotkey);
-    saveSettings({
-      fastScrollHotkey: defaultFastHotkey,
-      scrollSpeedFactor: defaultSpeedFactor,
-      slowScrollHotkey: defaultSlowHotkey,
-    });
-    sendMessageToCurrentTab({
-      action: 'updateScrollSpeedFactor',
-      scrollSpeedFactor: defaultSpeedFactor,
-    });
-    sendMessageToCurrentTab({
-      action: 'updateScrollHotkeys',
-      fastScrollHotkey: defaultFastHotkey,
-      slowScrollHotkey: defaultSlowHotkey,
-    });
   };
 
   const handlePlayPauseWheelEnabledChange = (enabled: boolean) => {
@@ -529,78 +472,70 @@ export function PopupContent() {
     });
   };
 
+  const handleTimelineHeightReset = () => {
+    const height = DEFAULT_SETTINGS.timelineHeight;
+    const unit = DEFAULT_SETTINGS.timelineHeightUnit;
+    setTimelineHeight(height);
+    setTimelineHeightUnit(unit);
+    saveSettings({ timelineHeight: height, timelineHeightUnit: unit });
+    sendMessageToCurrentTab({
+      action: 'updateTimelineHeight',
+      timelineHeight: height,
+      timelineHeightUnit: unit,
+    });
+  };
+
   const applyActionArea = (newActionArea: ActionAreaT) => {
     setActionArea(newActionArea);
-    saveSettings({
-      isEnabled,
-      isDebugEnabled,
-      invertHorizontalScroll,
-      showTimelineOnHover,
-      isTimelineSeekingEnabled,
-      dragVideoToSeek,
-      hideVideoControls,
-      colorizedTimeline,
-      timelinePosition,
-      timelineHeight,
-      timelineHeightUnit,
-      domainRules,
-      actionArea: newActionArea,
-      actionAreaSize,
-    });
+    saveSettings({ actionArea: newActionArea });
     sendMessageToCurrentTab({
       type: 'SETTINGS_UPDATED',
       settings: {
-        isEnabled,
-        isDebugEnabled,
-        invertHorizontalScroll,
-        showTimelineOnHover,
-        isTimelineSeekingEnabled,
-        dragVideoToSeek,
-        hideVideoControls,
-        colorizedTimeline,
-        timelinePosition,
-        timelineHeight,
-        timelineHeightUnit,
         actionArea: newActionArea,
         actionAreaSize,
+        actionAreaSizeUnit,
       },
     });
   };
 
   const handleActionAreaSizeChange = (newSize: number) => {
     setActionAreaSize(newSize);
-    saveSettings({
-      isEnabled,
-      isDebugEnabled,
-      invertHorizontalScroll,
-      showTimelineOnHover,
-      isTimelineSeekingEnabled,
-      dragVideoToSeek,
-      hideVideoControls,
-      colorizedTimeline,
-      timelinePosition,
-      timelineHeight,
-      timelineHeightUnit,
-      domainRules,
-      actionArea,
-      actionAreaSize: newSize,
-    });
+    saveSettings({ actionAreaSize: newSize });
     sendMessageToCurrentTab({
       type: 'SETTINGS_UPDATED',
       settings: {
-        isEnabled,
-        isDebugEnabled,
-        invertHorizontalScroll,
-        showTimelineOnHover,
-        isTimelineSeekingEnabled,
-        dragVideoToSeek,
-        hideVideoControls,
-        colorizedTimeline,
-        timelinePosition,
-        timelineHeight,
-        timelineHeightUnit,
         actionArea,
         actionAreaSize: newSize,
+        actionAreaSizeUnit,
+      },
+    });
+  };
+
+  const handleActionAreaSizeUnitChange = (unit: 'px' | '%') => {
+    setActionAreaSizeUnit(unit);
+    saveSettings({ actionAreaSizeUnit: unit });
+    sendMessageToCurrentTab({
+      type: 'SETTINGS_UPDATED',
+      settings: {
+        actionArea,
+        actionAreaSize,
+        actionAreaSizeUnit: unit,
+      },
+    });
+  };
+
+  const handleActionAreaSizeReset = () => {
+    const size = DEFAULT_SETTINGS.actionAreaSize;
+    const unit = DEFAULT_SETTINGS.actionAreaSizeUnit;
+    setActionAreaSize(size);
+    setActionAreaSizeUnit(unit);
+    saveSettings({ actionAreaSize: size, actionAreaSizeUnit: unit });
+    sendMessageToCurrentTab({
+      type: 'SETTINGS_UPDATED',
+      settings: {
+        actionArea,
+        actionAreaSize: size,
+        actionAreaSizeUnit: unit,
       },
     });
   };
@@ -630,6 +565,7 @@ export function PopupContent() {
   const handleResetSettingsDefaults = () => {
     const defaultSettings = DEFAULT_SETTINGS;
 
+    setIsScrollSeekingEnabled(defaultSettings.isScrollSeekingEnabled);
     setInvertHorizontalScroll(defaultSettings.invertHorizontalScroll);
     setScrollSpeedFactor(defaultSettings.scrollSpeedFactor);
     setFastScrollHotkey(defaultSettings.fastScrollHotkey);
@@ -645,9 +581,11 @@ export function PopupContent() {
     setTimelineHeightUnit(defaultSettings.timelineHeightUnit);
     setActionArea(defaultSettings.actionArea);
     setActionAreaSize(defaultSettings.actionAreaSize);
+    setActionAreaSizeUnit(defaultSettings.actionAreaSizeUnit);
 
     // Save only settings-related values
     saveSettings({
+      isScrollSeekingEnabled: defaultSettings.isScrollSeekingEnabled,
       invertHorizontalScroll: defaultSettings.invertHorizontalScroll,
       scrollSpeedFactor: defaultSettings.scrollSpeedFactor,
       fastScrollHotkey: defaultSettings.fastScrollHotkey,
@@ -663,8 +601,13 @@ export function PopupContent() {
       timelineHeightUnit: defaultSettings.timelineHeightUnit,
       actionArea: defaultSettings.actionArea,
       actionAreaSize: defaultSettings.actionAreaSize,
+      actionAreaSizeUnit: defaultSettings.actionAreaSizeUnit,
     });
 
+    sendMessageToCurrentTab({
+      action: 'updateScrollSeeking',
+      isScrollSeekingEnabled: defaultSettings.isScrollSeekingEnabled,
+    });
     sendMessageToCurrentTab({
       action: 'updateScrollInversion',
       invertHorizontalScroll: defaultSettings.invertHorizontalScroll,
@@ -716,6 +659,7 @@ export function PopupContent() {
       settings: {
         actionArea: defaultSettings.actionArea,
         actionAreaSize: defaultSettings.actionAreaSize,
+        actionAreaSizeUnit: defaultSettings.actionAreaSizeUnit,
       },
     });
   };
@@ -739,13 +683,11 @@ export function PopupContent() {
 
   return (
     <div className={cn(theme === 'dark' && 'dark')}>
-      <div
-        className={`relative flex h-150 w-100 flex-col overflow-hidden bg-slate-100 shadow-xl dark:bg-slate-700`}
-      >
+      <div className="relative flex h-150 w-100 flex-col overflow-hidden bg-slate-100 shadow-xl dark:bg-slate-900">
         <PopupHeader />
 
         <main
-          className="relative flex min-h-0 flex-1 snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain scroll-smooth [scrollbar-width:none] motion-reduce:scroll-auto [&::-webkit-scrollbar]:hidden"
+          className="scrollbar-none relative flex min-h-0 flex-1 snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain scroll-smooth motion-reduce:scroll-auto [&::-webkit-scrollbar]:hidden"
           onScroll={(event) => {
             if (programmaticViewRef.current !== null) return;
 
@@ -850,10 +792,9 @@ export function PopupContent() {
                   </CardListItemWrapper>
                 </div>
 
-                {/* Settings Section */}
                 <div className="flex flex-none flex-col">
-                  <SectionTitle title="Settings">
-                    {!isSettingsAtDefaults && (
+                  <SectionTitle title="Seek Controls">
+                    {!isSettingsAtDefaults ? (
                       <Button
                         className="h-7 px-3 font-medium text-slate-600 text-xs transition-all hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800/50 dark:hover:text-slate-300"
                         onClick={handleResetSettingsDefaults}
@@ -862,9 +803,68 @@ export function PopupContent() {
                       >
                         Reset Default
                       </Button>
-                    )}
+                    ) : null}
                   </SectionTitle>
 
+                  <div
+                    className={cn(
+                      !isEnabled && 'pointer-events-none opacity-50'
+                    )}
+                  >
+                    <SeekControlsSettings
+                      actionArea={actionArea}
+                      actionAreaSize={actionAreaSize}
+                      actionAreaSizeUnit={actionAreaSizeUnit}
+                      colorizedTimeline={colorizedTimeline}
+                      fastScrollHotkey={fastScrollHotkey}
+                      isDragSeekingEnabled={dragVideoToSeek}
+                      isPlayPauseWheelEnabled={isPlayPauseWheelEnabled}
+                      isScrollSeekingEnabled={isScrollSeekingEnabled}
+                      isSeekbarSeekingEnabled={isTimelineSeekingEnabled}
+                      onActionAreaChange={applyActionArea}
+                      onActionAreaReset={() =>
+                        applyActionArea(DEFAULT_SETTINGS.actionArea)
+                      }
+                      onActionAreaSizeChange={handleActionAreaSizeChange}
+                      onActionAreaSizeReset={handleActionAreaSizeReset}
+                      onActionAreaSizeUnitChange={
+                        handleActionAreaSizeUnitChange
+                      }
+                      onDragSeekingEnabledChange={handleDragVideoToSeekToggle}
+                      onFastScrollHotkeyChange={handleFastScrollHotkeyChange}
+                      onHeightChange={handleTimelineHeightChange}
+                      onHeightReset={handleTimelineHeightReset}
+                      onPlayPauseWheelEnabledChange={
+                        handlePlayPauseWheelEnabledChange
+                      }
+                      onPositionChange={handleTimelinePositionChange}
+                      onPositionReset={() =>
+                        handleTimelinePositionChange(
+                          DEFAULT_SETTINGS.timelinePosition
+                        )
+                      }
+                      onScrollInversionChange={handleScrollInversionToggle}
+                      onScrollSeekingEnabledChange={handleScrollSeekingToggle}
+                      onScrollSpeedFactorChange={handleScrollSpeedFactorChange}
+                      onSeekbarSeekingEnabledChange={
+                        handleTimelineSeekingToggle
+                      }
+                      onShowTimelineOnHoverChange={handleTimelineHoverToggle}
+                      onSlowScrollHotkeyChange={handleSlowScrollHotkeyChange}
+                      onUnitChange={handleTimelineHeightUnitChange}
+                      scrollInverted={invertHorizontalScroll}
+                      scrollSpeedFactor={scrollSpeedFactor}
+                      showTimelineOnHover={showTimelineOnHover}
+                      slowScrollHotkey={slowScrollHotkey}
+                      timelineHeight={timelineHeight}
+                      timelinePosition={timelinePosition}
+                      timelineUnit={timelineHeightUnit}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-none flex-col">
+                  <SectionTitle title="Player Appearance" />
                   <CardListItemWrapper
                     className={cn(
                       !isEnabled && 'pointer-events-none opacity-50'
@@ -872,41 +872,27 @@ export function PopupContent() {
                   >
                     <CardListItem
                       components={{
-                        BottomSlot: (
-                          <VideoLayoutSettings
-                            actionArea={actionArea}
-                            actionAreaSize={actionAreaSize}
-                            colorizedTimeline={colorizedTimeline}
-                            height={timelineHeight}
-                            isPlayPauseWheelEnabled={isPlayPauseWheelEnabled}
-                            onActionAreaChange={applyActionArea}
-                            onActionAreaSizeChange={handleActionAreaSizeChange}
-                            onActionAreaSizeReset={() =>
-                              handleActionAreaSizeChange(
-                                DEFAULT_SETTINGS.actionAreaSize
-                              )
-                            }
-                            onHeightChange={handleTimelineHeightChange}
-                            onHeightReset={() =>
-                              handleTimelineHeightChange(
-                                DEFAULT_SETTINGS.timelineHeight
-                              )
-                            }
-                            onPlayPauseWheelEnabledChange={
-                              handlePlayPauseWheelEnabledChange
-                            }
-                            onPositionChange={handleTimelinePositionChange}
-                            onUnitChange={handleTimelineHeightUnitChange}
-                            position={timelinePosition}
-                            unit={timelineHeightUnit}
+                        RightSlot: (
+                          <AppSwitch
+                            aria-label="Use minimal player"
+                            checked={hideVideoControls}
+                            onCheckedChange={handleHideVideoControlsToggle}
                           />
                         ),
                       }}
-                      description="Adjust scroll area and timeline appearance"
-                      icon={LayoutTemplateIcon}
-                      title="Video Layout"
+                      description="Hide the site's controls without changing seek methods"
+                      icon={EyeOffIcon}
+                      iconIsToggled={hideVideoControls}
+                      title={
+                        <span className="inline-flex items-center gap-2">
+                          Minimal Player
+                          <AppBetaBadge
+                            featureName="Minimal Player"
+                            tooltip="Minimal Player is experimental, so replacement controls may not be fully supported on every site."
+                          />
+                        </span>
+                      }
                     />
-
                     <CardListItem
                       components={{
                         RightSlot: (
@@ -921,184 +907,6 @@ export function PopupContent() {
                       icon={PaletteIcon}
                       iconIsToggled={colorizedTimeline}
                       title="Match Site Color"
-                    />
-
-                    <CardListItem
-                      classNameIcon={cn(
-                        'transition-all duration-700 ease-out',
-                        invertHorizontalScroll && 'rotate-180 scale-110'
-                      )}
-                      components={{
-                        RightSlot: (
-                          <AppSwitch
-                            checked={invertHorizontalScroll}
-                            onCheckedChange={handleScrollInversionToggle}
-                          />
-                        ),
-                      }}
-                      description="Change scroll sirection"
-                      icon={RotateCcwIcon}
-                      iconIsToggled={invertHorizontalScroll}
-                      iconToggle={RotateCwIcon}
-                      title="Invert Scroll"
-                    />
-
-                    <CardListItem
-                      components={{
-                        RightSlot: (
-                          <AppSwitch
-                            aria-label="Toggle timeline on hover"
-                            checked={showTimelineOnHover}
-                            disabled={isTimelineSeekingEnabled}
-                            onCheckedChange={handleTimelineHoverToggle}
-                          />
-                        ),
-                      }}
-                      description={
-                        isTimelineSeekingEnabled ? (
-                          <span className="flex items-start gap-1 text-amber-700 dark:text-amber-300">
-                            <TriangleAlertIcon
-                              aria-hidden="true"
-                              className="mt-0.5 size-3 shrink-0"
-                            />
-                            <span>
-                              <strong>Interactive Timeline</strong> overrides
-                              this setting
-                            </span>
-                          </span>
-                        ) : (
-                          'Show progress bar when hovering over videos'
-                        )
-                      }
-                      icon={EyeIcon}
-                      iconIsToggled={!showTimelineOnHover}
-                      iconToggle={EyeOffIcon}
-                      title="Show Timeline on Hover"
-                    />
-
-                    <CardListItem
-                      components={{
-                        RightSlot: (
-                          <AppSwitch
-                            aria-label="Toggle interactive timeline seeking"
-                            checked={isTimelineSeekingEnabled}
-                            onCheckedChange={handleTimelineSeekingToggle}
-                          />
-                        ),
-                      }}
-                      description="Click or drag the progress bar to seek"
-                      icon={MousePointer2Icon}
-                      iconIsToggled={isTimelineSeekingEnabled}
-                      title="Interactive Timeline"
-                    />
-
-                    <CardListItem
-                      className="pl-10"
-                      components={{
-                        RightSlot: (
-                          <AppSwitch
-                            aria-label="Drag on video area to seek"
-                            checked={dragVideoToSeek}
-                            onCheckedChange={handleDragVideoToSeekToggle}
-                          />
-                        ),
-                      }}
-                      description="Drag across the video area to seek"
-                      icon={MoveHorizontalIcon}
-                      iconIsToggled={dragVideoToSeek}
-                      title={
-                        <span className="flex items-center gap-2">
-                          Drag on Video Area
-                          <BetaBadge />
-                        </span>
-                      }
-                    />
-
-                    <CardListItem
-                      className="pl-10"
-                      components={{
-                        RightSlot: (
-                          <AppSwitch
-                            aria-label="Use minimal player"
-                            checked={hideVideoControls}
-                            onCheckedChange={handleHideVideoControlsToggle}
-                          />
-                        ),
-                      }}
-                      description={
-                        hideVideoControls
-                          ? 'Turn off to restore the original player'
-                          : 'Hide controls for a minimal player'
-                      }
-                      icon={EyeOffIcon}
-                      iconIsToggled={hideVideoControls}
-                      title={
-                        <span className="flex items-center gap-2">
-                          Minimal Player
-                          <BetaBadge />
-                        </span>
-                      }
-                    />
-                  </CardListItemWrapper>
-                </div>
-
-                {/* Scroll speed and keyboard shortcuts section */}
-                <div className="flex flex-none flex-col">
-                  <SectionTitle title="Scroll Speed & Hotkeys">
-                    {!isScrollSpeedAndHotkeysAtDefaults && (
-                      <Button
-                        className="h-7 px-3 font-medium text-slate-600 text-xs transition-all hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800/50 dark:hover:text-slate-300"
-                        onClick={handleResetScrollSpeedAndHotkeys}
-                        size="sm"
-                        variant="ghost"
-                      >
-                        Reset Default
-                      </Button>
-                    )}
-                  </SectionTitle>
-                  <CardListItemWrapper>
-                    <CardListItem
-                      components={{
-                        BottomSlot: (
-                          <ScrollSpeedFactorControl
-                            onChange={handleScrollSpeedFactorChange}
-                            value={scrollSpeedFactor}
-                          />
-                        ),
-                      }}
-                      description="Scales seeking while staying relative to video length"
-                      icon={GaugeIcon}
-                      title="Scroll Speed"
-                    />
-
-                    <CardListItem
-                      components={{
-                        RightSlot: (
-                          <ScrollHotkeySelect
-                            label="Fast scroll hotkey"
-                            onChange={handleFastScrollHotkeyChange}
-                            value={fastScrollHotkey}
-                          />
-                        ),
-                      }}
-                      description="Hold while scrolling for 3× seeking"
-                      icon={GaugeIcon}
-                      title="Fast Scroll"
-                    />
-
-                    <CardListItem
-                      components={{
-                        RightSlot: (
-                          <ScrollHotkeySelect
-                            label="Slow scroll hotkey"
-                            onChange={handleSlowScrollHotkeyChange}
-                            value={slowScrollHotkey}
-                          />
-                        ),
-                      }}
-                      description="Hold while scrolling for ¼× precision"
-                      icon={GaugeIcon}
-                      title="Slow Scroll"
                     />
                   </CardListItemWrapper>
                 </div>
@@ -1115,6 +923,7 @@ export function PopupContent() {
             <SiteAccessView
               currentDomain={currentDomain}
               domainRules={domainRules}
+              isActive={showDomainsView}
               onDomainRulesChange={updateDomainRules}
             />
           </div>
@@ -1123,18 +932,37 @@ export function PopupContent() {
         {/* Gradient edge blurs behind the fixed chrome */}
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 top-0 z-20 h-20 bg-gradient-to-b from-slate-100/90 via-slate-100/45 to-transparent backdrop-blur-sm [mask-image:linear-gradient(to_bottom,black_0%,black_65%,transparent_100%)] dark:from-slate-700/90 dark:via-slate-700/45"
+          className="pointer-events-none absolute top-0 right-2.5 left-0 z-30 h-24 bg-gradient-to-b from-slate-100 via-slate-100/80 to-transparent backdrop-blur-xl backdrop-saturate-150 [mask-image:linear-gradient(to_bottom,black_0%,black_62%,transparent_100%)] dark:from-slate-900 dark:via-slate-900/80"
         />
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 bottom-0 z-40 h-20 bg-gradient-to-t from-slate-100/90 via-slate-100/45 to-transparent backdrop-blur-sm [mask-image:linear-gradient(to_top,black_0%,black_55%,transparent_100%)] dark:from-slate-700/90 dark:via-slate-700/45"
+          className={cn(
+            'pointer-events-none absolute right-2.5 bottom-0 left-0 z-40 bg-gradient-to-t from-slate-100 via-slate-100/80 to-transparent backdrop-blur-xl backdrop-saturate-150 dark:from-slate-900 dark:via-slate-900/80',
+            showDomainsView
+              ? 'h-36 [mask-image:linear-gradient(to_top,black_0%,black_70%,transparent_100%)]'
+              : 'h-24 [mask-image:linear-gradient(to_top,black_0%,black_58%,transparent_100%)]'
+          )}
+          data-testid="bottom-gradient-blur"
         />
 
         {/* Persistent Tab Navigation */}
-        <footer className="absolute inset-x-3 bottom-2 z-50 h-12 rounded-full border border-white/45 bg-white/65 p-1 shadow-[0_8px_28px_-12px_rgba(15,23,42,0.7)] backdrop-blur-xl backdrop-saturate-150 dark:border-white/10 dark:bg-slate-800/65">
+        <footer className="absolute inset-x-3 bottom-2 z-50 h-12 p-1">
+          <div
+            aria-hidden={!showDomainsView}
+            className={cn(
+              'absolute right-1 bottom-[calc(100%+0.25rem)] left-1 z-0 transition-[translate,opacity] duration-300 ease-out motion-reduce:transition-none',
+              showDomainsView
+                ? 'translate-y-0 opacity-100'
+                : 'pointer-events-none translate-y-[calc(100%+0.75rem)] opacity-0'
+            )}
+            data-active={showDomainsView}
+            data-testid="domain-toolbar-dock"
+            id="domain-toolbar-root"
+            inert={!showDomainsView || undefined}
+          />
           <nav
             aria-label="Popup navigation"
-            className="relative grid h-full grid-cols-2 rounded-full"
+            className="relative z-10 grid h-full grid-cols-2 rounded-full"
           >
             <span
               aria-hidden="true"

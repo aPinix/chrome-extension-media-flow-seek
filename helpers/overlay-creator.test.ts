@@ -9,6 +9,7 @@ import { VideoStateManager } from '@/helpers/video-state';
 import type { VideoStateT } from '@/types/content';
 
 const createSettingsManager = ({
+  isScrollSeekingEnabled = true,
   isTimelineSeekingEnabled = false,
   dragVideoToSeek = false,
   hideVideoControls = false,
@@ -20,8 +21,10 @@ const createSettingsManager = ({
   timelinePosition = 'bottom',
   actionArea = 'full',
   actionAreaSize = 30,
+  actionAreaSizeUnit = '%',
   isPlayPauseWheelEnabled = true,
 }: {
+  isScrollSeekingEnabled?: boolean;
   isTimelineSeekingEnabled?: boolean;
   dragVideoToSeek?: boolean;
   hideVideoControls?: boolean;
@@ -33,19 +36,21 @@ const createSettingsManager = ({
   timelinePosition?: 'top' | 'bottom';
   actionArea?: 'full' | 'top' | 'middle' | 'bottom';
   actionAreaSize?: number;
+  actionAreaSizeUnit?: 'px' | '%';
   isPlayPauseWheelEnabled?: boolean;
 } = {}): SettingsManager =>
   ({
     getActionArea: () => actionArea,
     getActionAreaSize: () => actionAreaSize,
+    getActionAreaSizeUnit: () => actionAreaSizeUnit,
     getTimelineHeight: () => timelineHeight,
     getTimelineHeightUnit: () => timelineHeightUnit,
     getTimelinePosition: () => timelinePosition,
     isDebugEnabled: () => false,
+    isScrollSeekingEnabled: () => isScrollSeekingEnabled,
     isTimelineSeekingEnabled: () => isTimelineSeekingEnabled,
-    shouldDragVideoToSeek: () => isTimelineSeekingEnabled && dragVideoToSeek,
-    shouldHideVideoControls: () =>
-      isTimelineSeekingEnabled && hideVideoControls,
+    shouldDragVideoToSeek: () => dragVideoToSeek,
+    shouldHideVideoControls: () => hideVideoControls,
     shouldColorizeTimeline: () => colorizedTimeline,
     shouldInvertHorizontalScroll: () => invertHorizontalScroll,
     shouldShowTimelineOnHover: () => showTimelineOnHover,
@@ -154,10 +159,48 @@ afterEach(() => {
     scrollY: { configurable: true, value: 0 },
   });
   document.documentElement.removeAttribute('data-mfs-page-dialog-open');
+  document.documentElement.classList.remove('mfs-disabled');
+  document.getElementById('mfs-fast-hide')?.remove();
   vi.useRealTimers();
 });
 
 describe('OverlayCreator keyboard handling', () => {
+  it('suspends without clearing overlays or rewriting the enabled setting', () => {
+    vi.useFakeTimers();
+    const updateSetting = vi.fn();
+    const settingsManager = {
+      ...createSettingsManager(),
+      updateSetting,
+    } as unknown as SettingsManager;
+    const videoStateManager = new VideoStateManager();
+    const clear = vi.spyOn(videoStateManager, 'clear');
+    const checkForVideos = vi.fn();
+    const overlayCreator = new OverlayCreator(
+      settingsManager,
+      videoStateManager,
+      checkForVideos
+    );
+    const { video, state } = createVideoState();
+    videoStateManager.set(video, state);
+    const keyboardMethods = overlayCreator as unknown as {
+      handleKeyDown: (event: KeyboardEvent) => void;
+      handleKeyUp: (event: KeyboardEvent) => void;
+    };
+
+    keyboardMethods.handleKeyDown(
+      new KeyboardEvent('keydown', { code: 'KeyF', key: 'f' })
+    );
+    keyboardMethods.handleKeyUp(
+      new KeyboardEvent('keyup', { code: 'KeyF', key: 'f' })
+    );
+    vi.advanceTimersByTime(100);
+
+    expect(updateSetting).not.toHaveBeenCalled();
+    expect(clear).not.toHaveBeenCalled();
+    expect(state.wrapper.isConnected).toBe(true);
+    expect(checkForVideos).toHaveBeenCalledOnce();
+  });
+
   it.each([
     ['Space', ' '],
     ['KeyK', 'k'],
@@ -611,8 +654,13 @@ describe('OverlayCreator seek speed label', () => {
 });
 
 describe('OverlayCreator scroll gesture seeking', () => {
-  const setupScrollSeeking = (getIsSettingInitialScroll = () => false) => {
-    const settingsManager = createSettingsManager();
+  const setupScrollSeeking = (
+    getIsSettingInitialScroll = () => false,
+    isScrollSeekingEnabled = true
+  ) => {
+    const settingsManager = createSettingsManager({
+      isScrollSeekingEnabled,
+    });
     const videoStateManager = new VideoStateManager();
     const overlayCreator = new OverlayCreator(
       settingsManager,
@@ -776,33 +824,286 @@ describe('OverlayCreator scroll gesture seeking', () => {
     cleanup();
   });
 
-  it('toggles playback once per Primary horizontal gesture without seeking', () => {
+  it('preserves scroll seeking through temporary keyboard suspension', () => {
     vi.useFakeTimers();
-    const { cleanup, overlay, video } = setupScrollSeeking();
-    const play = vi.fn(() => Promise.resolve());
-    Object.defineProperty(video, 'play', { configurable: true, value: play });
-    const primaryKey = /Mac|iPhone|iPad|iPod/i.test(navigator.platform)
-      ? { metaKey: true }
-      : { ctrlKey: true };
-    const createWheel = () =>
+    const { cleanup, overlay, overlayCreator, videoState } =
+      setupScrollSeeking();
+    const keyboardMethods = overlayCreator as unknown as {
+      handleKeyDown: (event: KeyboardEvent) => void;
+      handleKeyUp: (event: KeyboardEvent) => void;
+    };
+    const wheel = () =>
       new WheelEvent('wheel', {
-        ...primaryKey,
         bubbles: true,
         cancelable: true,
         deltaX: 20,
       });
 
-    const firstWheel = createWheel();
+    const beforeShortcut = wheel();
+    overlay.dispatchEvent(beforeShortcut);
+    expect(beforeShortcut.defaultPrevented).toBe(true);
+    expect(overlay.scrollLeft).toBe(20);
+
+    keyboardMethods.handleKeyDown(
+      new KeyboardEvent('keydown', { code: 'MetaLeft', key: 'Meta' })
+    );
+    keyboardMethods.handleKeyDown(
+      new KeyboardEvent('keydown', { code: 'KeyF', key: 'f', metaKey: true })
+    );
+    expect(document.documentElement.classList.contains('mfs-disabled')).toBe(
+      true
+    );
+    expect(videoState.wrapper.isConnected).toBe(true);
+
+    const duringShortcut = wheel();
+    overlay.dispatchEvent(duringShortcut);
+    expect(duringShortcut.defaultPrevented).toBe(false);
+    expect(overlay.scrollLeft).toBe(20);
+
+    keyboardMethods.handleKeyUp(
+      new KeyboardEvent('keyup', { code: 'KeyF', key: 'f', metaKey: true })
+    );
+    expect(document.documentElement.classList.contains('mfs-disabled')).toBe(
+      true
+    );
+
+    keyboardMethods.handleKeyUp(
+      new KeyboardEvent('keyup', { code: 'MetaLeft', key: 'Meta' })
+    );
+    expect(document.documentElement.classList.contains('mfs-disabled')).toBe(
+      false
+    );
+    expect(document.getElementById('mfs-fast-hide')).toBeNull();
+    expect(videoState.wrapper.isConnected).toBe(true);
+
+    const afterShortcut = wheel();
+    overlay.dispatchEvent(afterShortcut);
+    expect(afterShortcut.defaultPrevented).toBe(true);
+    expect(overlay.scrollLeft).toBe(40);
+
+    vi.advanceTimersByTime(100);
+    expect(videoState.wrapper.isConnected).toBe(true);
+    cleanup();
+  });
+
+  it('leaves all wheel and scroll behavior untouched when Scroll to Seek is disabled', () => {
+    vi.useFakeTimers();
+    const { cleanup, overlay, soughtTimes, video, videoState } =
+      setupScrollSeeking(() => false, false);
+    const play = vi.fn(() => Promise.resolve());
+    Object.defineProperty(video, 'play', { configurable: true, value: play });
+    const primaryKey = /Mac|iPhone|iPad|iPod/i.test(navigator.platform)
+      ? { metaKey: true }
+      : { ctrlKey: true };
+    const wheel = new WheelEvent('wheel', {
+      ...primaryKey,
+      bubbles: true,
+      cancelable: true,
+      deltaX: 20,
+    });
+
+    overlay.dispatchEvent(wheel);
+    overlay.scrollLeft = 400;
+    overlay.dispatchEvent(new Event('scroll'));
+    vi.advanceTimersByTime(500);
+
+    expect(wheel.defaultPrevented).toBe(false);
+    expect(play).not.toHaveBeenCalled();
+    expect(soughtTimes).toEqual([]);
+    expect(videoState.isUserScrubbing).toBe(false);
+    cleanup();
+  });
+
+  it('removes native horizontal scrolling while another video-surface method remains enabled', () => {
+    let isScrollSeekingEnabled = false;
+    const settingsManager = {
+      ...createSettingsManager({ dragVideoToSeek: true }),
+      isScrollSeekingEnabled: () => isScrollSeekingEnabled,
+    } as unknown as SettingsManager;
+    const videoStateManager = new VideoStateManager();
+    const overlayCreator = new OverlayCreator(
+      settingsManager,
+      videoStateManager,
+      () => {}
+    );
+    const { state, video } = createVideoState();
+    videoStateManager.set(video, state);
+
+    overlayCreator.updateScrollSeekingState();
+    expect(state.overlay.style.overflowX).toBe('hidden');
+    expect(state.overlay.style.pointerEvents).toBe('auto');
+
+    isScrollSeekingEnabled = true;
+    overlayCreator.updateScrollSeekingState();
+    expect(state.overlay.style.overflowX).toBe('scroll');
+  });
+
+  it('plays right and pauses left without seeking or waiting', () => {
+    vi.useFakeTimers();
+    const { cleanup, overlay, overlayCreator, video } = setupScrollSeeking();
+    let paused = true;
+    const play = vi.fn(() => {
+      paused = false;
+      return Promise.resolve();
+    });
+    const pause = vi.fn(() => {
+      paused = true;
+    });
+    Object.defineProperties(video, {
+      pause: { configurable: true, value: pause },
+      paused: { configurable: true, get: () => paused },
+      play: { configurable: true, value: play },
+    });
+    const isMac = /Mac|iPhone|iPad|iPod/i.test(navigator.platform);
+    const primaryKey = isMac ? { metaKey: true } : { ctrlKey: true };
+    const primaryKeyboardEvent = {
+      ...primaryKey,
+      code: isMac ? 'MetaLeft' : 'ControlLeft',
+      key: isMac ? 'Meta' : 'Control',
+    };
+    const keyboardMethods = overlayCreator as unknown as {
+      handleKeyDown: (event: KeyboardEvent) => void;
+      handleKeyUp: (event: KeyboardEvent) => void;
+    };
+    const createWheel = (deltaX: number) =>
+      new WheelEvent('wheel', {
+        ...primaryKey,
+        bubbles: true,
+        cancelable: true,
+        deltaX,
+      });
+
+    keyboardMethods.handleKeyDown(
+      new KeyboardEvent('keydown', primaryKeyboardEvent)
+    );
+    expect(document.documentElement.classList.contains('mfs-disabled')).toBe(
+      false
+    );
+
+    const firstWheel = createWheel(-20);
     overlay.dispatchEvent(firstWheel);
-    overlay.dispatchEvent(createWheel());
+    overlay.dispatchEvent(createWheel(-10));
 
     expect(firstWheel.defaultPrevented).toBe(true);
     expect(play).toHaveBeenCalledOnce();
+    expect(pause).not.toHaveBeenCalled();
+    expect(overlay.scrollLeft).toBe(0);
+
+    const pauseWheel = createWheel(20);
+    overlay.dispatchEvent(pauseWheel);
+
+    expect(pauseWheel.defaultPrevented).toBe(true);
+    expect(play).toHaveBeenCalledOnce();
+    expect(pause).toHaveBeenCalledOnce();
+    expect(overlay.scrollLeft).toBe(0);
+    keyboardMethods.handleKeyUp(
+      new KeyboardEvent('keyup', primaryKeyboardEvent)
+    );
+    cleanup();
+  });
+
+  it('discards momentum after Primary is released instead of seeking', () => {
+    vi.useFakeTimers();
+    const { cleanup, overlay, overlayCreator, video } = setupScrollSeeking();
+    let paused = true;
+    const play = vi.fn(() => {
+      paused = false;
+      return Promise.resolve();
+    });
+    const pause = vi.fn(() => {
+      paused = true;
+    });
+    Object.defineProperties(video, {
+      pause: { configurable: true, value: pause },
+      paused: { configurable: true, get: () => paused },
+      play: { configurable: true, value: play },
+    });
+    const isMac = /Mac|iPhone|iPad|iPod/i.test(navigator.platform);
+    const primaryKey = isMac ? { metaKey: true } : { ctrlKey: true };
+    const primaryKeyboardEvent = {
+      ...primaryKey,
+      code: isMac ? 'MetaLeft' : 'ControlLeft',
+      key: isMac ? 'Meta' : 'Control',
+    };
+    const keyboardMethods = overlayCreator as unknown as {
+      handleKeyDown: (event: KeyboardEvent) => void;
+      handleKeyUp: (event: KeyboardEvent) => void;
+    };
+
+    keyboardMethods.handleKeyDown(
+      new KeyboardEvent('keydown', primaryKeyboardEvent)
+    );
+    overlay.dispatchEvent(
+      new WheelEvent('wheel', {
+        ...primaryKey,
+        bubbles: true,
+        cancelable: true,
+        deltaX: -80,
+      })
+    );
+    keyboardMethods.handleKeyUp(
+      new KeyboardEvent('keyup', primaryKeyboardEvent)
+    );
+
+    vi.advanceTimersByTime(400);
+    const firstMomentumTail = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      deltaX: -30,
+    });
+    overlay.dispatchEvent(firstMomentumTail);
+
+    vi.advanceTimersByTime(400);
+    const finalMomentumTail = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      deltaX: -0.5,
+    });
+    overlay.dispatchEvent(finalMomentumTail);
+
+    expect(firstMomentumTail.defaultPrevented).toBe(true);
+    expect(finalMomentumTail.defaultPrevented).toBe(true);
+    expect(play).toHaveBeenCalledOnce();
+    expect(pause).not.toHaveBeenCalled();
+    expect(overlay.scrollLeft).toBe(0);
+
+    keyboardMethods.handleKeyDown(
+      new KeyboardEvent('keydown', primaryKeyboardEvent)
+    );
+    const savedMomentumWithModifier = new WheelEvent('wheel', {
+      ...primaryKey,
+      bubbles: true,
+      cancelable: true,
+      deltaX: -10,
+    });
+    overlay.dispatchEvent(savedMomentumWithModifier);
+    const immediateNextGesture = new WheelEvent('wheel', {
+      ...primaryKey,
+      bubbles: true,
+      cancelable: true,
+      deltaX: 20,
+    });
+    overlay.dispatchEvent(immediateNextGesture);
+    keyboardMethods.handleKeyUp(
+      new KeyboardEvent('keyup', primaryKeyboardEvent)
+    );
+
+    expect(savedMomentumWithModifier.defaultPrevented).toBe(true);
+    expect(immediateNextGesture.defaultPrevented).toBe(true);
+    expect(play).toHaveBeenCalledOnce();
+    expect(pause).toHaveBeenCalledOnce();
     expect(overlay.scrollLeft).toBe(0);
 
     vi.advanceTimersByTime(500);
-    overlay.dispatchEvent(createWheel());
-    expect(play).toHaveBeenCalledTimes(2);
+    const nextGesture = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      deltaX: 20,
+    });
+    overlay.dispatchEvent(nextGesture);
+
+    expect(nextGesture.defaultPrevented).toBe(true);
+    expect(overlay.scrollLeft).toBe(20);
     cleanup();
   });
 
@@ -813,18 +1114,19 @@ describe('OverlayCreator scroll gesture seeking', () => {
     const thumbnail = document.createElement('ytd-thumbnail');
     thumbnail.appendChild(video);
     document.body.appendChild(thumbnail);
-    overlay.getBoundingClientRect = () =>
-      ({
-        bottom: 120,
-        height: 100,
-        left: 10,
-        right: 210,
-        top: 20,
-        width: 200,
-        x: 10,
-        y: 20,
-        toJSON: () => ({}),
-      }) as DOMRect;
+    const previewRect = {
+      bottom: 120,
+      height: 100,
+      left: 10,
+      right: 210,
+      top: 20,
+      width: 200,
+      x: 10,
+      y: 20,
+      toJSON: () => ({}),
+    } as DOMRect;
+    overlay.getBoundingClientRect = () => previewRect;
+    video.getBoundingClientRect = () => previewRect;
 
     const methods = overlayCreator as unknown as {
       updateOverlayPointerEvents: (
@@ -901,6 +1203,134 @@ describe('OverlayCreator scroll gesture seeking', () => {
 });
 
 describe('OverlayCreator overlay host', () => {
+  it('portals a YouTube preview overlay outside the thumbnail renderer', () => {
+    const videoStateManager = new VideoStateManager();
+    const overlayCreator = new OverlayCreator(
+      createSettingsManager(),
+      videoStateManager,
+      () => {}
+    );
+    const methods = overlayCreator as unknown as {
+      createWrapperAndDebugIndicator: (
+        video: HTMLVideoElement,
+        videoId: string
+      ) => {
+        debugIndicator: HTMLAnchorElement;
+        scrubWrapper: HTMLDivElement;
+      };
+      createOverlaySizeUpdater: (
+        video: HTMLVideoElement,
+        wrapper: HTMLDivElement
+      ) => () => void;
+      insertWrapperIntoDOM: (
+        video: HTMLVideoElement,
+        wrapper: HTMLDivElement
+      ) => void;
+      syncPassivePreviewWrapper: (
+        video: HTMLVideoElement,
+        wrapper: HTMLDivElement
+      ) => void;
+    };
+    const thumbnail = document.createElement('ytd-thumbnail');
+    const clippingContainer = document.createElement('div');
+    clippingContainer.id = 'player-container-wrapper';
+    const video = document.createElement('video');
+    let mediaRect = {
+      bottom: 180,
+      height: 160,
+      left: 10,
+      right: 294,
+      top: 20,
+      width: 284,
+      x: 10,
+      y: 20,
+      toJSON: () => ({}),
+    } as DOMRect;
+    let videoRect = {
+      ...mediaRect,
+      bottom: 212,
+      height: 224,
+      top: -12,
+      y: -12,
+    } as DOMRect;
+    video.getBoundingClientRect = () => videoRect;
+    clippingContainer.getBoundingClientRect = () => mediaRect;
+    clippingContainer.style.overflow = 'hidden';
+    thumbnail.getBoundingClientRect = () => ({
+      ...mediaRect,
+      bottom: mediaRect.bottom + 80,
+      height: 240,
+    });
+    thumbnail.style.overflow = 'hidden';
+    clippingContainer.appendChild(video);
+    thumbnail.appendChild(clippingContainer);
+    document.body.appendChild(thumbnail);
+
+    const { debugIndicator, scrubWrapper } =
+      methods.createWrapperAndDebugIndicator(video, 'youtube-preview');
+    methods.insertWrapperIntoDOM(video, scrubWrapper);
+
+    expect(thumbnail.style.position).toBe('');
+    expect(video.nextSibling).toBeNull();
+    expect(scrubWrapper.parentElement).toBe(document.documentElement);
+    expect(scrubWrapper.dataset.mfsPassivePreviewHost).toBe('true');
+    expect(scrubWrapper.style.position).toBe('fixed');
+    expect(scrubWrapper.style.zIndex).toBe('2147483644');
+    expect(scrubWrapper.style.left).toBe('10px');
+    expect(scrubWrapper.style.top).toBe('20px');
+    expect(debugIndicator.style.getPropertyValue('pointer-events')).toBe(
+      'none'
+    );
+    expect(debugIndicator.style.getPropertyPriority('pointer-events')).toBe(
+      'important'
+    );
+
+    const overlay = document.createElement('div');
+    overlay.className = 'scrub-overlay';
+    scrubWrapper.appendChild(overlay);
+    methods.createOverlaySizeUpdater(video, scrubWrapper)();
+
+    expect(scrubWrapper.style.height).toBe('160px');
+    expect(overlay.style.height).toBe('160px');
+
+    videoStateManager.set(video, {
+      debugIndicator,
+      isHovering: false,
+      isPointerHovering: false,
+      isUserScrubbing: false,
+      overlay,
+      scrollContent: document.createElement('div'),
+      timeline: document.createElement('div'),
+      wrapper: scrubWrapper,
+    });
+    overlayCreator.updateVideoControlsVisibility();
+
+    expect(scrubWrapper.style.zIndex).toBe('2147483644');
+
+    mediaRect = {
+      ...mediaRect,
+      bottom: 380,
+      left: 310,
+      right: 594,
+      top: 220,
+      x: 310,
+      y: 220,
+    };
+    videoRect = {
+      ...videoRect,
+      bottom: 412,
+      left: 310,
+      right: 594,
+      top: 188,
+      x: 310,
+      y: 188,
+    };
+    methods.syncPassivePreviewWrapper(video, scrubWrapper);
+
+    expect(scrubWrapper.style.left).toBe('310px');
+    expect(scrubWrapper.style.top).toBe('220px');
+  });
+
   it('skips zero-size TikTok-style video wrappers', () => {
     const overlayCreator = new OverlayCreator(
       createSettingsManager(),
@@ -1054,6 +1484,38 @@ describe('OverlayCreator debug indicator', () => {
 });
 
 describe('OverlayCreator hover tracking', () => {
+  it('restores hover for a preview mounted under a stationary pointer', () => {
+    const settingsManager = createSettingsManager({
+      showTimelineOnHover: true,
+    });
+    const videoStateManager = new VideoStateManager();
+    const overlayCreator = new OverlayCreator(
+      settingsManager,
+      videoStateManager,
+      () => {}
+    );
+    const { video, state } = createVideoState();
+
+    overlayCreator.startDocumentHoverTracking(document);
+    document.body.dispatchEvent(
+      new MouseEvent('pointermove', {
+        bubbles: true,
+        clientX: 100,
+        clientY: 80,
+      })
+    );
+    videoStateManager.set(video, state);
+
+    const hoverTracking = overlayCreator as unknown as {
+      restoreDocumentHoverAtLastPointer: (ownerDocument: Document) => void;
+    };
+    hoverTracking.restoreDocumentHoverAtLastPointer(document);
+
+    expect(state.isPointerHovering).toBe(true);
+    expect(state.isHovering).toBe(true);
+    expect(state.timeline.style.opacity).toBe('1');
+  });
+
   it('tracks visual hover through custom player layers and iframe boundaries', () => {
     const settingsManager = createSettingsManager({
       showTimelineOnHover: true,
@@ -1804,13 +2266,12 @@ describe('OverlayCreator timeline seeking', () => {
     expect(state.wrapper.isConnected).toBe(false);
   });
 
-  it('hides controls only while both the child and interactive timeline settings are enabled', () => {
+  it('keeps Minimal Player independent from interactive timeline seeking', () => {
     let isTimelineSeekingEnabled = true;
     let hideVideoControls = true;
     const settingsManager = {
       isTimelineSeekingEnabled: () => isTimelineSeekingEnabled,
-      shouldHideVideoControls: () =>
-        isTimelineSeekingEnabled && hideVideoControls,
+      shouldHideVideoControls: () => hideVideoControls,
     } as unknown as SettingsManager;
     const videoStateManager = new VideoStateManager();
     const overlayCreator = new OverlayCreator(
@@ -1856,6 +2317,13 @@ describe('OverlayCreator timeline seeking', () => {
     isTimelineSeekingEnabled = false;
     overlayCreator.updateVideoControlsVisibility();
 
+    expect(video.controls).toBe(false);
+    expect(video.dataset.mfsHideControls).toBe('true');
+    expect(player.dataset.mfsHideControlsContainer).toBe('true');
+    expect(state.mediaControls.dataset.mfsActive).toBe('true');
+
+    hideVideoControls = false;
+    overlayCreator.updateVideoControlsVisibility();
     expect(video.controls).toBe(true);
     expect(video.dataset.mfsHideControls).toBeUndefined();
     expect(state.overlay.style.cursor).toBe('');
@@ -1865,11 +2333,6 @@ describe('OverlayCreator timeline seeking', () => {
     expect(state.wrapper.style.zIndex).toBe('');
     expect(state.mediaControls.parentElement).toBe(state.wrapper);
     expect(state.mediaControls.dataset.mfsPortaled).toBeUndefined();
-
-    isTimelineSeekingEnabled = true;
-    hideVideoControls = false;
-    overlayCreator.updateVideoControlsVisibility();
-    expect(video.controls).toBe(true);
   });
 
   it('hides Vimeo controls from the player root when they are outside the video wrapper', () => {
@@ -2267,6 +2730,64 @@ describe('OverlayCreator timeline seeking', () => {
     expect(
       state.wrapper.querySelector('[data-mfs-playback-feedback="play"]')
     ).not.toBeNull();
+    playbackController.cleanup();
+  });
+
+  it('lets a YouTube search-result thumbnail navigate without toggling its preview', () => {
+    vi.useFakeTimers();
+    const overlayCreator = new OverlayCreator(
+      createSettingsManager({
+        hideVideoControls: true,
+        isTimelineSeekingEnabled: true,
+      }),
+      new VideoStateManager(),
+      () => {}
+    );
+    const { video, state } = createVideoState();
+    const play = vi.fn(() => Promise.resolve());
+    Object.defineProperties(video, {
+      paused: { configurable: true, value: true },
+      play: { configurable: true, value: play },
+    });
+
+    const searchResult = document.createElement('ytd-video-renderer');
+    const thumbnailClickLayer = document.createElement('div');
+    const navigate = vi.fn();
+    thumbnailClickLayer.addEventListener('click', navigate);
+    searchResult.append(video, state.wrapper, thumbnailClickLayer);
+    document.body.appendChild(searchResult);
+
+    const clickHandling = overlayCreator as unknown as {
+      setupPlayerClickHandling: (
+        overlay: HTMLDivElement,
+        targetVideo: HTMLVideoElement,
+        debugMode: boolean,
+        getIsHovering?: () => boolean
+      ) => { cleanup: () => void };
+    };
+    const playbackController = clickHandling.setupPlayerClickHandling(
+      state.overlay,
+      video,
+      false,
+      () => true
+    );
+    const click = new MouseEvent('click', {
+      bubbles: true,
+      button: 0,
+      cancelable: true,
+      clientX: 50,
+      clientY: 50,
+    });
+
+    thumbnailClickLayer.dispatchEvent(click);
+    vi.advanceTimersByTime(220);
+
+    expect(click.defaultPrevented).toBe(false);
+    expect(navigate).toHaveBeenCalledOnce();
+    expect(play).not.toHaveBeenCalled();
+    expect(
+      state.wrapper.querySelector('[data-mfs-playback-feedback]')
+    ).toBeNull();
     playbackController.cleanup();
   });
 
@@ -3237,23 +3758,79 @@ describe('OverlayCreator action-area settings preview', () => {
     expect(state.overlay.style.transition).toContain('top 320ms');
     expect(state.overlay.style.transition).toContain('height 320ms');
     expect(state.overlay.style.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
+    expect(state.overlay.style.boxShadow).toContain('inset 0 0 0 2px');
 
     vi.advanceTimersByTime(1200);
     expect(state.overlay.style.backgroundColor).toBe('rgba(0, 0, 0, 0)');
+    expect(state.overlay.style.boxShadow).toBe('');
     expect(state.overlay.style.transition).toBe('');
     expect(videoStateManager.get(video)).toBe(state);
+  });
+
+  it('previews a temporary area and restores the saved player area', () => {
+    vi.useFakeTimers();
+    const videoStateManager = new VideoStateManager();
+    const overlayCreator = new OverlayCreator(
+      createSettingsManager({
+        actionArea: 'middle',
+        actionAreaSize: 30,
+      }),
+      videoStateManager,
+      () => {}
+    );
+    const { video, state } = createVideoState();
+    videoStateManager.set(video, state);
+
+    overlayCreator.previewActionArea('top', 40);
+
+    expect(state.overlay.style.top).toBe('0px');
+    expect(state.overlay.style.height).toBe('40px');
+    expect(state.overlay.style.boxShadow).toContain('inset 0 0 0 2px');
+
+    overlayCreator.clearActionAreaPreview();
+    vi.advanceTimersByTime(0);
+
+    expect(state.overlay.style.top).toBe('35px');
+    expect(state.overlay.style.height).toBe('30px');
+  });
+
+  it('uses absolute pixels for action area height', () => {
+    vi.useFakeTimers();
+    const videoStateManager = new VideoStateManager();
+    const overlayCreator = new OverlayCreator(
+      createSettingsManager({
+        actionArea: 'bottom',
+        actionAreaSize: 24,
+        actionAreaSizeUnit: 'px',
+      }),
+      videoStateManager,
+      () => {}
+    );
+    const { video, state } = createVideoState();
+    videoStateManager.set(video, state);
+
+    overlayCreator.updateAllOverlaysForActionArea();
+
+    expect(state.overlay.style.top).toBe('76px');
+    expect(state.overlay.style.height).toBe('24px');
   });
 });
 
 describe('OverlayCreator video dragging seeking', () => {
   const setupVideoDragging = ({
+    actionArea = 'full',
+    actionAreaSize = 30,
     dragVideoToSeek = true,
     isTimelineSeekingEnabled = true,
   }: {
+    actionArea?: 'full' | 'top' | 'middle' | 'bottom';
+    actionAreaSize?: number;
     dragVideoToSeek?: boolean;
     isTimelineSeekingEnabled?: boolean;
   } = {}) => {
     const settingsManager = createSettingsManager({
+      actionArea,
+      actionAreaSize,
       dragVideoToSeek,
       isTimelineSeekingEnabled,
     });
@@ -3386,6 +3963,61 @@ describe('OverlayCreator video dragging seeking', () => {
     });
     state.overlay.dispatchEvent(syntheticClick);
     expect(syntheticClick.defaultPrevented).toBe(true);
+
+    controller.cleanup();
+    deferredSeek.cancel();
+  });
+
+  it('drags without Click and Drag Seekbar being enabled', () => {
+    const { controller, deferredSeek, state, video } = setupVideoDragging({
+      isTimelineSeekingEnabled: false,
+    });
+
+    state.overlay.dispatchEvent(
+      createPointerEvent('pointerdown', { clientX: 60 })
+    );
+    state.overlay.dispatchEvent(
+      createPointerEvent('pointermove', { clientX: 160 })
+    );
+    state.overlay.dispatchEvent(
+      createPointerEvent('pointerup', { clientX: 160 })
+    );
+
+    expect(video.currentTime).toBe(75);
+    expect(state.isUserScrubbing).toBe(false);
+
+    controller.cleanup();
+    deferredSeek.cancel();
+  });
+
+  it('only starts a drag inside the shared active video area', () => {
+    const { controller, deferredSeek, state, video } = setupVideoDragging({
+      actionArea: 'bottom',
+      actionAreaSize: 30,
+      isTimelineSeekingEnabled: false,
+    });
+
+    state.overlay.dispatchEvent(
+      createPointerEvent('pointerdown', { clientX: 60, clientY: 40 })
+    );
+    state.overlay.dispatchEvent(
+      createPointerEvent('pointermove', { clientX: 160, clientY: 40 })
+    );
+    state.overlay.dispatchEvent(
+      createPointerEvent('pointerup', { clientX: 160, clientY: 40 })
+    );
+    expect(video.currentTime).toBe(25);
+
+    state.overlay.dispatchEvent(
+      createPointerEvent('pointerdown', { clientX: 60, clientY: 100 })
+    );
+    state.overlay.dispatchEvent(
+      createPointerEvent('pointermove', { clientX: 160, clientY: 100 })
+    );
+    state.overlay.dispatchEvent(
+      createPointerEvent('pointerup', { clientX: 160, clientY: 100 })
+    );
+    expect(video.currentTime).toBe(75);
 
     controller.cleanup();
     deferredSeek.cancel();

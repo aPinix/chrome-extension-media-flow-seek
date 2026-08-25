@@ -5,6 +5,14 @@ export const getPrimaryModifierLabel = (
   platform = navigator.platform
 ): 'Command' | 'Ctrl' => (isMacPlatform(platform) ? 'Command' : 'Ctrl');
 
+export const isPrimaryWheelModifierCode = (
+  code: string,
+  platform = navigator.platform
+): boolean =>
+  isMacPlatform(platform)
+    ? code === 'MetaLeft' || code === 'MetaRight'
+    : code === 'ControlLeft' || code === 'ControlRight';
+
 type WheelModifierState = Pick<
   WheelEvent,
   'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey'
@@ -30,3 +38,13 @@ export const isHorizontalWheelAction = (
 ): boolean =>
   Math.abs(event.deltaX) >= WHEEL_ACTION_AXIS_THRESHOLD_PX &&
   Math.abs(event.deltaX) > Math.abs(event.deltaY);
+
+export type WheelPlaybackActionT = 'play' | 'pause';
+
+/**
+ * With the platform's default natural scrolling, a physical left swipe emits
+ * a positive horizontal wheel delta and a right swipe emits a negative one.
+ */
+export const getWheelPlaybackAction = (
+  event: Pick<WheelEvent, 'deltaX'>
+): WheelPlaybackActionT => (event.deltaX > 0 ? 'pause' : 'play');

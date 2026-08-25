@@ -7,7 +7,11 @@ import {
 } from '@/helpers/scroll-speed';
 import type { SettingsManager } from '@/helpers/settings-manager';
 import type { VideoStateManager } from '@/helpers/video-state';
-import type { ChromeMessageT } from '@/types/content';
+import {
+  ActionAreaE,
+  type ActionAreaT,
+  type ChromeMessageT,
+} from '@/types/content';
 
 export interface MessageHandlerDependencies {
   settingsManager: SettingsManager;
@@ -56,6 +60,10 @@ export class MessageHandler {
     switch (messageType) {
       case 'updateEnabled':
         this.handleUpdateEnabled(message, sendResponse);
+        break;
+
+      case 'updateScrollSeeking':
+        this.handleUpdateScrollSeeking(message, sendResponse);
         break;
 
       case 'updateScrollInversion':
@@ -118,6 +126,10 @@ export class MessageHandler {
         this.handleSettingsUpdated(message, sendResponse);
         break;
 
+      case 'previewActionArea':
+        this.handlePreviewActionArea(message, sendResponse);
+        break;
+
       default:
         if (settingsManager.isDebugEnabled()) {
           console.log('❌ Unknown message type:', messageType, message);
@@ -167,14 +179,43 @@ export class MessageHandler {
     sendResponse({ success: true });
   }
 
+  private handlePreviewActionArea(
+    message: ChromeMessageT,
+    sendResponse: SendResponse
+  ): void {
+    const { overlayCreator } = this.dependencies;
+
+    if (message.previewActionArea === null) {
+      overlayCreator.clearActionAreaPreview();
+      sendResponse({ success: true });
+      return;
+    }
+
+    const validActionAreas = Object.values(ActionAreaE) as ActionAreaT[];
+    if (
+      !validActionAreas.includes(message.previewActionArea as ActionAreaT) ||
+      typeof message.actionAreaSize !== 'number'
+    ) {
+      sendResponse({ success: false, error: 'Invalid action area preview' });
+      return;
+    }
+
+    overlayCreator.previewActionArea(
+      message.previewActionArea as ActionAreaT,
+      message.actionAreaSize,
+      message.actionAreaSizeUnit === 'px' ? 'px' : '%'
+    );
+    sendResponse({ success: true });
+  }
+
   private handleUpdateScrollInversion(
     message: ChromeMessageT,
     sendResponse: SendResponse
   ): void {
     const { settingsManager } = this.dependencies;
 
-    if (typeof message.scrollSpeedFactor !== 'number') {
-      sendResponse({ success: false, error: 'Invalid scroll speed factor' });
+    if (typeof message.invertHorizontalScroll !== 'boolean') {
+      sendResponse({ success: false, error: 'Invalid scroll inversion' });
       return;
     }
 
@@ -190,6 +231,26 @@ export class MessageHandler {
       );
     }
 
+    sendResponse({ success: true });
+  }
+
+  private handleUpdateScrollSeeking(
+    message: ChromeMessageT,
+    sendResponse: SendResponse
+  ): void {
+    const { overlayCreator, settingsManager } = this.dependencies;
+
+    if (typeof message.isScrollSeekingEnabled !== 'boolean') {
+      sendResponse({ success: false, error: 'Invalid scroll seeking setting' });
+      return;
+    }
+
+    settingsManager.updateSetting(
+      'isScrollSeekingEnabled',
+      message.isScrollSeekingEnabled
+    );
+    overlayCreator.updateScrollSeekingState();
+    this.reconcileOverlayPresence();
     sendResponse({ success: true });
   }
 
@@ -252,6 +313,8 @@ export class MessageHandler {
       'showTimelineOnHover',
       message.showTimelineOnHover
     );
+    this.dependencies.overlayCreator.updateTimelineSeekingState();
+    this.reconcileOverlayPresence();
 
     if (settingsManager.isDebugEnabled()) {
       console.log(
@@ -284,6 +347,8 @@ export class MessageHandler {
     overlayCreator.updateTimelineSeekingState();
     overlayCreator.updateVideoDraggingState();
     overlayCreator.updateVideoControlsVisibility();
+    overlayCreator.updateScrollSeekingState();
+    this.reconcileOverlayPresence();
 
     if (settingsManager.isDebugEnabled()) {
       console.log(
@@ -314,6 +379,8 @@ export class MessageHandler {
       message.hideVideoControls
     );
     overlayCreator.updateVideoControlsVisibility();
+    overlayCreator.updateScrollSeekingState();
+    this.reconcileOverlayPresence();
 
     if (settingsManager.isDebugEnabled()) {
       console.log(
@@ -341,6 +408,8 @@ export class MessageHandler {
 
     settingsManager.updateSetting('dragVideoToSeek', message.dragVideoToSeek);
     overlayCreator.updateVideoDraggingState();
+    overlayCreator.updateScrollSeekingState();
+    this.reconcileOverlayPresence();
 
     if (settingsManager.isDebugEnabled()) {
       console.log(
@@ -462,6 +531,20 @@ export class MessageHandler {
     }
 
     sendResponse({ success: true });
+  }
+
+  private reconcileOverlayPresence(): void {
+    const { checkForVideos, settingsManager, videoStateManager } =
+      this.dependencies;
+
+    if (!settingsManager.shouldRun()) {
+      DOMUtils.removeExistingScrubWrappers();
+      DOMUtils.removeOverlayAttributes();
+      videoStateManager.clear();
+      return;
+    }
+
+    checkForVideos();
   }
 
   private handleUpdateDebug(
@@ -586,6 +669,13 @@ export class MessageHandler {
           settings.invertHorizontalScroll
         );
       }
+      if (typeof settings.isScrollSeekingEnabled === 'boolean') {
+        settingsManager.updateSetting(
+          'isScrollSeekingEnabled',
+          settings.isScrollSeekingEnabled
+        );
+        shouldUpdateTimelineSeeking = true;
+      }
       if (typeof settings.scrollSpeedFactor === 'number') {
         settingsManager.updateSetting(
           'scrollSpeedFactor',
@@ -678,6 +768,16 @@ export class MessageHandler {
         );
         shouldUpdateOverlays = true; // Action area size changes require overlay updates
       }
+      if (
+        settings.actionAreaSizeUnit === 'px' ||
+        settings.actionAreaSizeUnit === '%'
+      ) {
+        settingsManager.updateSetting(
+          'actionAreaSizeUnit',
+          settings.actionAreaSizeUnit
+        );
+        shouldUpdateOverlays = true;
+      }
 
       if (settingsManager.isDebugEnabled()) {
         console.log('🔧 Settings updated from popup:', settings);
@@ -695,10 +795,13 @@ export class MessageHandler {
         // Update all existing overlays immediately for action area changes
         const { overlayCreator } = this.dependencies;
         overlayCreator.updateAllOverlaysForActionArea();
-      } else if (shouldUpdateTimelineSeeking) {
+      }
+      if (shouldUpdateTimelineSeeking) {
         this.dependencies.overlayCreator.updateTimelineSeekingState();
         this.dependencies.overlayCreator.updateVideoDraggingState();
         this.dependencies.overlayCreator.updateVideoControlsVisibility();
+        this.dependencies.overlayCreator.updateScrollSeekingState();
+        this.reconcileOverlayPresence();
       }
     }
 

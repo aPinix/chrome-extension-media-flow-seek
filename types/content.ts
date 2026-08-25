@@ -26,9 +26,11 @@ export type VideoStateT = {
 };
 
 export type ContentSettingsT = {
+  settingsSchemaVersion: number;
   isEnabled: boolean;
   isDebugEnabled: boolean;
   isBetaFeaturesEnabled: boolean;
+  isScrollSeekingEnabled: boolean;
   invertHorizontalScroll: boolean;
   scrollSpeedFactor: number;
   fastScrollHotkey: ScrollHotkeyT;
@@ -43,7 +45,8 @@ export type ContentSettingsT = {
   timelineHeight: number;
   timelineHeightUnit: 'px' | '%';
   actionArea: 'full' | 'top' | 'middle' | 'bottom';
-  actionAreaSize: number; // percentage for partial areas (top/middle/bottom)
+  actionAreaSize: number;
+  actionAreaSizeUnit: 'px' | '%';
   domainRules: Array<{
     domain: string;
     type: DomainRuleTypeT;
@@ -70,6 +73,7 @@ export type ChromeMessageT = {
   fastScrollHotkey?: ContentSettingsT['fastScrollHotkey'];
   slowScrollHotkey?: ContentSettingsT['slowScrollHotkey'];
   isPlayPauseWheelEnabled?: boolean;
+  isScrollSeekingEnabled?: boolean;
   showTimelineOnHover: boolean;
   isTimelineSeekingEnabled?: boolean;
   dragVideoToSeek?: boolean;

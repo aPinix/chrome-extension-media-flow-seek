@@ -11,7 +11,7 @@ export function AppSwitch({
     <Switch
       className={cn(
         'data-unchecked:border-slate-300 data-unchecked:bg-slate-300',
-        'dark:data-unchecked:border-slate-400 dark:data-unchecked:bg-slate-400',
+        'dark:data-unchecked:border-slate-700 dark:data-unchecked:bg-slate-700',
         className
       )}
       {...props}

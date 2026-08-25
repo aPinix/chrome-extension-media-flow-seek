@@ -68,11 +68,61 @@ export default defineContentScript({
       videoStateManager,
       checkForVideos
     );
+    overlayCreator.startDocumentHoverTracking(document);
     // Popup messages only reach the tab that was active when a setting was
     // changed. Listen to synced storage as well so already-open background
     // tabs update immediately without needing a reload or another toggle.
     chrome.storage.onChanged.addListener((changes, areaName) => {
       if (areaName !== 'sync') return;
+
+      let shouldReconcileOverlays = false;
+
+      const isScrollSeekingEnabled = changes.isScrollSeekingEnabled?.newValue;
+      if (typeof isScrollSeekingEnabled === 'boolean') {
+        settingsManager.updateSetting(
+          'isScrollSeekingEnabled',
+          isScrollSeekingEnabled
+        );
+        overlayCreator.updateScrollSeekingState();
+        shouldReconcileOverlays = true;
+      }
+
+      const isTimelineSeekingEnabled =
+        changes.isTimelineSeekingEnabled?.newValue;
+      if (typeof isTimelineSeekingEnabled === 'boolean') {
+        settingsManager.updateSetting(
+          'isTimelineSeekingEnabled',
+          isTimelineSeekingEnabled
+        );
+        overlayCreator.updateTimelineSeekingState();
+        shouldReconcileOverlays = true;
+      }
+
+      const dragVideoToSeek = changes.dragVideoToSeek?.newValue;
+      if (typeof dragVideoToSeek === 'boolean') {
+        settingsManager.updateSetting('dragVideoToSeek', dragVideoToSeek);
+        overlayCreator.updateVideoDraggingState();
+        overlayCreator.updateScrollSeekingState();
+        shouldReconcileOverlays = true;
+      }
+
+      const showTimelineOnHover = changes.showTimelineOnHover?.newValue;
+      if (typeof showTimelineOnHover === 'boolean') {
+        settingsManager.updateSetting(
+          'showTimelineOnHover',
+          showTimelineOnHover
+        );
+        overlayCreator.updateTimelineSeekingState();
+        shouldReconcileOverlays = true;
+      }
+
+      const hideVideoControls = changes.hideVideoControls?.newValue;
+      if (typeof hideVideoControls === 'boolean') {
+        settingsManager.updateSetting('hideVideoControls', hideVideoControls);
+        overlayCreator.updateVideoControlsVisibility();
+        overlayCreator.updateScrollSeekingState();
+        shouldReconcileOverlays = true;
+      }
 
       const colorizedTimeline = changes.colorizedTimeline?.newValue;
       if (typeof colorizedTimeline === 'boolean') {
@@ -86,6 +136,16 @@ export default defineContentScript({
           'scrollSpeedFactor',
           normalizeScrollSpeedFactor(scrollSpeedFactor)
         );
+      }
+
+      if (shouldReconcileOverlays) {
+        if (!settingsManager.shouldRun()) {
+          DOMUtils.removeExistingScrubWrappers();
+          DOMUtils.removeOverlayAttributes();
+          videoStateManager.clear();
+        } else {
+          checkForVideos();
+        }
       }
     });
 
@@ -117,6 +177,10 @@ export default defineContentScript({
         console.log(
           '📜 Loaded debug enabled setting:',
           settings.isDebugEnabled
+        );
+        console.log(
+          '📜 Loaded scroll seeking setting:',
+          settings.isScrollSeekingEnabled
         );
         console.log(
           '📜 Loaded scroll inversion setting:',

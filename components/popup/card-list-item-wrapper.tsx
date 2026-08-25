@@ -11,7 +11,8 @@ export const CardListItemWrapper = ({
   children,
   className,
 }: CardListItemWrapperPropsI) => {
-  const childCount = React.Children.count(children);
+  const visibleChildren = React.Children.toArray(children);
+  const childCount = visibleChildren.length;
   const hasMultipleRows = childCount > 1;
 
   return (
@@ -23,7 +24,7 @@ export const CardListItemWrapper = ({
         className
       )}
     >
-      {React.Children.map(children, (child, index) => (
+      {visibleChildren.map((child, index) => (
         <React.Fragment key={index}>
           {child}
           {index < childCount - 1 && (

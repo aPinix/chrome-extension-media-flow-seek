@@ -1,4 +1,4 @@
-import { AppSegmentedControl } from '@/components/app/app-segmented-control';
+import { AppSegment } from '@/components/app/app-segment';
 import { SliderResetButton } from '@/components/app/slider-reset-button';
 import { TimelineHeightControl } from '@/components/timeline-height-control';
 import { DEFAULT_SETTINGS } from '@/helpers/popup-storage';
@@ -58,7 +58,7 @@ export function TimelineSettings({
         <span className="w-17.5 flex-none font-medium text-slate-700 text-sm dark:text-slate-300">
           Position
         </span>
-        <AppSegmentedControl
+        <AppSegment
           className="w-32"
           label="Timeline position"
           onValueChange={onPositionChange}

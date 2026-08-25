@@ -15,7 +15,7 @@ export function ScrollSpeedFactorControl({
   value: number;
 }) {
   return (
-    <div className="space-y-1">
+    <div>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <span className="font-medium text-slate-700 text-sm dark:text-slate-300">
@@ -33,7 +33,7 @@ export function ScrollSpeedFactorControl({
       </div>
       <AppSlider
         aria-label="Base scroll seek speed"
-        className="rounded-full has-focus-visible:ring-2 has-focus-visible:ring-brand/35"
+        className="mt-1 rounded-full has-focus-visible:ring-2 has-focus-visible:ring-brand/35"
         max={MAX_SCROLL_SPEED_FACTOR}
         min={MIN_SCROLL_SPEED_FACTOR}
         onValueChange={(nextValue) => {
@@ -45,7 +45,7 @@ export function ScrollSpeedFactorControl({
         trackClassName="h-3"
         value={value}
       />
-      <div className="flex justify-between text-[10px] text-slate-400 dark:text-slate-500">
+      <div className="-mt-2 flex justify-between text-[10px] text-slate-400 dark:text-slate-500">
         <span>Slower</span>
         <span>Faster</span>
       </div>

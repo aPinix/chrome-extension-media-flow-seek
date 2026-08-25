@@ -1,6 +1,8 @@
 import type { DOMCheckOptionsT } from '@/types/content';
 
 const YOUTUBE_HOVER_PREVIEW_SELECTOR = [
+  '#inline-preview-player',
+  'ytd-video-preview',
   'ytd-moving-thumbnail-renderer',
   'ytd-thumbnail',
   'ytd-rich-item-renderer',
@@ -14,6 +16,11 @@ const YOUTUBE_HOVER_PREVIEW_SELECTOR = [
   'yt-thumbnail-view-model',
   '.yt-thumbnail-view-model',
   'a#thumbnail',
+].join(',');
+
+const YOUTUBE_PRIMARY_PLAYER_SELECTOR = [
+  '#movie_player',
+  '#shorts-player',
 ].join(',');
 
 // biome-ignore lint/complexity/noStaticOnlyClass: This class owns shared DOM discovery state as well as its related operations.
@@ -82,9 +89,11 @@ export class DOMUtils {
 
   /**
    * YouTube creates short-lived videos inside grid/search/sidebar thumbnail
-   * links to implement its native hover previews. Inserting an interaction
-   * layer into those renderers can become the pointer target before YouTube's
-   * hover controller, causing the preview to stop or never start.
+   * links to implement its native hover previews. It can also create those
+   * videos in a detached/shared pool before moving them into a thumbnail.
+   * Inserting an interaction layer at either stage can become the pointer
+   * target before YouTube's hover controller, causing the preview to stop or
+   * never start.
    */
   static isYouTubeHoverPreview(video: HTMLVideoElement): boolean {
     if (video.closest(YOUTUBE_HOVER_PREVIEW_SELECTOR)) return true;
@@ -93,11 +102,17 @@ export class DOMUtils {
     const isYouTube =
       hostname === 'youtube.com' || hostname.endsWith('.youtube.com');
 
+    if (!isYouTube) return false;
+
     // YouTube has multiple concurrently deployed card implementations. Their
-    // tag/class names change, but thumbnail preview videos remain descendants
-    // of the card's navigation link. The watch-page and Shorts players are not
-    // nested in anchors.
-    return isYouTube && video.closest('a[href]') !== null;
+    // tag/class names change, but thumbnail preview videos either live inside
+    // the card's navigation link or outside the primary player while waiting
+    // to be mounted. Prefer leaving an unknown YouTube video untouched until
+    // it enters a known watch, embed, mini-player, or Shorts player.
+    return (
+      video.closest('a[href]') !== null ||
+      video.closest(YOUTUBE_PRIMARY_PLAYER_SELECTOR) === null
+    );
   }
 
   static hasOverlayAttribute(video: HTMLVideoElement): boolean {
@@ -229,7 +244,12 @@ export class DOMUtils {
                 );
               }
               createOverlay(video);
-              DOMUtils.setOverlayAttribute(video, true);
+              // Keep YouTube's transient preview node untouched. Its connected
+              // state is tracked by VideoStateManager, so an attribute is not
+              // needed to prevent duplicate passive overlays.
+              if (!isYouTubeHoverPreview) {
+                DOMUtils.setOverlayAttribute(video, true);
+              }
             } else {
               if (debugMode) {
                 console.log(`⏭️ Video ${index + 1} already has scrub overlay`);
@@ -251,7 +271,9 @@ export class DOMUtils {
                 );
               }
               options.createOverlay(video);
-              DOMUtils.setOverlayAttribute(video, true);
+              if (!DOMUtils.isYouTubeHoverPreview(video)) {
+                DOMUtils.setOverlayAttribute(video, true);
+              }
             });
           }
         } catch (error) {

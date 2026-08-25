@@ -10,7 +10,7 @@ All notable changes to this project will be documented in this file.
 
 ### 🌟 New Features
 
-- **Configurable Scroll Speed Hotkeys**: Defaults to Alt for 3× seeking and Alt+Shift for ¼× precision, with both assignable from the popup.
+- **Configurable Scroll Speed Hotkeys**: Defaults to Alt for 3× seeking and Alt+Shift for 1/4x precision, with both assignable from the popup.
 - **Toggle Shortcut**: Changed the suggested extension toggle shortcut to Ctrl+Shift+S (physical Control+Shift+S on macOS).
 - **Universal Video Support**: Enabled HTML5 video seeking on all websites by default, including Steam, Facebook, Instagram, Vimeo, and embedded players.
 - **Embedded and Dynamic Players**: Added all-frame injection, open shadow DOM discovery, and reliable handling for videos replaced by social feeds and carousels.

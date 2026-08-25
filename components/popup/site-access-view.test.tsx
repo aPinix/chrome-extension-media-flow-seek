@@ -20,6 +20,7 @@ import { SiteAccessView } from './site-access-view';
 
 beforeAll(() => {
   Element.prototype.scrollIntoView = vi.fn();
+  HTMLElement.prototype.scrollTo = vi.fn();
 });
 
 afterEach(cleanup);
@@ -34,16 +35,20 @@ const INITIAL_RULES: DomainConfigT[] = [
 function SiteAccessHarness({
   currentDomain = 'youtube.com',
   initialRules = INITIAL_RULES,
+  isActive = true,
 }: {
   currentDomain?: string;
   initialRules?: DomainConfigT[];
+  isActive?: boolean;
 }) {
   const [rules, setRules] = useState(initialRules);
   return (
     <>
+      <div id="domain-toolbar-root" />
       <SiteAccessView
         currentDomain={currentDomain}
         domainRules={rules}
+        isActive={isActive}
         onDomainRulesChange={setRules}
       />
       <output data-testid="rules">{JSON.stringify(rules)}</output>
@@ -76,24 +81,16 @@ describe('SiteAccessView', () => {
     expect(screen.getByText('Choose where BetterVideo runs')).toBeTruthy();
   });
 
-  it('keeps the website settings actions and search in one sticky block', () => {
+  it('puts website settings actions and search in the bottom toolbar dock', () => {
     render(<SiteAccessHarness />);
 
-    const controls = screen.getByTestId('website-settings-sticky-controls');
+    const controls = screen.getByTestId('domain-bottom-toolbar');
     const classNames = controls.className.split(/\s+/);
 
-    expect(classNames).toContain('sticky');
-    expect(classNames).toContain('top-[48px]');
-    expect(classNames).toContain('pt-6');
-    expect(classNames).toContain('z-20');
-    expect(classNames).toContain('backdrop-blur-xl');
-    expect(classNames).toContain('rounded-b-xl');
-    expect(classNames).not.toContain('border-b');
-    expect(controls.dataset.sticky).toBe('false');
-    expect(classNames).toContain('-mx-2');
-    expect(classNames).toContain('px-2');
+    expect(classNames).toContain('h-10');
+    expect(classNames).toContain('items-center');
     expect(
-      within(controls).getByRole('heading', { name: 'Website settings' })
+      screen.getByRole('heading', { name: 'Website settings' })
     ).toBeTruthy();
     expect(
       within(controls).getByRole('button', {
@@ -105,14 +102,30 @@ describe('SiteAccessView', () => {
         name: 'Redo website removal',
       })
     ).toBeTruthy();
-    expect(
-      within(controls).getByRole('button', { name: 'Add website' })
-    ).toBeTruthy();
+    const addButton = within(controls).getByRole('button', {
+      name: 'Add website',
+    });
+    expect(addButton.className).toContain('bg-brand-500');
+    expect(addButton.className).toContain('text-white');
+    expect(addButton.className).toContain('shadow-sm');
     expect(
       within(controls).getByRole('searchbox', {
         name: 'Search website settings',
       })
     ).toBeTruthy();
+  });
+
+  it('focuses the search input whenever the Domains view becomes active', async () => {
+    const { rerender } = render(<SiteAccessHarness isActive={false} />);
+    const searchInput = screen.getByRole('searchbox', {
+      name: 'Search website settings',
+    });
+
+    expect(document.activeElement).not.toBe(searchInput);
+
+    rerender(<SiteAccessHarness isActive />);
+
+    await waitFor(() => expect(document.activeElement).toBe(searchInput));
   });
 
   it('synchronizes the current-site and saved-row controls', async () => {
@@ -203,6 +216,21 @@ describe('SiteAccessView', () => {
     expect(await screen.findByText('Discard (Esc)')).toBeTruthy();
     await user.hover(create);
     expect(await screen.findByText('Create (Enter)')).toBeTruthy();
+  });
+
+  it('scrolls to the top when the Add website editor opens', async () => {
+    const user = userEvent.setup();
+    render(<SiteAccessHarness />);
+    const scrollViewport = screen
+      .getByTestId('site-access-scroll-container')
+      .querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]');
+
+    await user.click(screen.getByRole('button', { name: 'Add website' }));
+
+    expect(scrollViewport?.scrollTo).toHaveBeenCalledWith({
+      behavior: 'smooth',
+      top: 0,
+    });
   });
 
   it('mutes domain suffixes and edits a saved domain from its favicon', async () => {

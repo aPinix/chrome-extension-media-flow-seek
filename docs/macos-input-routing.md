@@ -199,7 +199,7 @@ The companion would:
 2. Install a listen-only `CGEventTap` for mouse movement, scroll wheel, and
    modifier flag changes.
 3. Coalesce movement to roughly 60 Hz, keep wheel events individually, and
-   send only coordinates, deltas, modifier flags, and timestamps—not typed
+   send only coordinates, deltas, modifier flags, and timestamps, not typed
    key contents.
 4. Frame native-messaging JSON with Chrome's four-byte message length prefix.
 5. Restrict the host manifest's `allowed_origins` to the exact BetterVideo

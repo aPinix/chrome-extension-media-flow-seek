@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// @vitest-environment-options {"url":"https://www.youtube.com/results"}
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -54,7 +55,7 @@ describe('DOMUtils YouTube hover previews', () => {
     return video;
   };
 
-  it('adds an overlay to YouTube thumbnail preview videos for wheel control', () => {
+  it('adds a passive overlay to YouTube thumbnail preview videos', () => {
     const preview = document.createElement('ytd-moving-thumbnail-renderer');
     const video = createVisibleVideo();
     const createOverlay = vi.fn();
@@ -70,10 +71,10 @@ describe('DOMUtils YouTube hover previews', () => {
 
     expect(DOMUtils.isYouTubeHoverPreview(video)).toBe(true);
     expect(createOverlay).toHaveBeenCalledWith(video);
-    expect(video.hasAttribute('data-scrub-enabled')).toBe(true);
+    expect(video.hasAttribute('data-scrub-enabled')).toBe(false);
   });
 
-  it('keeps an existing overlay when a video moves into a thumbnail', () => {
+  it('keeps an existing passive overlay when a video moves into a thumbnail', () => {
     const thumbnail = document.createElement('ytd-thumbnail');
     const video = createVisibleVideo();
     const removeOverlay = vi.fn();
@@ -91,6 +92,64 @@ describe('DOMUtils YouTube hover previews', () => {
 
     expect(removeOverlay).not.toHaveBeenCalled();
     expect(video.hasAttribute('data-scrub-enabled')).toBe(true);
+  });
+
+  it('adds a passive overlay to a pre-mounted YouTube preview video', () => {
+    const video = createVisibleVideo();
+    const createOverlay = vi.fn();
+    document.body.appendChild(video);
+
+    DOMUtils.checkForVideos({
+      createOverlay,
+      debugMode: false,
+      hasOverlay: () => false,
+      shouldRun: () => true,
+    });
+
+    expect(DOMUtils.isYouTubeHoverPreview(video)).toBe(true);
+    expect(createOverlay).toHaveBeenCalledWith(video);
+    expect(video.hasAttribute('data-scrub-enabled')).toBe(false);
+  });
+
+  it('treats a generic pre-mounted YouTube player as a preview', () => {
+    const player = document.createElement('div');
+    player.className = 'html5-video-player';
+    const video = createVisibleVideo();
+    const createOverlay = vi.fn();
+    player.appendChild(video);
+    document.body.appendChild(player);
+
+    DOMUtils.checkForVideos({
+      createOverlay,
+      debugMode: false,
+      hasOverlay: () => false,
+      shouldRun: () => true,
+    });
+
+    expect(DOMUtils.isYouTubeHoverPreview(video)).toBe(true);
+    expect(createOverlay).toHaveBeenCalledWith(video);
+    expect(video.hasAttribute('data-scrub-enabled')).toBe(false);
+  });
+
+  it('recognizes YouTube inline preview players before card attachment', () => {
+    const inlinePreview = document.createElement('div');
+    inlinePreview.id = 'inline-preview-player';
+    inlinePreview.className = 'html5-video-player';
+    const video = createVisibleVideo();
+    const createOverlay = vi.fn();
+    inlinePreview.appendChild(video);
+    document.body.appendChild(inlinePreview);
+
+    DOMUtils.checkForVideos({
+      createOverlay,
+      debugMode: false,
+      hasOverlay: () => false,
+      shouldRun: () => true,
+    });
+
+    expect(DOMUtils.isYouTubeHoverPreview(video)).toBe(true);
+    expect(createOverlay).toHaveBeenCalledWith(video);
+    expect(video.hasAttribute('data-scrub-enabled')).toBe(false);
   });
 
   it('still creates overlays for ordinary watch-page videos', () => {

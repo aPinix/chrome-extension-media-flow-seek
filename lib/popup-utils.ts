@@ -29,7 +29,8 @@ export const checkIsAtDefaults = (
   _domainRules: DomainConfigT[],
   actionArea: 'full' | 'top' | 'middle' | 'bottom',
   actionAreaSize: number,
-  isTimelineSeekingEnabled = false
+  isTimelineSeekingEnabled = false,
+  actionAreaSizeUnit: 'px' | '%' = '%'
 ): boolean => {
   return (
     isEnabled === true &&
@@ -41,6 +42,7 @@ export const checkIsAtDefaults = (
     timelineHeightUnit === 'px' &&
     actionArea === 'full' &&
     actionAreaSize === 30 &&
+    actionAreaSizeUnit === '%' &&
     isTimelineSeekingEnabled === false
   );
 };

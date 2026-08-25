@@ -5,6 +5,7 @@
   "editor.codeActionsOnSave": {
     "source.organizeImports.biome": "explicit",
     "source.fixAll.biome": "explicit"
+    // "source.fixAll.tailwindcss": "explicit"
     // "source.fixAll": "explicit"
   },
 

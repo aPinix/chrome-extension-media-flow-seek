@@ -6,6 +6,7 @@ import {
   saveSettings,
   subscribeToEnabledChanges,
 } from '@/helpers/popup-storage';
+import { SETTINGS_SCHEMA_VERSION } from '@/helpers/settings-migration';
 
 describe('timeline seeking storage', () => {
   afterEach(() => {
@@ -26,6 +27,9 @@ describe('timeline seeking storage', () => {
 
     expect(DEFAULT_SETTINGS.isTimelineSeekingEnabled).toBe(true);
     expect(settings.isTimelineSeekingEnabled).toBe(true);
+    expect(DEFAULT_SETTINGS.isScrollSeekingEnabled).toBe(true);
+    expect(settings.isScrollSeekingEnabled).toBe(true);
+    expect(settings.settingsSchemaVersion).toBe(SETTINGS_SCHEMA_VERSION);
     expect(DEFAULT_SETTINGS.dragVideoToSeek).toBe(false);
     expect(settings.dragVideoToSeek).toBe(false);
     expect(DEFAULT_SETTINGS.hideVideoControls).toBe(false);
@@ -36,6 +40,71 @@ describe('timeline seeking storage', () => {
     expect(settings.isPlayPauseWheelEnabled).toBe(true);
     expect(DEFAULT_SETTINGS.scrollSpeedFactor).toBe(1);
     expect(settings.scrollSpeedFactor).toBe(1);
+    expect(DEFAULT_SETTINGS.actionAreaSizeUnit).toBe('%');
+    expect(settings.actionAreaSizeUnit).toBe('%');
+  });
+
+  it('migrates dormant legacy children without activating them', async () => {
+    const set = vi.fn();
+    vi.stubGlobal('chrome', {
+      storage: {
+        sync: {
+          get: vi.fn((_keys, callback) =>
+            callback({
+              isTimelineSeekingEnabled: false,
+              dragVideoToSeek: true,
+              hideVideoControls: true,
+            })
+          ),
+          set,
+        },
+      },
+    });
+
+    const settings = await loadPopupSettings();
+
+    expect(settings.isScrollSeekingEnabled).toBe(true);
+    expect(settings.isTimelineSeekingEnabled).toBe(false);
+    expect(settings.dragVideoToSeek).toBe(false);
+    expect(settings.hideVideoControls).toBe(false);
+    expect(set).toHaveBeenCalledWith({
+      settingsSchemaVersion: SETTINGS_SCHEMA_VERSION,
+      isScrollSeekingEnabled: true,
+      isTimelineSeekingEnabled: false,
+      dragVideoToSeek: false,
+      hideVideoControls: false,
+    });
+  });
+
+  it('preserves independent Drag and Minimal Player in the current schema', async () => {
+    const set = vi.fn();
+    vi.stubGlobal('chrome', {
+      storage: {
+        sync: {
+          get: vi.fn((_keys, callback) =>
+            callback({
+              settingsSchemaVersion: SETTINGS_SCHEMA_VERSION,
+              isScrollSeekingEnabled: false,
+              isTimelineSeekingEnabled: false,
+              dragVideoToSeek: true,
+              hideVideoControls: true,
+            })
+          ),
+          set,
+        },
+      },
+    });
+
+    const settings = await loadPopupSettings();
+
+    expect(settings.isScrollSeekingEnabled).toBe(false);
+    expect(settings.dragVideoToSeek).toBe(true);
+    expect(settings.hideVideoControls).toBe(true);
+    expect(set).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        settingsSchemaVersion: SETTINGS_SCHEMA_VERSION,
+      })
+    );
   });
 
   it('loads a valid scroll speed factor and normalizes invalid values', async () => {

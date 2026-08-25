@@ -20,7 +20,7 @@ export default defineConfig({
       short_name: 'BetterVideo',
       default_locale: 'en',
       description:
-        'Control videos on YouTube, Instagram, TikTok, and more. Scroll horizontally to seek instantly—even while another window is active.',
+        'Control videos on YouTube, Instagram, TikTok, and more. Scroll horizontally to seek instantly, even while another window is active.',
       version: '1.0.9',
       author: 'aPinix',
       icons: {

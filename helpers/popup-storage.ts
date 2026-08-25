@@ -10,12 +10,18 @@ import {
   normalizeScrollSpeedFactor,
   type ScrollHotkeyT,
 } from '@/helpers/scroll-speed';
+import {
+  migrateSeekSettings,
+  SETTINGS_SCHEMA_VERSION,
+} from '@/helpers/settings-migration';
 import type { DomainConfigT } from '@/types/domains';
 
 export type PopupSettings = {
+  settingsSchemaVersion: number;
   isEnabled: boolean;
   isDebugEnabled: boolean;
   isBetaFeaturesEnabled: boolean;
+  isScrollSeekingEnabled: boolean;
   invertHorizontalScroll: boolean;
   scrollSpeedFactor: number;
   fastScrollHotkey: ScrollHotkeyT;
@@ -31,13 +37,16 @@ export type PopupSettings = {
   timelineHeightUnit: 'px' | '%';
   actionArea: 'full' | 'top' | 'middle' | 'bottom';
   actionAreaSize: number;
+  actionAreaSizeUnit: 'px' | '%';
   domainRules: DomainConfigT[];
 };
 
 export const DEFAULT_SETTINGS: Omit<PopupSettings, 'domainRules'> = {
+  settingsSchemaVersion: SETTINGS_SCHEMA_VERSION,
   isEnabled: true,
   isDebugEnabled: false,
   isBetaFeaturesEnabled: true,
+  isScrollSeekingEnabled: true,
   invertHorizontalScroll: false,
   scrollSpeedFactor: DEFAULT_SCROLL_SPEED_FACTOR,
   fastScrollHotkey: DEFAULT_FAST_SCROLL_HOTKEY,
@@ -53,6 +62,7 @@ export const DEFAULT_SETTINGS: Omit<PopupSettings, 'domainRules'> = {
   timelineHeightUnit: 'px',
   actionArea: 'full',
   actionAreaSize: 30,
+  actionAreaSizeUnit: '%',
 };
 
 export const mergeDomainRules = (
@@ -64,8 +74,10 @@ export const loadPopupSettings = (): Promise<PopupSettings> => {
     chrome.storage.sync.get(
       [
         'isEnabled',
+        'settingsSchemaVersion',
         'isDebugEnabled',
         'isBetaFeaturesEnabled',
+        'isScrollSeekingEnabled',
         'invertHorizontalScroll',
         'scrollSpeedFactor',
         'fastScrollHotkey',
@@ -81,6 +93,7 @@ export const loadPopupSettings = (): Promise<PopupSettings> => {
         'timelineHeightUnit',
         'actionArea',
         'actionAreaSize',
+        'actionAreaSizeUnit',
         'domainRules',
       ],
       (result) => {
@@ -93,6 +106,12 @@ export const loadPopupSettings = (): Promise<PopupSettings> => {
           stored.fastScrollHotkey,
           stored.slowScrollHotkey
         );
+        const migratedSeekSettings = migrateSeekSettings(stored, {
+          isScrollSeekingEnabled: DEFAULT_SETTINGS.isScrollSeekingEnabled,
+          isTimelineSeekingEnabled: DEFAULT_SETTINGS.isTimelineSeekingEnabled,
+          dragVideoToSeek: DEFAULT_SETTINGS.dragVideoToSeek,
+          hideVideoControls: DEFAULT_SETTINGS.hideVideoControls,
+        });
 
         // Save added defaults and the one-time YouTube-only default migration.
         if (
@@ -102,13 +121,26 @@ export const loadPopupSettings = (): Promise<PopupSettings> => {
           chrome.storage.sync.set({ domainRules: finalRules });
         }
 
+        if (migratedSeekSettings.didMigrate) {
+          chrome.storage.sync.set({
+            settingsSchemaVersion: migratedSeekSettings.settingsSchemaVersion,
+            isScrollSeekingEnabled: migratedSeekSettings.isScrollSeekingEnabled,
+            isTimelineSeekingEnabled:
+              migratedSeekSettings.isTimelineSeekingEnabled,
+            dragVideoToSeek: migratedSeekSettings.dragVideoToSeek,
+            hideVideoControls: migratedSeekSettings.hideVideoControls,
+          });
+        }
+
         resolve({
+          settingsSchemaVersion: migratedSeekSettings.settingsSchemaVersion,
           isEnabled: stored.isEnabled ?? DEFAULT_SETTINGS.isEnabled,
           isDebugEnabled:
             stored.isDebugEnabled ?? DEFAULT_SETTINGS.isDebugEnabled,
           isBetaFeaturesEnabled:
             stored.isBetaFeaturesEnabled ??
             DEFAULT_SETTINGS.isBetaFeaturesEnabled,
+          isScrollSeekingEnabled: migratedSeekSettings.isScrollSeekingEnabled,
           invertHorizontalScroll:
             stored.invertHorizontalScroll ??
             DEFAULT_SETTINGS.invertHorizontalScroll,
@@ -122,12 +154,9 @@ export const loadPopupSettings = (): Promise<PopupSettings> => {
           showTimelineOnHover:
             stored.showTimelineOnHover ?? DEFAULT_SETTINGS.showTimelineOnHover,
           isTimelineSeekingEnabled:
-            stored.isTimelineSeekingEnabled ??
-            DEFAULT_SETTINGS.isTimelineSeekingEnabled,
-          dragVideoToSeek:
-            stored.dragVideoToSeek ?? DEFAULT_SETTINGS.dragVideoToSeek,
-          hideVideoControls:
-            stored.hideVideoControls ?? DEFAULT_SETTINGS.hideVideoControls,
+            migratedSeekSettings.isTimelineSeekingEnabled,
+          dragVideoToSeek: migratedSeekSettings.dragVideoToSeek,
+          hideVideoControls: migratedSeekSettings.hideVideoControls,
           colorizedTimeline:
             stored.colorizedTimeline ?? DEFAULT_SETTINGS.colorizedTimeline,
           timelinePosition:
@@ -139,6 +168,8 @@ export const loadPopupSettings = (): Promise<PopupSettings> => {
           actionArea: stored.actionArea ?? DEFAULT_SETTINGS.actionArea,
           actionAreaSize:
             stored.actionAreaSize ?? DEFAULT_SETTINGS.actionAreaSize,
+          actionAreaSizeUnit:
+            stored.actionAreaSizeUnit ?? DEFAULT_SETTINGS.actionAreaSizeUnit,
           domainRules: finalRules,
         });
       }

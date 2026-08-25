@@ -8,6 +8,7 @@ import {
   normalizeScrollHotkeys,
   normalizeScrollSpeedFactor,
 } from '@/helpers/scroll-speed';
+import { migrateSeekSettings } from '@/helpers/settings-migration';
 import type { ContentSettingsT } from '@/types/content';
 import type { DomainConfigT } from '@/types/domains';
 import { DomainRuleTypeE } from '@/types/domains';
@@ -28,8 +29,10 @@ export class SettingsManager {
       chrome.storage.sync.get(
         [
           'isEnabled',
+          'settingsSchemaVersion',
           'isDebugEnabled',
           'isBetaFeaturesEnabled',
+          'isScrollSeekingEnabled',
           'invertHorizontalScroll',
           'scrollSpeedFactor',
           'fastScrollHotkey',
@@ -45,6 +48,7 @@ export class SettingsManager {
           'timelineHeightUnit',
           'actionArea',
           'actionAreaSize',
+          'actionAreaSizeUnit',
           'domainRules',
         ],
         (result) => {
@@ -53,13 +57,22 @@ export class SettingsManager {
             stored.fastScrollHotkey,
             stored.slowScrollHotkey
           );
+          const migratedSeekSettings = migrateSeekSettings(stored, {
+            isScrollSeekingEnabled: this.defaultSettings.isScrollSeekingEnabled,
+            isTimelineSeekingEnabled:
+              this.defaultSettings.isTimelineSeekingEnabled,
+            dragVideoToSeek: this.defaultSettings.dragVideoToSeek,
+            hideVideoControls: this.defaultSettings.hideVideoControls,
+          });
           this.settings = {
+            settingsSchemaVersion: migratedSeekSettings.settingsSchemaVersion,
             isEnabled: stored.isEnabled ?? this.defaultSettings.isEnabled,
             isDebugEnabled:
               stored.isDebugEnabled ?? this.defaultSettings.isDebugEnabled,
             isBetaFeaturesEnabled:
               stored.isBetaFeaturesEnabled ??
               this.defaultSettings.isBetaFeaturesEnabled,
+            isScrollSeekingEnabled: migratedSeekSettings.isScrollSeekingEnabled,
             invertHorizontalScroll:
               stored.invertHorizontalScroll ??
               this.defaultSettings.invertHorizontalScroll,
@@ -74,13 +87,9 @@ export class SettingsManager {
               stored.showTimelineOnHover ??
               this.defaultSettings.showTimelineOnHover,
             isTimelineSeekingEnabled:
-              stored.isTimelineSeekingEnabled ??
-              this.defaultSettings.isTimelineSeekingEnabled,
-            dragVideoToSeek:
-              stored.dragVideoToSeek ?? this.defaultSettings.dragVideoToSeek,
-            hideVideoControls:
-              stored.hideVideoControls ??
-              this.defaultSettings.hideVideoControls,
+              migratedSeekSettings.isTimelineSeekingEnabled,
+            dragVideoToSeek: migratedSeekSettings.dragVideoToSeek,
+            hideVideoControls: migratedSeekSettings.hideVideoControls,
             colorizedTimeline:
               stored.colorizedTimeline ??
               this.defaultSettings.colorizedTimeline,
@@ -94,6 +103,9 @@ export class SettingsManager {
             actionArea: stored.actionArea ?? this.defaultSettings.actionArea,
             actionAreaSize:
               stored.actionAreaSize ?? this.defaultSettings.actionAreaSize,
+            actionAreaSizeUnit:
+              stored.actionAreaSizeUnit ??
+              this.defaultSettings.actionAreaSizeUnit,
             domainRules: stored.domainRules
               ? mergeAndMigrateDomainRules(stored.domainRules)
               : this.defaultSettings.domainRules,
@@ -105,6 +117,18 @@ export class SettingsManager {
               JSON.stringify(this.settings.domainRules)
           ) {
             chrome.storage.sync.set({ domainRules: this.settings.domainRules });
+          }
+
+          if (migratedSeekSettings.didMigrate) {
+            chrome.storage.sync.set({
+              settingsSchemaVersion: migratedSeekSettings.settingsSchemaVersion,
+              isScrollSeekingEnabled:
+                migratedSeekSettings.isScrollSeekingEnabled,
+              isTimelineSeekingEnabled:
+                migratedSeekSettings.isTimelineSeekingEnabled,
+              dragVideoToSeek: migratedSeekSettings.dragVideoToSeek,
+              hideVideoControls: migratedSeekSettings.hideVideoControls,
+            });
           }
 
           resolve(this.settings);
@@ -136,6 +160,10 @@ export class SettingsManager {
     return this.settings.isBetaFeaturesEnabled;
   }
 
+  isScrollSeekingEnabled(): boolean {
+    return this.settings.isScrollSeekingEnabled;
+  }
+
   shouldInvertHorizontalScroll(): boolean {
     return this.settings.invertHorizontalScroll;
   }
@@ -153,11 +181,17 @@ export class SettingsManager {
   }
 
   isPlayPauseWheelEnabled(): boolean {
-    return this.settings.isPlayPauseWheelEnabled;
+    return (
+      this.settings.isScrollSeekingEnabled &&
+      this.settings.isPlayPauseWheelEnabled
+    );
   }
 
   shouldShowTimelineOnHover(): boolean {
-    return this.settings.showTimelineOnHover;
+    return (
+      this.settings.showTimelineOnHover ||
+      this.settings.isTimelineSeekingEnabled
+    );
   }
 
   isTimelineSeekingEnabled(): boolean {
@@ -165,14 +199,20 @@ export class SettingsManager {
   }
 
   shouldDragVideoToSeek(): boolean {
-    return (
-      this.settings.isTimelineSeekingEnabled && this.settings.dragVideoToSeek
-    );
+    return this.settings.dragVideoToSeek;
   }
 
   shouldHideVideoControls(): boolean {
+    return this.settings.hideVideoControls;
+  }
+
+  hasActiveVideoFeatures(): boolean {
     return (
-      this.settings.isTimelineSeekingEnabled && this.settings.hideVideoControls
+      this.settings.isScrollSeekingEnabled ||
+      this.settings.dragVideoToSeek ||
+      this.settings.isTimelineSeekingEnabled ||
+      this.settings.showTimelineOnHover ||
+      this.settings.hideVideoControls
     );
   }
 
@@ -200,13 +240,19 @@ export class SettingsManager {
     return this.settings.actionAreaSize;
   }
 
+  getActionAreaSizeUnit(): 'px' | '%' {
+    return this.settings.actionAreaSizeUnit;
+  }
+
   getDomainRules(): DomainConfigT[] {
     return this.settings.domainRules;
   }
 
   // Check if current domain should run the extension
   shouldRun(): boolean {
-    if (!this.settings.isEnabled) return false;
+    if (!this.settings.isEnabled || !this.hasActiveVideoFeatures()) {
+      return false;
+    }
 
     const currentHostname = window.location.hostname.toLowerCase();
 

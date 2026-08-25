@@ -1,5 +1,6 @@
 import { Slider as SliderPrimitive } from '@base-ui/react/slider';
 
+import { APP_SEGMENT_INACTIVE_SURFACE } from '@/components/app/app-segment';
 import { cn } from '@/lib/utils';
 
 export function AppSlider({
@@ -29,17 +30,19 @@ export function AppSlider({
       aria-label={ariaLabel}
       className={cn('w-full cursor-pointer', className)}
       data-slot="app-slider"
+      data-thumb-alignment="center"
       defaultValue={defaultValue}
       max={max}
       min={min}
-      thumbAlignment="edge"
+      thumbAlignment="center"
       value={value}
       {...props}
     >
       <SliderPrimitive.Control className="relative flex h-8 w-full touch-none select-none items-center data-disabled:opacity-50">
         <SliderPrimitive.Track
           className={cn(
-            'relative h-2 w-full grow select-none overflow-hidden rounded-full bg-muted/60 dark:bg-muted/75',
+            'relative h-2 w-full grow select-none overflow-hidden rounded-full',
+            APP_SEGMENT_INACTIVE_SURFACE,
             trackClassName
           )}
           data-slot="app-slider-track"

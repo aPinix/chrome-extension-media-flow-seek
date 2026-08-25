@@ -1,5 +1,6 @@
 import {
   CheckIcon,
+  PlusIcon,
   Redo2Icon,
   SearchIcon,
   Undo2Icon,
@@ -16,6 +17,7 @@ import {
 } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
+import { createPortal } from 'react-dom';
 
 import { AppButton } from '@/components/app/app-button';
 import { AppInputText } from '@/components/app/app-input-text';
@@ -40,7 +42,9 @@ interface DomainRulesListPropsI {
   canRedo: boolean;
   canUndo: boolean;
   domainRules: DomainConfigT[];
+  isActive: boolean;
   onAdd: (domain: string, mode: DomainModeT) => void;
+  onAddStart: () => void;
   onModeChange: (domain: string, mode: DomainModeT) => void;
   onOrderChange: (siteRules: DomainConfigT[]) => void;
   onRedo: () => void;
@@ -55,7 +59,9 @@ function SortableDomainRulesList({
   canRedo,
   canUndo,
   domainRules,
+  isActive,
   onAdd,
+  onAddStart,
   onModeChange,
   onOrderChange,
   onRedo,
@@ -81,10 +87,10 @@ function SortableDomainRulesList({
   const [searchValue, setSearchValue] = useState('');
   const [highlightedDomain, setHighlightedDomain] = useState('');
   const [announcement, setAnnouncement] = useState('');
-  const [isSticky, setIsSticky] = useState(false);
+  const [toolbarTarget, setToolbarTarget] = useState<HTMLElement | null>(null);
   const siteRulesRef = useRef(siteRules);
   const editorInputRef = useRef<HTMLInputElement>(null);
-  const stickyControlsRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const dragSnapshotRef = useRef(siteRules);
   const draggedDomainRef = useRef<string | null>(null);
   const isDraggingRef = useRef(false);
@@ -97,6 +103,11 @@ function SortableDomainRulesList({
   );
   const editorEntryFrameRef = useRef<number | null>(null);
   const rowEntryFrameRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!isActive) return;
+    searchInputRef.current?.focus({ preventScroll: true });
+  }, [isActive]);
 
   useEffect(() => {
     if (isDraggingRef.current) return;
@@ -136,6 +147,10 @@ function SortableDomainRulesList({
       editorInputRef.current?.focus({ preventScroll: true });
     }
   }, [isEditorVisible]);
+
+  useLayoutEffect(() => {
+    setToolbarTarget(document.getElementById('domain-toolbar-root'));
+  }, []);
 
   useEffect(
     () => () => {
@@ -193,36 +208,6 @@ function SortableDomainRulesList({
     }
   });
 
-  useEffect(() => {
-    const controls = stickyControlsRef.current;
-    const scrollContainer = controls?.closest<HTMLElement>(
-      '[data-testid="site-access-scroll-container"]'
-    );
-    if (!controls || !scrollContainer) return;
-
-    const updateStickyState = () => {
-      const stickyTop = Number.parseFloat(getComputedStyle(controls).top);
-      const nextIsSticky =
-        scrollContainer.scrollTop > 0 &&
-        controls.getBoundingClientRect().top <=
-          scrollContainer.getBoundingClientRect().top + stickyTop + 0.5;
-      setIsSticky((current) =>
-        current === nextIsSticky ? current : nextIsSticky
-      );
-    };
-
-    updateStickyState();
-    scrollContainer.addEventListener('scroll', updateStickyState, {
-      passive: true,
-    });
-    window.addEventListener('resize', updateStickyState);
-
-    return () => {
-      scrollContainer.removeEventListener('scroll', updateStickyState);
-      window.removeEventListener('resize', updateStickyState);
-    };
-  }, []);
-
   const openEditor = useCallback(() => {
     if (editorTransitionTimerRef.current) {
       clearTimeout(editorTransitionTimerRef.current);
@@ -237,11 +222,12 @@ function SortableDomainRulesList({
     setEditorValue('');
     setEditorMode(DomainModeE.Default);
     setEditorError('');
+    onAddStart();
     editorEntryFrameRef.current = requestAnimationFrame(() => {
       setIsEditorVisible(true);
       editorEntryFrameRef.current = null;
     });
-  }, []);
+  }, [onAddStart]);
 
   const closeEditor = useCallback(() => {
     if (editorEntryFrameRef.current !== null) {
@@ -410,230 +396,232 @@ function SortableDomainRulesList({
     : siteRules;
   const isFiltering = Boolean(trimmedSearchValue);
 
-  return (
-    <section
-      aria-labelledby="website-settings-title"
-      className="flex flex-none flex-col"
+  const toolbar = (
+    <div
+      aria-label="Website settings tools"
+      className="flex h-10 items-center gap-1.5"
+      data-testid="domain-bottom-toolbar"
+      role="toolbar"
     >
-      <div
-        className={cn(
-          'sticky top-[48px] z-20 -mx-2 rounded-b-xl bg-slate-100/75 px-2 pt-6 pb-2 backdrop-blur-xl backdrop-saturate-150 dark:bg-slate-700/75',
-          isSticky && 'border-slate-200/80 border-b dark:border-slate-600/80'
-        )}
-        data-sticky={isSticky}
-        data-testid="website-settings-sticky-controls"
-        ref={stickyControlsRef}
-      >
-        <SectionTitle id="website-settings-title" title="Website settings">
-          <div className="flex items-center gap-1">
-            <Button
-              aria-label="Undo website removal"
-              className="size-5 shrink-0 rounded-full bg-amber-500/15 p-0 text-amber-600 transition-colors hover:bg-amber-500/25 hover:text-amber-700 disabled:bg-slate-300 disabled:text-slate-500 dark:bg-amber-400/15 dark:text-amber-300 dark:disabled:bg-slate-700 dark:disabled:text-slate-400 dark:hover:bg-amber-400/25 dark:hover:text-amber-200"
-              disabled={!canUndo || Boolean(removingDomain)}
-              onClick={onUndo}
-              size="icon-xs"
-              title="Undo last website removal"
-              type="button"
-              variant="ghost"
-            >
-              <Undo2Icon className="size-3.5" />
-            </Button>
-            <Button
-              aria-label="Redo website removal"
-              className="size-5 shrink-0 rounded-full bg-amber-500/15 p-0 text-amber-600 transition-colors hover:bg-amber-500/25 hover:text-amber-700 disabled:bg-slate-300 disabled:text-slate-500 dark:bg-amber-400/15 dark:text-amber-300 dark:disabled:bg-slate-700 dark:disabled:text-slate-400 dark:hover:bg-amber-400/25 dark:hover:text-amber-200"
-              disabled={!canRedo || Boolean(removingDomain)}
-              onClick={onRedo}
-              size="icon-xs"
-              title="Redo website removal"
-              type="button"
-              variant="ghost"
-            >
-              <Redo2Icon className="size-3.5" />
-            </Button>
-            <AppButton
-              aria-label="Add website"
-              disabled={isAdding}
-              onClick={openEditor}
-              size="sm"
-              type="button"
-            >
-              Add +
-            </AppButton>
-          </div>
-        </SectionTitle>
-
-        <div className="relative">
-          <SearchIcon
-            aria-hidden="true"
-            className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-slate-400 dark:text-slate-500"
-          />
-          <AppInputText
-            aria-label="Search website settings"
-            className="h-8 pr-8 pl-8 text-xs"
-            onChange={(event) => setSearchValue(event.target.value)}
-            placeholder="Search domains or URLs"
-            role="searchbox"
-            type="text"
-            value={searchValue}
-          />
-          {searchValue ? (
-            <Button
-              aria-label="Clear website search"
-              className="absolute top-1/2 right-1.5 size-5 -translate-y-1/2 rounded-md p-0 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-200"
-              onClick={() => setSearchValue('')}
-              title="Clear search"
-              type="button"
-              variant="ghost"
-            >
-              <XIcon className="size-3.5" />
-            </Button>
-          ) : null}
-        </div>
+      <div className="relative min-w-0 flex-1">
+        <SearchIcon
+          aria-hidden="true"
+          className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-slate-400 dark:text-slate-500"
+        />
+        <AppInputText
+          aria-label="Search website settings"
+          className="h-8 rounded-full pr-8 pl-8 text-xs"
+          onChange={(event) => setSearchValue(event.target.value)}
+          placeholder="Search domains or URLs"
+          ref={searchInputRef}
+          role="searchbox"
+          type="text"
+          value={searchValue}
+        />
+        {searchValue ? (
+          <Button
+            aria-label="Clear website search"
+            className="absolute top-1/2 right-1.5 size-5 -translate-y-1/2 rounded-full p-0 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+            onClick={() => setSearchValue('')}
+            title="Clear search"
+            type="button"
+            variant="ghost"
+          >
+            <XIcon className="size-3.5" />
+          </Button>
+        ) : null}
       </div>
+      <Button
+        aria-label="Undo website removal"
+        className="size-8 shrink-0 rounded-full bg-amber-500/15 p-0 text-amber-600 transition-colors hover:bg-amber-500/25 hover:text-amber-700 disabled:bg-slate-300 disabled:text-slate-500 dark:bg-amber-400/15 dark:text-amber-300 dark:disabled:bg-slate-700 dark:disabled:text-slate-400 dark:hover:bg-amber-400/25 dark:hover:text-amber-200"
+        disabled={!canUndo || Boolean(removingDomain)}
+        onClick={onUndo}
+        size="icon-xs"
+        title="Undo last website removal"
+        type="button"
+        variant="ghost"
+      >
+        <Undo2Icon className="size-3.5" />
+      </Button>
+      <Button
+        aria-label="Redo website removal"
+        className="size-8 shrink-0 rounded-full bg-amber-500/15 p-0 text-amber-600 transition-colors hover:bg-amber-500/25 hover:text-amber-700 disabled:bg-slate-300 disabled:text-slate-500 dark:bg-amber-400/15 dark:text-amber-300 dark:disabled:bg-slate-700 dark:disabled:text-slate-400 dark:hover:bg-amber-400/25 dark:hover:text-amber-200"
+        disabled={!canRedo || Boolean(removingDomain)}
+        onClick={onRedo}
+        size="icon-xs"
+        title="Redo website removal"
+        type="button"
+        variant="ghost"
+      >
+        <Redo2Icon className="size-3.5" />
+      </Button>
+      <AppButton
+        aria-label="Add website"
+        className="h-8 shrink-0 gap-1 rounded-full bg-brand-500 px-3 font-semibold text-white shadow-sm ring-1 ring-brand-600/30 transition-[background-color,box-shadow,transform] hover:-translate-y-px hover:bg-brand-600 hover:text-white hover:shadow-md active:translate-y-0 dark:bg-brand-500 dark:text-white dark:hover:bg-brand-400"
+        disabled={isAdding}
+        onClick={openEditor}
+        size="sm"
+        type="button"
+      >
+        <PlusIcon className="size-4 stroke-[2.5]" />
+        Add
+      </AppButton>
+    </div>
+  );
 
-      {isAdding ? (
-        <form
-          aria-hidden={!isEditorVisible || undefined}
-          className={cn(
-            'relative grid h-13 min-h-0 origin-top grid-cols-[20px_24px_minmax(0,1fr)_80px_28px] items-center gap-1 overflow-hidden rounded-t-xl bg-white pr-2 pl-2 opacity-100 transition-[height,opacity,transform] duration-200 ease-out motion-reduce:transition-none dark:bg-slate-800/70',
-            siteRules.length &&
-              "after:absolute after:right-3 after:bottom-0 after:left-3 after:h-px after:bg-slate-100/70 after:content-[''] dark:after:bg-white/5",
-            editorError && 'h-18 pb-3',
-            !isEditorVisible && 'h-0 -translate-y-2 scale-y-95 opacity-0'
-          )}
-          inert={!isEditorVisible || undefined}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') {
-              event.preventDefault();
-              closeEditor();
-            }
-          }}
-          onSubmit={submitEditor}
-        >
-          <span aria-hidden="true" className="w-5" />
-          <div className="flex h-full items-center justify-center">
-            <DomainFavicon domain={normalizedEditorDomain} />
-          </div>
-          <div className="min-w-0">
-            <AppInputText
-              aria-describedby={editorError ? 'site-editor-error' : undefined}
-              aria-invalid={Boolean(editorError)}
-              className="h-7 rounded-md px-2 text-xs"
-              onChange={(event) => {
-                setEditorValue(event.target.value);
-                if (editorError) setEditorError('');
-              }}
-              placeholder="example.com"
-              ref={editorInputRef}
-              value={editorValue}
-            />
-          </div>
-          <DomainModeControl
-            label="Access for new website"
-            onChange={setEditorMode}
-            value={editorMode}
-          />
-          <TooltipProvider>
-            <div className="flex h-full w-7 flex-col items-center justify-center gap-0.5">
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      aria-label="Discard website"
-                      className="size-5 shrink-0 rounded-md bg-red-500/15 p-0 text-red-600 transition-[color,background-color,transform] hover:scale-105 hover:bg-red-500/25 hover:text-red-700 dark:bg-red-400/15 dark:text-red-300 dark:hover:bg-red-400/25 dark:hover:text-red-200"
-                      onClick={closeEditor}
-                      type="button"
-                      variant="ghost"
-                    >
-                      <XIcon className="size-3" />
-                    </Button>
-                  }
-                />
-                <TooltipContent side="left">Discard (Esc)</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      aria-label="Create website"
-                      className="size-5 shrink-0 rounded-md bg-emerald-500/15 p-0 text-emerald-700 transition-[color,background-color,transform] hover:scale-105 hover:bg-emerald-500/25 hover:text-emerald-800 dark:bg-emerald-400/15 dark:text-emerald-300 dark:hover:bg-emerald-400/25 dark:hover:text-emerald-200"
-                      type="submit"
-                      variant="ghost"
-                    >
-                      <CheckIcon className="size-3" />
-                    </Button>
-                  }
-                />
-                <TooltipContent side="left">Create (Enter)</TooltipContent>
-              </Tooltip>
+  return (
+    <>
+      {toolbarTarget ? createPortal(toolbar, toolbarTarget) : null}
+      <section
+        aria-labelledby="website-settings-title"
+        className="flex flex-none flex-col pt-6"
+      >
+        <SectionTitle id="website-settings-title" title="Website settings" />
+
+        {isAdding ? (
+          <form
+            aria-hidden={!isEditorVisible || undefined}
+            className={cn(
+              'relative grid h-13 min-h-0 origin-top grid-cols-[20px_24px_minmax(0,1fr)_80px_28px] items-center gap-1 overflow-hidden rounded-t-xl bg-white pr-2 pl-2 opacity-100 transition-[height,opacity,transform] duration-200 ease-out motion-reduce:transition-none dark:bg-slate-800/70',
+              siteRules.length &&
+                "after:absolute after:right-3 after:bottom-0 after:left-3 after:h-px after:bg-slate-100/70 after:content-[''] dark:after:bg-white/5",
+              editorError && 'h-18 pb-3',
+              !isEditorVisible && 'h-0 -translate-y-2 scale-y-95 opacity-0'
+            )}
+            inert={!isEditorVisible || undefined}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                event.preventDefault();
+                closeEditor();
+              }
+            }}
+            onSubmit={submitEditor}
+          >
+            <span aria-hidden="true" className="w-5" />
+            <div className="flex h-full items-center justify-center">
+              <DomainFavicon domain={normalizedEditorDomain} />
             </div>
-          </TooltipProvider>
-          {editorError ? (
-            <span
-              className="absolute bottom-0.5 left-14 text-[9px] text-red-600 dark:text-red-300"
-              id="site-editor-error"
-              role="alert"
-            >
-              {editorError}
-            </span>
-          ) : null}
-        </form>
-      ) : null}
-
-      {visibleSiteRules.length ? (
-        <ul
-          aria-label="Saved website settings"
-          className={cn(
-            'list-none overflow-hidden rounded-xl bg-white dark:bg-slate-800/70',
-            isAdding && 'rounded-t-none'
-          )}
-        >
-          {visibleSiteRules.map((rule, index) => (
-            <DomainListItem
-              highlighted={highlightedDomain === rule.domain}
-              index={index}
-              isEntering={enteringDomains.has(rule.domain)}
-              isRemoving={removingDomain === rule.domain}
-              key={rule.domain}
-              onDragEnd={handleDragEnd}
-              onDragStart={handleDragStart}
-              onHoverMove={handleHoverMove}
-              onKeyboardMove={handleKeyboardMove}
-              onModeChange={onModeChange}
-              onRegisterRow={(domain, element) => {
-                if (element) rowRefs.current.set(domain, element);
-                else rowRefs.current.delete(domain);
-              }}
-              onRemove={onRemove}
-              onRename={handleRename}
-              rule={rule}
-              showDivider={index < visibleSiteRules.length - 1}
-              sortingDisabled={isAdding || isFiltering}
+            <div className="min-w-0">
+              <AppInputText
+                aria-describedby={editorError ? 'site-editor-error' : undefined}
+                aria-invalid={Boolean(editorError)}
+                className="h-7 rounded-md px-2 text-xs"
+                onChange={(event) => {
+                  setEditorValue(event.target.value);
+                  if (editorError) setEditorError('');
+                }}
+                placeholder="example.com"
+                ref={editorInputRef}
+                value={editorValue}
+              />
+            </div>
+            <DomainModeControl
+              label="Access for new website"
+              onChange={setEditorMode}
+              value={editorMode}
             />
-          ))}
-        </ul>
-      ) : (
-        <div
-          className={cn(
-            'flex min-h-24 flex-col items-center justify-center rounded-xl bg-white px-6 text-center dark:bg-slate-800/70',
-            isAdding && 'rounded-t-none'
-          )}
-        >
-          <p className="font-medium text-slate-700 text-xs dark:text-slate-200">
-            {siteRules.length ? 'No matching websites' : 'No custom websites'}
-          </p>
-          <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-            {siteRules.length
-              ? 'Try another domain or URL.'
-              : 'All websites follow the default above.'}
-          </p>
-        </div>
-      )}
+            <TooltipProvider>
+              <div className="flex h-full w-7 flex-col items-center justify-center gap-0.5">
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        aria-label="Discard website"
+                        className="size-5 shrink-0 rounded-md bg-red-500/15 p-0 text-red-600 transition-[color,background-color,transform] hover:scale-105 hover:bg-red-500/25 hover:text-red-700 dark:bg-red-400/15 dark:text-red-300 dark:hover:bg-red-400/25 dark:hover:text-red-200"
+                        onClick={closeEditor}
+                        type="button"
+                        variant="ghost"
+                      >
+                        <XIcon className="size-3" />
+                      </Button>
+                    }
+                  />
+                  <TooltipContent side="left">Discard (Esc)</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        aria-label="Create website"
+                        className="size-5 shrink-0 rounded-md bg-emerald-500/15 p-0 text-emerald-700 transition-[color,background-color,transform] hover:scale-105 hover:bg-emerald-500/25 hover:text-emerald-800 dark:bg-emerald-400/15 dark:text-emerald-300 dark:hover:bg-emerald-400/25 dark:hover:text-emerald-200"
+                        type="submit"
+                        variant="ghost"
+                      >
+                        <CheckIcon className="size-3" />
+                      </Button>
+                    }
+                  />
+                  <TooltipContent side="left">Create (Enter)</TooltipContent>
+                </Tooltip>
+              </div>
+            </TooltipProvider>
+            {editorError ? (
+              <span
+                className="absolute bottom-0.5 left-14 text-[9px] text-red-600 dark:text-red-300"
+                id="site-editor-error"
+                role="alert"
+              >
+                {editorError}
+              </span>
+            ) : null}
+          </form>
+        ) : null}
 
-      <p aria-live="polite" className="sr-only">
-        {announcement}
-      </p>
-    </section>
+        {visibleSiteRules.length ? (
+          <ul
+            aria-label="Saved website settings"
+            className={cn(
+              'list-none overflow-hidden rounded-xl bg-white dark:bg-slate-800/70',
+              isAdding && 'rounded-t-none'
+            )}
+          >
+            {visibleSiteRules.map((rule, index) => (
+              <DomainListItem
+                highlighted={highlightedDomain === rule.domain}
+                index={index}
+                isEntering={enteringDomains.has(rule.domain)}
+                isRemoving={removingDomain === rule.domain}
+                key={rule.domain}
+                onDragEnd={handleDragEnd}
+                onDragStart={handleDragStart}
+                onHoverMove={handleHoverMove}
+                onKeyboardMove={handleKeyboardMove}
+                onModeChange={onModeChange}
+                onRegisterRow={(domain, element) => {
+                  if (element) rowRefs.current.set(domain, element);
+                  else rowRefs.current.delete(domain);
+                }}
+                onRemove={onRemove}
+                onRename={handleRename}
+                rule={rule}
+                showDivider={index < visibleSiteRules.length - 1}
+                sortingDisabled={isAdding || isFiltering}
+              />
+            ))}
+          </ul>
+        ) : (
+          <div
+            className={cn(
+              'flex min-h-24 flex-col items-center justify-center rounded-xl bg-white px-6 text-center dark:bg-slate-800/70',
+              isAdding && 'rounded-t-none'
+            )}
+          >
+            <p className="font-medium text-slate-700 text-xs dark:text-slate-200">
+              {siteRules.length ? 'No matching websites' : 'No custom websites'}
+            </p>
+            <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+              {siteRules.length
+                ? 'Try another domain or URL.'
+                : 'All websites follow the default above.'}
+            </p>
+          </div>
+        )}
+
+        <p aria-live="polite" className="sr-only">
+          {announcement}
+        </p>
+      </section>
+    </>
   );
 }
 

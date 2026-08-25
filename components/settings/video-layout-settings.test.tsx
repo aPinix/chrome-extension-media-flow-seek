@@ -9,6 +9,7 @@ import {
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
 import { ActionAreaE } from '@/types/content';
 
 import { VideoLayoutSettings } from './video-layout-settings';
@@ -17,23 +18,27 @@ afterEach(cleanup);
 
 const createCallbacks = () => ({
   onActionAreaChange: vi.fn(),
+  onActionAreaReset: vi.fn(),
   onActionAreaSizeChange: vi.fn(),
   onActionAreaSizeReset: vi.fn(),
+  onActionAreaSizeUnitChange: vi.fn(),
   onHeightChange: vi.fn(),
   onHeightReset: vi.fn(),
   onPositionChange: vi.fn(),
+  onPositionReset: vi.fn(),
+  onShowTimelineOnHoverChange: vi.fn(),
   onUnitChange: vi.fn(),
-  onPlayPauseWheelEnabledChange: vi.fn(),
 });
 
 const baseProps = {
   actionArea: ActionAreaE.Full,
   actionAreaSize: 30,
-  colorizedTimeline: false,
+  actionAreaSizeUnit: '%' as const,
   height: 6,
+  isSeekbarSeekingEnabled: false,
   position: 'bottom' as const,
+  showTimelineOnHover: false,
   unit: 'px' as const,
-  isPlayPauseWheelEnabled: true,
 };
 
 const getRangeInput = (root: HTMLElement) => {
@@ -43,73 +48,33 @@ const getRangeInput = (root: HTMLElement) => {
 };
 
 describe('VideoLayoutSettings', () => {
-  it('renders one shared preview and keeps both control groups visible', () => {
+  it('renders one shared active-area and timeline configuration', () => {
     render(<VideoLayoutSettings {...baseProps} {...createCallbacks()} />);
 
-    expect(screen.getAllByTestId('video-layout-preview')).toHaveLength(1);
     expect(
-      within(screen.getByTestId('video-layout-preview')).getByText('PREVIEW')
+      screen.getByRole('heading', { name: 'Active Video Area' })
     ).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'Action Area' })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'Timeline' })).toBeTruthy();
     expect(
-      screen.queryByRole('button', { name: 'Cycle action area selection' })
-    ).toBeNull();
-
-    const actionAreaControl = screen.getByRole('group', {
-      name: 'Action area',
-    });
-    expect(within(actionAreaControl).getAllByRole('radio')).toHaveLength(4);
+      screen.getByRole('heading', { name: 'Timeline Appearance' })
+    ).toBeTruthy();
     expect(
-      (
-        within(actionAreaControl).getByRole('radio', {
-          name: 'Full',
-        }) as HTMLInputElement
-      ).checked
-    ).toBe(true);
-
+      within(
+        screen.getByRole('group', { name: 'Active video area' })
+      ).getAllByRole('radio')
+    ).toHaveLength(4);
     expect(
       screen.getByTestId('action-area-size-control').getAttribute('aria-hidden')
     ).toBe('true');
-    const hiddenAreaSizeInput = screen
-      .getByTestId('action-area-size-control')
-      .querySelector('input[type="range"]');
-    expect((hiddenAreaSizeInput as HTMLInputElement | null)?.disabled).toBe(
-      true
-    );
-    const timelinePositionOptions = within(
-      screen.getByRole('group', { name: 'Timeline position' })
-    ).getAllByRole('radio');
     expect(
-      timelinePositionOptions.map((option) => option.getAttribute('value'))
-    ).toEqual(['bottom', 'top']);
-    expect(
-      getRangeInput(screen.getByRole('group', { name: 'Timeline height' }))
-    ).toBeTruthy();
-    const timelineHeightControl = screen.getByRole('group', {
-      name: 'Timeline height',
-    });
-    expect(
-      timelineHeightControl.querySelector('[data-slot="app-slider-track"]')
-        ?.className
-    ).toContain('h-3');
-    expect(
-      screen.getByRole('spinbutton', { name: 'Timeline height value' })
-        .className
-    ).toContain('bg-slate-100');
-    expect(
-      timelineHeightControl.querySelector('[data-slot="app-slider-thumb"]')
-        ?.className
-    ).toContain('after:opacity-0');
-    expect(screen.getAllByRole('switch')).toHaveLength(1);
-    expect(screen.getByRole('heading', { name: 'Wheel Actions' })).toBeTruthy();
-    expect(screen.queryByText('Volume')).toBeNull();
+      screen
+        .getByRole('switch', { name: 'Show timeline on hover' })
+        .getAttribute('aria-checked')
+    ).toBe('false');
   });
 
-  it('calls every settings callback from its explicit controls', async () => {
+  it('calls the shared layout callbacks', async () => {
     const user = userEvent.setup();
     const callbacks = createCallbacks();
-
     render(
       <VideoLayoutSettings
         {...baseProps}
@@ -120,114 +85,172 @@ describe('VideoLayoutSettings', () => {
       />
     );
 
-    const actionAreaControl = screen.getByRole('group', {
-      name: 'Action area',
-    });
     await user.click(
-      within(actionAreaControl).getByRole('radio', { name: 'Top' })
+      within(
+        screen.getByRole('group', { name: 'Active video area' })
+      ).getByRole('radio', { name: 'Top' })
     );
     expect(callbacks.onActionAreaChange).toHaveBeenCalledWith(ActionAreaE.Top);
 
+    const actionAreaGroup = screen.getByRole('group', {
+      name: 'Active video area',
+    });
+    expect(actionAreaGroup.className).toContain('border-0');
+    expect(actionAreaGroup.className).toContain('bg-slate-200');
+    fireEvent.mouseEnter(
+      within(actionAreaGroup)
+        .getByRole('radio', { name: 'Bottom' })
+        .closest('label') as HTMLLabelElement
+    );
+    expect(callbacks.onActionAreaChange).toHaveBeenCalledTimes(1);
+
+    fireEvent.mouseLeave(actionAreaGroup);
+    expect(callbacks.onActionAreaChange).toHaveBeenCalledTimes(1);
+
     fireEvent.change(
       getRangeInput(screen.getByRole('group', { name: 'Action area size' })),
-      {
-        target: { value: '45' },
-      }
+      { target: { value: '45' } }
     );
     expect(callbacks.onActionAreaSizeChange).toHaveBeenCalledWith(45);
 
-    const timelinePosition = screen.getByRole('group', {
+    fireEvent.change(
+      screen.getByRole('spinbutton', { name: 'Action area size value' }),
+      { target: { value: '50' } }
+    );
+    expect(callbacks.onActionAreaSizeChange).toHaveBeenCalledWith(50);
+    const actionAreaSizeInput = screen.getByRole('spinbutton', {
+      name: 'Action area size value',
+    });
+    expect(actionAreaSizeInput.className).toContain('h-8');
+    expect(actionAreaSizeInput.className).toContain('bg-slate-200');
+    expect(actionAreaSizeInput.parentElement?.className).toContain('w-32');
+    expect(actionAreaSizeInput.parentElement?.textContent).toContain('%');
+    const actionAreaUnitGroup = screen.getByRole('group', {
+      name: 'Action area size unit',
+    });
+    expect(actionAreaUnitGroup.className).toContain('inset-y-1');
+    await user.click(
+      within(actionAreaUnitGroup).getByRole('radio', { name: 'px' })
+    );
+    expect(callbacks.onActionAreaSizeUnitChange).toHaveBeenCalledWith('px');
+
+    const timelinePositionGroup = screen.getByRole('group', {
       name: 'Timeline position',
     });
+    expect(timelinePositionGroup.className).toContain('border-0');
+    expect(timelinePositionGroup.className).toContain('bg-slate-200');
     await user.click(
-      within(timelinePosition).getByRole('radio', { name: 'Top' })
+      within(timelinePositionGroup).getByRole('radio', { name: 'Top' })
     );
     expect(callbacks.onPositionChange).toHaveBeenCalledWith('top');
 
-    fireEvent.change(
-      screen.getByRole('spinbutton', { name: 'Timeline height value' }),
-      {
-        target: { value: '14' },
-      }
+    await user.click(
+      screen.getByRole('switch', { name: 'Show timeline on hover' })
     );
+    expect(callbacks.onShowTimelineOnHoverChange).toHaveBeenCalledWith(
+      true,
+      expect.anything()
+    );
+
+    const timelineHeightInput = screen.getByRole('spinbutton', {
+      name: 'Timeline height value',
+    });
+    expect(timelineHeightInput.className).toContain('bg-slate-200');
+    expect(
+      screen.getByRole('group', { name: 'Timeline height unit' }).className
+    ).toContain('inset-y-1');
+    expect(
+      screen.getByRole('group', { name: 'Timeline height unit' }).className
+    ).toContain('border-0');
+    expect(
+      screen.getByRole('group', { name: 'Timeline height unit' }).className
+    ).toContain('bg-slate-300/80');
+    fireEvent.change(timelineHeightInput, { target: { value: '14' } });
     expect(callbacks.onHeightChange).toHaveBeenCalledWith(14);
-
-    await user.click(screen.getByRole('radio', { name: '%' }));
-    expect(callbacks.onUnitChange).toHaveBeenCalledWith('%');
-
-    await user.click(
-      screen.getByRole('button', { name: 'Reset area size to default' })
-    );
-    expect(callbacks.onActionAreaSizeReset).toHaveBeenCalledOnce();
-
-    await user.click(
-      screen.getByRole('button', { name: 'Reset height to default' })
-    );
-    expect(callbacks.onHeightReset).toHaveBeenCalledOnce();
-
-    await user.click(
-      screen.getByRole('switch', { name: 'Toggle play pause wheel action' })
-    );
-    expect(callbacks.onPlayPauseWheelEnabledChange).toHaveBeenCalledWith(false);
   });
 
-  it('disables each reset button when its slider is at the default', () => {
+  it('locks effective hover visibility on without overwriting the preference', () => {
+    const callbacks = createCallbacks();
     render(
       <VideoLayoutSettings
         {...baseProps}
-        {...createCallbacks()}
-        actionArea={ActionAreaE.Middle}
+        {...callbacks}
+        isSeekbarSeekingEnabled={true}
+        showTimelineOnHover={false}
       />
     );
 
-    for (const resetButton of [
-      screen.getByRole('button', { name: 'Reset area size to default' }),
-      screen.getByRole('button', { name: 'Reset height to default' }),
-    ]) {
-      expect(resetButton).toHaveProperty('disabled', true);
-      expect(resetButton.className).toContain('disabled:bg-slate-300');
-      expect(resetButton.className).toContain('disabled:text-slate-500');
-      expect(resetButton.className).toContain('dark:disabled:bg-slate-700');
-      expect(resetButton.className).toContain('dark:disabled:text-slate-400');
-    }
+    const hoverSwitch = screen.getByRole('switch', {
+      name: 'Show timeline on hover',
+    });
+    expect(hoverSwitch.getAttribute('aria-checked')).toBe('true');
+    expect(hoverSwitch.getAttribute('aria-disabled')).toBe('true');
+    expect(
+      screen.getByLabelText('Why Show on Hover is locked').className
+    ).toContain('cursor-help');
+    expect(
+      screen.getByText(/Locked on while Click & Drag Seekbar/)
+    ).toBeTruthy();
+    expect(callbacks.onShowTimelineOnHoverChange).not.toHaveBeenCalled();
   });
 
-  it('positions every action-area state from the selected percentage', () => {
+  it('keeps timeline height reset enabled until both 6 and px are restored', async () => {
+    const user = userEvent.setup();
+    const callbacks = createCallbacks();
+    const { rerender } = render(
+      <VideoLayoutSettings {...baseProps} {...callbacks} height={6} unit="%" />
+    );
+
+    const reset = screen.getByRole('button', {
+      name: 'Reset height to default',
+    });
+    expect((reset as HTMLButtonElement).disabled).toBe(false);
+    await user.click(reset);
+    expect(callbacks.onHeightReset).toHaveBeenCalledOnce();
+
+    rerender(
+      <VideoLayoutSettings {...baseProps} {...callbacks} height={6} unit="px" />
+    );
+    expect((reset as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('resets timeline position to the Bottom default', async () => {
+    const user = userEvent.setup();
+    const callbacks = createCallbacks();
+    const { rerender } = render(
+      <VideoLayoutSettings {...baseProps} {...callbacks} position="top" />
+    );
+
+    const reset = screen.getByRole('button', {
+      name: 'Reset timeline position to default',
+    });
+    expect((reset as HTMLButtonElement).disabled).toBe(false);
+    await user.click(reset);
+    expect(callbacks.onPositionReset).toHaveBeenCalledOnce();
+
+    rerender(
+      <VideoLayoutSettings {...baseProps} {...callbacks} position="bottom" />
+    );
+    expect((reset as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('resets the active video area to the Full default', async () => {
+    const user = userEvent.setup();
     const callbacks = createCallbacks();
     const { rerender } = render(
       <VideoLayoutSettings
         {...baseProps}
         {...callbacks}
-        actionArea={ActionAreaE.Top}
-        actionAreaSize={40}
-      />
-    );
-    const overlay = screen.getByTestId('action-area-overlay');
-
-    expect(overlay.style.height).toBe('40%');
-    expect(overlay.style.top).toBe('0%');
-
-    rerender(
-      <VideoLayoutSettings
-        {...baseProps}
-        {...callbacks}
         actionArea={ActionAreaE.Middle}
-        actionAreaSize={40}
       />
     );
-    expect(overlay.style.height).toBe('40%');
-    expect(overlay.style.top).toBe('30%');
 
-    rerender(
-      <VideoLayoutSettings
-        {...baseProps}
-        {...callbacks}
-        actionArea={ActionAreaE.Bottom}
-        actionAreaSize={40}
-      />
-    );
-    expect(overlay.style.height).toBe('40%');
-    expect(overlay.style.top).toBe('60%');
+    const reset = screen.getByRole('button', {
+      name: 'Reset active video area to default',
+    });
+    expect((reset as HTMLButtonElement).disabled).toBe(false);
+    await user.click(reset);
+    expect(callbacks.onActionAreaReset).toHaveBeenCalledOnce();
 
     rerender(
       <VideoLayoutSettings
@@ -236,46 +259,49 @@ describe('VideoLayoutSettings', () => {
         actionArea={ActionAreaE.Full}
       />
     );
-    expect(overlay.style.height).toBe('');
-    expect(overlay.style.top).toBe('');
-    expect(overlay.className).toContain('inset-0');
+    expect((reset as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('updates the preview timeline position, height, and unit', () => {
+  it('enables Area Size reset for any value other than 30%', async () => {
+    const user = userEvent.setup();
     const callbacks = createCallbacks();
     const { rerender } = render(
-      <VideoLayoutSettings {...baseProps} {...callbacks} />
+      <VideoLayoutSettings
+        {...baseProps}
+        {...callbacks}
+        actionArea={ActionAreaE.Middle}
+        actionAreaSize={30}
+        actionAreaSizeUnit="px"
+      />
     );
-    const timeline = screen.getByTestId('timeline-overlay');
-    const timelineProgress = screen.getByTestId('timeline-progress');
 
-    expect(timeline.style.height).toBe('6px');
-    expect(timeline.style.top).toBe('calc(100% - 6px)');
-    expect(timelineProgress.className).not.toContain('border');
-    expect(timelineProgress.className).toContain('bg-white/55');
+    const reset = screen.getByRole('button', {
+      name: 'Reset area size to default',
+    });
+    expect((reset as HTMLButtonElement).disabled).toBe(false);
 
     rerender(
       <VideoLayoutSettings
         {...baseProps}
         {...callbacks}
-        height={12}
-        position="top"
-        unit="%"
+        actionArea={ActionAreaE.Middle}
+        actionAreaSize={40}
+        actionAreaSizeUnit="%"
       />
     );
-    expect(timeline.style.height).toBe('12%');
-    expect(timeline.style.top).toBe('0px');
-    expect(screen.getByRole('img').getAttribute('aria-label')).toContain(
-      'top timeline at 12%'
-    );
+    expect((reset as HTMLButtonElement).disabled).toBe(false);
+    await user.click(reset);
+    expect(callbacks.onActionAreaSizeReset).toHaveBeenCalledOnce();
 
     rerender(
       <VideoLayoutSettings
         {...baseProps}
         {...callbacks}
-        colorizedTimeline={true}
+        actionArea={ActionAreaE.Middle}
+        actionAreaSize={30}
+        actionAreaSizeUnit="%"
       />
     );
-    expect(timelineProgress.className).toContain('bg-brand-400/80');
+    expect((reset as HTMLButtonElement).disabled).toBe(true);
   });
 });

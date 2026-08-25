@@ -37,8 +37,8 @@ export function AppSelect<TValue extends string>({
       <SelectTrigger
         aria-label={label}
         className={cn(
-          'bg-brand-50 text-brand-500 hover:bg-brand-100',
-          'dark:bg-brand-600 dark:text-brand-50 dark:hover:bg-brand-700',
+          'border-violet-300 bg-violet-100 text-violet-700 hover:border-violet-400 hover:bg-violet-200 [&_svg]:text-violet-600',
+          'dark:border-violet-700 dark:bg-violet-900 dark:text-violet-300 dark:hover:border-violet-600 dark:hover:bg-violet-800 dark:[&_svg]:text-violet-300',
           className
         )}
         size="sm"

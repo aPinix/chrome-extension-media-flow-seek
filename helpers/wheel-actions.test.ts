@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   getPrimaryModifierLabel,
+  getWheelPlaybackAction,
   isHorizontalWheelAction,
+  isPrimaryWheelModifierCode,
   matchesPrimaryWheelModifier,
 } from '@/helpers/wheel-actions';
 
@@ -22,6 +24,9 @@ describe('wheel actions', () => {
   it('maps Primary to Command on macOS and Ctrl on Windows', () => {
     expect(getPrimaryModifierLabel('MacIntel')).toBe('Command');
     expect(getPrimaryModifierLabel('Win32')).toBe('Ctrl');
+    expect(isPrimaryWheelModifierCode('MetaLeft', 'MacIntel')).toBe(true);
+    expect(isPrimaryWheelModifierCode('ControlRight', 'Win32')).toBe(true);
+    expect(isPrimaryWheelModifierCode('ControlLeft', 'MacIntel')).toBe(false);
     expect(
       matchesPrimaryWheelModifier(modifiers({ metaKey: true }), 'MacIntel')
     ).toBe(true);
@@ -42,5 +47,10 @@ describe('wheel actions', () => {
   it('requires a dominant axis and ignores tiny deltas', () => {
     expect(isHorizontalWheelAction({ deltaX: 10, deltaY: 1 })).toBe(true);
     expect(isHorizontalWheelAction({ deltaX: 1, deltaY: 0 })).toBe(false);
+  });
+
+  it('maps left swipes to pause and right swipes to play', () => {
+    expect(getWheelPlaybackAction({ deltaX: 20 })).toBe('pause');
+    expect(getWheelPlaybackAction({ deltaX: -20 })).toBe('play');
   });
 });

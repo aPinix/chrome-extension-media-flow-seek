@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { AppInputText } from '@/components/app/app-input-text';
-import { AppSegmentedControl } from '@/components/app/app-segmented-control';
+import { AppSegment } from '@/components/app/app-segment';
 import { AppSlider } from '@/components/app/app-slider';
 import { cn } from '@/lib/utils';
 
@@ -54,10 +54,10 @@ const TimelineHeightControl = ({
         trackClassName="h-3"
         value={value}
       />
-      <div className="relative h-7 w-32 shrink-0">
+      <div className="relative h-8 w-32 shrink-0 rounded-full bg-slate-200 dark:bg-slate-800">
         <AppInputText
           aria-label="Timeline height value"
-          className="h-7 w-full appearance-none rounded-full bg-slate-100 pr-20 pl-2 text-center font-mono text-xs [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          className="h-8 w-full appearance-none rounded-full bg-slate-200 pr-20 pl-2 text-center font-mono text-xs focus-visible:bg-slate-200 dark:bg-slate-800 dark:focus-visible:bg-slate-800 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
           inputMode="numeric"
           max={100}
           min={0}
@@ -84,8 +84,9 @@ const TimelineHeightControl = ({
           value={inputValue}
         />
 
-        <AppSegmentedControl
-          className="absolute inset-y-0 right-0 z-10 h-7 w-20 rounded-full"
+        <AppSegment
+          className="absolute inset-y-1 right-1 z-10 h-6 w-18 rounded-full border-0! dark:border-0!"
+          embedded
           label="Timeline height unit"
           onValueChange={onUnitChange}
           options={[

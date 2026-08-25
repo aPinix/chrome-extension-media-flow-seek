@@ -24,7 +24,9 @@ import {
 import type { SettingsManager } from '@/helpers/settings-manager';
 import type { VideoStateManager } from '@/helpers/video-state';
 import {
+  getWheelPlaybackAction,
   isHorizontalWheelAction,
+  isPrimaryWheelModifierCode,
   matchesPrimaryWheelModifier,
 } from '@/helpers/wheel-actions';
 import {
@@ -86,6 +88,8 @@ const DEFAULT_TIMELINE_PROGRESS_BACKGROUND = 'rgb(255 255 255 / 0.3)';
 const SETTINGS_LAYOUT_TRANSITION_MS = 320;
 const ACTION_AREA_PREVIEW_MS = 1200;
 const ACTION_AREA_PREVIEW_BACKGROUND = 'rgb(126 34 206 / 0.4)';
+const ACTION_AREA_PREVIEW_BORDER = 'inset 0 0 0 2px rgb(196 181 253 / 0.9)';
+const PASSIVE_PREVIEW_Z_INDEX = '2147483644';
 const isPlaybackToggleHotkey = (event: KeyboardEvent): boolean =>
   event.code === 'Space' ||
   event.key === ' ' ||
@@ -119,15 +123,21 @@ export class OverlayCreator {
   private videoStateManager: VideoStateManager;
   private keyboardEventListenerAdded = false;
   private pressedKeys = new Set<string>();
+  private isKeyboardSuspended = false;
   private checkForVideos: () => void;
   private isFastHideStyleInjected = false;
   private styledDocuments = new WeakSet<Document>();
   private hoverTrackedDocuments = new WeakSet<Document>();
+  private lastPointerPoints = new WeakMap<
+    Document,
+    { clientX: number; clientY: number }
+  >();
   private dialogGuardedDocuments = new WeakSet<Document>();
   private timelinePreviewTimeouts = new WeakMap<HTMLDivElement, number>();
   private timelineLayoutTimeouts = new WeakMap<HTMLDivElement, number>();
   private actionAreaPreviewTimeouts = new WeakMap<HTMLDivElement, number>();
   private actionAreaOriginalBackgrounds = new WeakMap<HTMLDivElement, string>();
+  private actionAreaOriginalBoxShadows = new WeakMap<HTMLDivElement, string>();
   private actionAreaOriginalTransitions = new WeakMap<HTMLDivElement, string>();
   private nextVideoId = 1;
 
@@ -140,6 +150,13 @@ export class OverlayCreator {
     this.videoStateManager = videoStateManager;
     this.checkForVideos = checkForVideos;
     this.setupKeyboardEventListener();
+  }
+
+  // YouTube creates its preview video after the pointer has already rested on
+  // a thumbnail. Content startup calls this before any video is found so a
+  // late-mounted preview can immediately restore that hover point.
+  startDocumentHoverTracking(ownerDocument: Document = document): void {
+    this.setupDocumentHoverTracking(ownerDocument);
   }
 
   private setupKeyboardEventListener(): void {
@@ -167,48 +184,34 @@ export class OverlayCreator {
     // halfway through the event and make one press toggle playback repeatedly.
     if (isPlaybackToggleHotkey(event)) return;
 
-    // Ctrl and Alt remain available while the overlay is active so they can
-    // modify the speed of the next wheel gesture.
-    if (
-      isScrollSpeedHotkeyCode(
-        event.code,
-        this.settingsManager.getFastScrollHotkey(),
-        this.settingsManager.getSlowScrollHotkey()
-      )
-    )
+    // Keep configured wheel modifiers available so their gesture reaches the
+    // existing overlay instead of suspending it first. Track them so a real
+    // multi-key shortcut still remains suspended until every key is released.
+    if (this.isWheelActionModifierCode(event.code)) {
+      this.pressedKeys.add(event.code);
       return;
+    }
 
     // Ignore auto-repeat keydown events to prevent repeated work
     if (event.repeat) return;
 
-    // Track pressed keys and check if this is the first key
-    const wasEmpty = this.pressedKeys.size === 0;
+    // Track pressed keys. Reserved modifiers may already be present without
+    // having suspended the overlay.
     this.pressedKeys.add(event.code);
 
-    // Only run disable path on first key down transition
-    if (!wasEmpty) return;
+    if (this.isKeyboardSuspended) return;
 
-    // Disable the extension when any key is pressed (same as popup disable)
-    // This prevents interference with default video controls
-    this.settingsManager.updateSetting('isEnabled', false);
+    // Temporarily suspend interaction without destroying the overlay. Reusing
+    // the same wheel/scroll listeners avoids a fragile teardown/rebuild cycle
+    // for short-lived preview videos and custom player frames.
+    this.isKeyboardSuspended = true;
 
     if (this.settingsManager.isDebugEnabled()) {
       console.log('🚫 Extension disabled by key press, fast-hiding overlays');
     }
 
-    // 1) Instant visual hide via CSS so it feels immediate
+    // Hide the extension UI immediately while the page handles the shortcut.
     this.fastHideOverlays();
-
-    // 2) Defer heavier DOM removals to the next frame to keep input-to-paint fast
-    requestAnimationFrame(() => {
-      DOMUtils.removeExistingScrubWrappers();
-      DOMUtils.removeOverlayAttributes();
-      this.videoStateManager.clear();
-
-      if (this.settingsManager.isDebugEnabled()) {
-        console.log('🧹 Overlays removed and state cleared (deferred)');
-      }
-    });
 
     if (this.settingsManager.isDebugEnabled()) {
       console.log(
@@ -222,12 +225,12 @@ export class OverlayCreator {
   private handleKeyUp(event: KeyboardEvent): void {
     if (isPlaybackToggleHotkey(event)) return;
 
+    // A modifier that was previously tracked must still be released if the
+    // setting changed while it was held. Untracked wheel modifiers stay out of
+    // the keyboard-suspension lifecycle entirely.
     if (
-      isScrollSpeedHotkeyCode(
-        event.code,
-        this.settingsManager.getFastScrollHotkey(),
-        this.settingsManager.getSlowScrollHotkey()
-      )
+      !this.pressedKeys.has(event.code) &&
+      this.isWheelActionModifierCode(event.code)
     )
       return;
 
@@ -238,23 +241,24 @@ export class OverlayCreator {
       console.log('🎯 PRESSED KEYS:', this.pressedKeys.size);
     }
 
-    // If no keys are pressed, re-enable the extension (same as popup enable)
-    if (this.pressedKeys.size === 0) {
-      this.settingsManager.updateSetting('isEnabled', true);
+    if (this.pressedKeys.size === 0) this.resumeKeyboardSuspension();
+  }
 
-      if (this.settingsManager.isDebugEnabled()) {
-        console.log('✅ Extension enabled by key release, checking for videos');
-      }
+  private isWheelActionModifierCode(code: string): boolean {
+    return (
+      isScrollSpeedHotkeyCode(
+        code,
+        this.settingsManager.getFastScrollHotkey(),
+        this.settingsManager.getSlowScrollHotkey()
+      ) || this.isPlayPauseWheelModifierCode(code)
+    );
+  }
 
-      // Remove fast-hide artifacts so overlays can be recreated
-      document.documentElement.classList.remove('mfs-disabled');
-      const s = document.getElementById('mfs-fast-hide');
-      if (s) s.remove();
-      this.isFastHideStyleInjected = false;
-
-      // Extension is enabled, check for videos again (same as popup enable logic)
-      setTimeout(() => this.checkForVideos(), 100);
-    }
+  private isPlayPauseWheelModifierCode(code: string): boolean {
+    return (
+      this.settingsManager.isPlayPauseWheelEnabled() &&
+      isPrimaryWheelModifierCode(code)
+    );
   }
 
   private clearAllPressedKeys(): void {
@@ -266,20 +270,26 @@ export class OverlayCreator {
       );
     }
     this.pressedKeys.clear();
-    this.settingsManager.updateSetting('isEnabled', true);
+    this.resumeKeyboardSuspension();
+  }
 
-    if (this.settingsManager.isDebugEnabled()) {
-      console.log('✅ Extension enabled by focus change, checking for videos');
-    }
+  private resumeKeyboardSuspension(): void {
+    if (!this.isKeyboardSuspended) return;
 
-    // Remove fast-hide artifacts so overlays can be recreated
+    this.isKeyboardSuspended = false;
     document.documentElement.classList.remove('mfs-disabled');
-    const s = document.getElementById('mfs-fast-hide');
-    if (s) s.remove();
+    document.getElementById('mfs-fast-hide')?.remove();
     this.isFastHideStyleInjected = false;
 
-    // Extension is enabled, check for videos again (same as popup enable logic)
-    setTimeout(() => this.checkForVideos(), 100);
+    if (this.settingsManager.isDebugEnabled()) {
+      console.log('✅ Extension resumed by key release, checking for videos');
+    }
+
+    // Preserve connected controllers, while still repairing any player DOM
+    // that the site replaced during the shortcut.
+    setTimeout(() => {
+      if (!this.isKeyboardSuspended) this.checkForVideos();
+    }, 100);
   }
 
   private fastHideOverlays(): void {
@@ -424,6 +434,7 @@ export class OverlayCreator {
 
     this.updateVideoControlsForVideo(video, videoState);
     this.setupDocumentHoverTracking(ownerDocument);
+    this.restoreDocumentHoverAtLastPointer(ownerDocument);
 
     const timelineSeekingController = this.setupTimelineSeeking(
       video,
@@ -486,7 +497,7 @@ export class OverlayCreator {
       () => videoState.isHovering,
       deferredSeek,
       debugMode,
-      playbackController.togglePlayback
+      playbackController.setPlayback
     );
 
     // Setup video sync events
@@ -510,8 +521,7 @@ export class OverlayCreator {
 
       timelineLayoutFrame = ownerWindow.requestAnimationFrame(() => {
         timelineLayoutFrame = null;
-        this.updateTimelineInteractivityForVideo(video, scrubTimeline);
-        this.updateMediaControlsPlacement(video, videoState);
+        updateOverlayAndTimeline();
       });
     };
     ownerDocument.addEventListener('scroll', scheduleTimelineLayoutUpdate, {
@@ -572,7 +582,9 @@ export class OverlayCreator {
     if (existingId) return existingId;
 
     const id = `media-flow-seek-${this.nextVideoId++}`;
-    video.setAttribute('data-media-flow-seek-id', id);
+    if (!DOMUtils.isYouTubeHoverPreview(video)) {
+      video.setAttribute('data-media-flow-seek-id', id);
+    }
     return id;
   }
 
@@ -1270,7 +1282,9 @@ export class OverlayCreator {
     position: 'top' | 'bottom',
     fillsVideoHeight: boolean
   ): void {
-    const geometrySource = this.findVisibleVideoContainer(video) ?? video;
+    const geometrySource = DOMUtils.isYouTubeHoverPreview(video)
+      ? this.getPassivePreviewGeometrySource(video)
+      : (this.findVisibleVideoContainer(video) ?? video);
     const targetElement = this.findEffectiveBorderRadiusSource(
       video,
       geometrySource
@@ -1640,14 +1654,20 @@ export class OverlayCreator {
 
     const isInsideVideo = (clientX: number, clientY: number): boolean => {
       const rect = videoState.wrapper.getBoundingClientRect();
+      const { top, height } = this.calculateActionAreaDimensions(
+        rect.height,
+        this.settingsManager.getActionArea()
+      );
+      const actionAreaTop = rect.top + top;
+      const actionAreaBottom = actionAreaTop + height;
       return (
         videoState.wrapper.isConnected &&
         rect.width > 0 &&
         rect.height > 0 &&
         clientX >= rect.left &&
         clientX <= rect.right &&
-        clientY >= rect.top &&
-        clientY <= rect.bottom
+        clientY >= actionAreaTop &&
+        clientY <= actionAreaBottom
       );
     };
 
@@ -1964,33 +1984,54 @@ export class OverlayCreator {
   } {
     const ownerDocument = video.ownerDocument;
     const ownerWindow = ownerDocument.defaultView ?? window;
-    const videoRect = video.getBoundingClientRect();
-    const videoContainer = this.findOverlayHost(video);
+    const isPassiveYouTubePreview = DOMUtils.isYouTubeHoverPreview(video);
+    const videoRect = (
+      isPassiveYouTubePreview
+        ? this.getPassivePreviewGeometrySource(video)
+        : video
+    ).getBoundingClientRect();
+    const videoContainer = isPassiveYouTubePreview
+      ? null
+      : this.findOverlayHost(video);
 
     // Make sure the container has relative positioning
-    if (ownerWindow.getComputedStyle(videoContainer).position === 'static') {
+    if (
+      videoContainer &&
+      ownerWindow.getComputedStyle(videoContainer).position === 'static'
+    ) {
       videoContainer.style.position = 'relative';
     }
 
     // Get video's position relative to its container
-    const containerRect = videoContainer.getBoundingClientRect();
-    const relativeTop = videoRect.top - containerRect.top;
-    const relativeLeft = videoRect.left - containerRect.left;
+    const containerRect = videoContainer?.getBoundingClientRect();
+    const relativeTop = isPassiveYouTubePreview
+      ? videoRect.top
+      : videoRect.top - (containerRect?.top ?? 0);
+    const relativeLeft = isPassiveYouTubePreview
+      ? videoRect.left
+      : videoRect.left - (containerRect?.left ?? 0);
 
     // Create scrub wrapper div
     const scrubWrapper = ownerDocument.createElement('div');
     scrubWrapper.style.cssText = `
-      position: absolute;
+      position: ${isPassiveYouTubePreview ? 'fixed' : 'absolute'};
       top: ${relativeTop}px;
       left: ${relativeLeft}px;
-      width: ${video.offsetWidth}px;
-      height: ${video.offsetHeight}px;
+      width: ${isPassiveYouTubePreview ? videoRect.width : video.offsetWidth}px;
+      height: ${isPassiveYouTubePreview ? videoRect.height : video.offsetHeight}px;
+      ${isPassiveYouTubePreview ? `z-index: ${PASSIVE_PREVIEW_Z_INDEX};` : ''}
       pointer-events: none;
     `;
     scrubWrapper.classList.add('scrub-wrapper');
+    if (isPassiveYouTubePreview) {
+      scrubWrapper.dataset.mfsPassivePreviewHost = 'true';
+    }
 
     // Create debug indicator
     const debugIndicator = this.createDebugIndicator(ownerDocument);
+    if (isPassiveYouTubePreview) {
+      debugIndicator.style.setProperty('pointer-events', 'none', 'important');
+    }
 
     return { scrubWrapper, debugIndicator };
   }
@@ -2352,6 +2393,14 @@ export class OverlayCreator {
     video: HTMLVideoElement,
     scrubWrapper: HTMLDivElement
   ): void {
+    if (scrubWrapper.dataset.mfsPassivePreviewHost === 'true') {
+      // Keep extension DOM outside YouTube's thumbnail renderer. Mutating the
+      // renderer while the pointer is stationary can cancel its native hover
+      // animation even when every extension layer is pointer-transparent.
+      video.ownerDocument.documentElement.appendChild(scrubWrapper);
+      return;
+    }
+
     const videoContainer = this.findOverlayHost(video);
 
     // Keep the overlay near the video when its immediate parent is also the
@@ -2391,7 +2440,12 @@ export class OverlayCreator {
     video: HTMLVideoElement,
     debugMode: boolean,
     getIsHovering: () => boolean = () => false
-  ): { cleanup: () => void; sync: () => void; togglePlayback: () => void } {
+  ): {
+    cleanup: () => void;
+    setPlayback: (shouldPlay: boolean) => void;
+    sync: () => void;
+    togglePlayback: () => void;
+  } {
     const ownerDocument = video.ownerDocument;
     const ownerWindow = ownerDocument.defaultView ?? window;
     let feedbackElement: HTMLDivElement | null = null;
@@ -2447,22 +2501,28 @@ export class OverlayCreator {
 
     const canTogglePlayback = (event: MouseEvent): boolean =>
       event.button === 0 &&
+      !DOMUtils.isYouTubeHoverPreview(video) &&
       this.settingsManager.shouldHideVideoControls() &&
       getMediaSeekRange(video) !== null;
 
-    const togglePlayback = (): void => {
-      if (video.paused) {
+    const setPlayback = (shouldPlay: boolean): void => {
+      if (shouldPlay) {
+        if (!video.paused) return;
         showFeedback('play');
         void video.play().catch((error) => {
           if (debugMode) {
             console.warn('Unable to play video from overlay click:', error);
           }
         });
-      } else {
-        showFeedback('pause', getIsHovering());
-        video.pause();
+        return;
       }
+
+      if (video.paused) return;
+      showFeedback('pause', getIsHovering());
+      video.pause();
     };
+
+    const togglePlayback = (): void => setPlayback(video.paused);
 
     const clearScheduledPlaybackToggle = (): void => {
       if (playbackClickTimeout === null) return;
@@ -2650,6 +2710,7 @@ export class OverlayCreator {
         video.removeEventListener('loadedmetadata', syncPausedFeedback);
         clearFeedback();
       },
+      setPlayback,
       sync: syncPausedFeedback,
       togglePlayback,
     };
@@ -2703,26 +2764,30 @@ export class OverlayCreator {
    */
   private calculateActionAreaDimensions(
     targetHeight: number,
-    actionArea: ActionAreaT
+    actionArea: ActionAreaT,
+    actionAreaSize = this.settingsManager.getActionAreaSize(),
+    actionAreaSizeUnit = this.settingsManager.getActionAreaSizeUnit()
   ): { top: number; height: number } {
-    const actionAreaSize = this.settingsManager.getActionAreaSize();
-    const sizeRatio = actionAreaSize / 100; // Convert percentage to ratio
+    const partialHeight = Math.min(
+      targetHeight,
+      actionAreaSizeUnit === '%'
+        ? targetHeight * (actionAreaSize / 100)
+        : actionAreaSize
+    );
 
     switch (actionArea) {
       case ActionAreaE.Top:
-        return { top: 0, height: targetHeight * sizeRatio };
+        return { top: 0, height: partialHeight };
       case ActionAreaE.Middle: {
-        const middleHeight = targetHeight * sizeRatio;
         return {
-          top: (targetHeight - middleHeight) / 2,
-          height: middleHeight,
+          top: (targetHeight - partialHeight) / 2,
+          height: partialHeight,
         };
       }
       case ActionAreaE.Bottom: {
-        const bottomHeight = targetHeight * sizeRatio;
         return {
-          top: targetHeight - bottomHeight,
-          height: bottomHeight,
+          top: targetHeight - partialHeight,
+          height: partialHeight,
         };
       }
       case ActionAreaE.Full:
@@ -2739,17 +2804,28 @@ export class OverlayCreator {
     return () => {
       if (!scrubWrapper || !video) return;
 
-      // Try to find the actual visible container first
-      const visibleContainer = this.findVisibleVideoContainer(video);
-      const targetElement = visibleContainer || video;
-
+      const isPassivePreview =
+        scrubWrapper.dataset.mfsPassivePreviewHost === 'true';
+      // YouTube can render a vertical video taller than the thumbnail and clip
+      // it to cover the available media area. Use that clipping rectangle for
+      // passive previews; the raw <video> can extend into card metadata.
+      const visibleContainer = isPassivePreview
+        ? this.getPassivePreviewGeometrySource(video)
+        : this.findVisibleVideoContainer(video);
+      const targetElement = visibleContainer ?? video;
       const targetRect = targetElement.getBoundingClientRect();
-      const videoContainer = this.findOverlayHost(video);
-      const containerRect = videoContainer.getBoundingClientRect();
-      const relativeTop = targetRect.top - containerRect.top;
-      const relativeLeft = targetRect.left - containerRect.left;
+      let relativeTop = targetRect.top;
+      let relativeLeft = targetRect.left;
+
+      if (!isPassivePreview) {
+        const videoContainer = this.findOverlayHost(video);
+        const containerRect = videoContainer.getBoundingClientRect();
+        relativeTop -= containerRect.top;
+        relativeLeft -= containerRect.left;
+      }
 
       // Always position wrapper to match the full video area
+      scrubWrapper.style.position = isPassivePreview ? 'fixed' : 'absolute';
       scrubWrapper.style.top = `${relativeTop}px`;
       scrubWrapper.style.left = `${relativeLeft}px`;
       scrubWrapper.style.width = `${targetRect.width}px`;
@@ -2798,7 +2874,11 @@ export class OverlayCreator {
   // Update existing action areas in place so their new region can be previewed
   // without interrupting the video's overlay state.
   updateAllOverlaysForActionArea(
-    previewDurationMs = ACTION_AREA_PREVIEW_MS
+    previewDurationMs = ACTION_AREA_PREVIEW_MS,
+    actionArea = this.settingsManager.getActionArea(),
+    actionAreaSize = this.settingsManager.getActionAreaSize(),
+    actionAreaSizeUnit = this.settingsManager.getActionAreaSizeUnit(),
+    restoreAfterPreview = false
   ): void {
     const debugMode = this.settingsManager.isDebugEnabled();
 
@@ -2812,7 +2892,9 @@ export class OverlayCreator {
       const wrapperRect = wrapper.getBoundingClientRect();
       const { top, height } = this.calculateActionAreaDimensions(
         wrapperRect.height,
-        this.settingsManager.getActionArea()
+        actionArea,
+        actionAreaSize,
+        actionAreaSizeUnit
       );
       const existingTimeout = this.actionAreaPreviewTimeouts.get(overlay);
 
@@ -2825,6 +2907,7 @@ export class OverlayCreator {
           overlay,
           overlay.style.backgroundColor
         );
+        this.actionAreaOriginalBoxShadows.set(overlay, overlay.style.boxShadow);
         this.actionAreaOriginalTransitions.set(
           overlay,
           overlay.style.transition
@@ -2836,15 +2919,27 @@ export class OverlayCreator {
         false;
       overlay.style.transition = reduceMotion
         ? 'none'
-        : `top ${SETTINGS_LAYOUT_TRANSITION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1), height ${SETTINGS_LAYOUT_TRANSITION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1), background-color 300ms ease`;
+        : `top ${SETTINGS_LAYOUT_TRANSITION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1), height ${SETTINGS_LAYOUT_TRANSITION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1), background-color 300ms ease, box-shadow 300ms ease`;
       overlay.style.top = `${top}px`;
       overlay.style.height = `${height}px`;
       overlay.style.backgroundColor = ACTION_AREA_PREVIEW_BACKGROUND;
+      overlay.style.boxShadow = ACTION_AREA_PREVIEW_BORDER;
 
       const fadeDelay = Math.max(0, previewDurationMs - 300);
       const fadeTimeout = ownerWindow.setTimeout(() => {
         overlay.style.backgroundColor =
           this.actionAreaOriginalBackgrounds.get(overlay) ?? '';
+        overlay.style.boxShadow =
+          this.actionAreaOriginalBoxShadows.get(overlay) ?? '';
+
+        if (restoreAfterPreview) {
+          const restoredDimensions = this.calculateActionAreaDimensions(
+            wrapper.getBoundingClientRect().height,
+            this.settingsManager.getActionArea()
+          );
+          overlay.style.top = `${restoredDimensions.top}px`;
+          overlay.style.height = `${restoredDimensions.height}px`;
+        }
 
         const cleanupTimeout = ownerWindow.setTimeout(
           () => {
@@ -2852,6 +2947,7 @@ export class OverlayCreator {
               this.actionAreaOriginalTransitions.get(overlay) ?? '';
             this.actionAreaPreviewTimeouts.delete(overlay);
             this.actionAreaOriginalBackgrounds.delete(overlay);
+            this.actionAreaOriginalBoxShadows.delete(overlay);
             this.actionAreaOriginalTransitions.delete(overlay);
           },
           reduceMotion ? 0 : 300
@@ -2862,6 +2958,24 @@ export class OverlayCreator {
 
       this.actionAreaPreviewTimeouts.set(overlay, fadeTimeout);
     });
+  }
+
+  previewActionArea(
+    actionArea: ActionAreaT,
+    actionAreaSize: number,
+    actionAreaSizeUnit = this.settingsManager.getActionAreaSizeUnit()
+  ): void {
+    this.updateAllOverlaysForActionArea(
+      60_000,
+      actionArea,
+      actionAreaSize,
+      actionAreaSizeUnit,
+      true
+    );
+  }
+
+  clearActionAreaPreview(): void {
+    this.updateAllOverlaysForActionArea(0);
   }
 
   updateTimelineSeekingState(): void {
@@ -2875,6 +2989,12 @@ export class OverlayCreator {
       const canDragVideo = this.updateVideoDraggingForVideo(video, state);
       if (!canDragVideo) state.cancelVideoDragging?.();
       this.updateTimelineHoverState(video, state, state.isHovering);
+    });
+  }
+
+  updateScrollSeekingState(): void {
+    this.videoStateManager.forEach((state, video) => {
+      this.updateOverlayPointerEvents(video, state);
     });
   }
 
@@ -2963,7 +3083,14 @@ export class OverlayCreator {
       getMediaSeekRange(video) !== null;
 
     if (!shouldHide) {
-      state.wrapper.style.removeProperty('z-index');
+      if (state.wrapper.dataset.mfsPassivePreviewHost === 'true') {
+        // Controls/settings reconciliation runs immediately after the wrapper
+        // is created and whenever popup settings change. Keep the passive
+        // YouTube timeline above the thumbnail through those refreshes.
+        state.wrapper.style.zIndex = PASSIVE_PREVIEW_Z_INDEX;
+      } else {
+        state.wrapper.style.removeProperty('z-index');
+      }
       if (state.mediaControls) {
         state.mediaControls.hidden = true;
         state.mediaControls.dataset.mfsActive = 'false';
@@ -3349,7 +3476,7 @@ export class OverlayCreator {
     getIsHovering: () => boolean,
     deferredSeek: DeferredMediaSeek,
     debugMode: boolean,
-    togglePlayback?: () => void
+    setPlayback?: (shouldPlay: boolean) => void
   ): () => void {
     const ownerDocument = video.ownerDocument;
     const ownerWindow = ownerDocument.defaultView ?? window;
@@ -3358,7 +3485,12 @@ export class OverlayCreator {
     let wheelGestureTimeout: number | undefined;
     let playPauseGestureTimeout: number | undefined;
     let isPlayPauseGestureLocked = false;
+    let playPauseGestureAction: 'play' | 'pause' | null = null;
     let isWheelGestureActive = false;
+
+    const canHandleScrollSeeking = (): boolean =>
+      !this.isKeyboardSuspended &&
+      this.settingsManager.isScrollSeekingEnabled();
 
     const clearSeekCommitTimeout = (): void => {
       if (seekCommitTimeout === undefined) return;
@@ -3402,7 +3534,9 @@ export class OverlayCreator {
       const portalHost = fullscreenElement?.contains(video)
         ? fullscreenElement
         : ownerDocument.documentElement;
-      const overlayRect = overlay.getBoundingClientRect();
+      const overlayRect = DOMUtils.isYouTubeHoverPreview(video)
+        ? this.getVideoActionAreaBounds(video)
+        : overlay.getBoundingClientRect();
       let portalLeft =
         overlayRect.left + overlayRect.width / 2 + ownerWindow.scrollX;
       let portalTop = overlayRect.bottom - 12 + ownerWindow.scrollY;
@@ -3443,37 +3577,67 @@ export class OverlayCreator {
       }, SEEK_SPEED_LABEL_DISMISS_DELAY_MS);
     };
 
+    const armPlayPauseGestureEnd = (): void => {
+      if (playPauseGestureTimeout !== undefined) {
+        ownerWindow.clearTimeout(playPauseGestureTimeout);
+      }
+      playPauseGestureTimeout = ownerWindow.setTimeout(() => {
+        playPauseGestureTimeout = undefined;
+        isPlayPauseGestureLocked = false;
+        playPauseGestureAction = null;
+      }, PLAY_PAUSE_WHEEL_GESTURE_END_MS);
+    };
+
     const handleWheelAction = (event: WheelEvent): boolean => {
-      if (
+      if (!canHandleScrollSeeking()) return false;
+
+      const isPrimaryPlayPauseInput =
         this.settingsManager.isPlayPauseWheelEnabled() &&
         isHorizontalWheelAction(event) &&
-        matchesPrimaryWheelModifier(event)
-      ) {
+        matchesPrimaryWheelModifier(event);
+      const requestedPlaybackAction = isPrimaryPlayPauseInput
+        ? getWheelPlaybackAction(event)
+        : null;
+      const startsOppositeDirectionalGesture =
+        requestedPlaybackAction !== null &&
+        requestedPlaybackAction !== playPauseGestureAction;
+
+      // Trackpads and Magic Mice keep emitting momentum wheel events after the
+      // user releases Command/Ctrl. Those tail events no longer carry the
+      // modifier, but they still belong to the play/pause gesture. Consume
+      // every remaining delta and extend the lock until the stream is idle so
+      // none of its momentum can fall through to timeline seeking. Reapplying
+      // the modifier to a saved momentum packet keeps producing the
+      // same direction, so suppress it too. Only the opposite direction can
+      // start the next intentional play/pause action without waiting.
+      if (isPlayPauseGestureLocked && !startsOppositeDirectionalGesture) {
+        event.preventDefault();
+        armPlayPauseGestureEnd();
+        return true;
+      }
+
+      if (isPrimaryPlayPauseInput) {
         // Consume the complete gesture before the seeking path below. A
         // Command/Ctrl play-pause gesture must never move the timeline too.
         event.preventDefault();
-        if (!isPlayPauseGestureLocked) {
-          isPlayPauseGestureLocked = true;
-          if (togglePlayback) {
-            togglePlayback();
-          } else if (video.paused) {
+        isPlayPauseGestureLocked = true;
+        playPauseGestureAction = requestedPlaybackAction;
+        const shouldPlay = requestedPlaybackAction === 'play';
+        if (setPlayback) {
+          setPlayback(shouldPlay);
+        } else if (shouldPlay) {
+          if (video.paused) {
             void video.play().catch((error) => {
               if (debugMode) {
                 console.warn('Unable to play video from wheel action:', error);
               }
             });
-          } else {
-            video.pause();
           }
+        } else if (!video.paused) {
+          video.pause();
         }
 
-        if (playPauseGestureTimeout !== undefined) {
-          ownerWindow.clearTimeout(playPauseGestureTimeout);
-        }
-        playPauseGestureTimeout = ownerWindow.setTimeout(() => {
-          playPauseGestureTimeout = undefined;
-          isPlayPauseGestureLocked = false;
-        }, PLAY_PAUSE_WHEEL_GESTURE_END_MS);
+        armPlayPauseGestureEnd();
         return true;
       }
 
@@ -3481,6 +3645,7 @@ export class OverlayCreator {
     };
 
     const handleOverlayWheel = (event: WheelEvent): void => {
+      if (!canHandleScrollSeeking()) return;
       if (handleWheelAction(event)) return;
 
       const fastScrollHotkey = this.settingsManager.getFastScrollHotkey();
@@ -3529,6 +3694,8 @@ export class OverlayCreator {
     };
 
     const handlePlayerLayerWheel = (event: WheelEvent): void => {
+      if (!canHandleScrollSeeking()) return;
+
       // Custom players such as Vimeo put their controls and interaction target
       // above the <video>. Listen at the document boundary so horizontal wheel
       // gestures still reach our scrubber without raising the overlay above (and
@@ -3536,7 +3703,12 @@ export class OverlayCreator {
       if (!overlay.isConnected || event.composedPath().includes(overlay))
         return;
 
-      const overlayRect = overlay.getBoundingClientRect();
+      if (DOMUtils.isYouTubeHoverPreview(video)) {
+        this.syncPassivePreviewWrapper(video, overlay.parentElement);
+      }
+      const overlayRect = DOMUtils.isYouTubeHoverPreview(video)
+        ? this.getVideoActionAreaBounds(video)
+        : overlay.getBoundingClientRect();
       const isInsideActionArea =
         event.clientX >= overlayRect.left &&
         event.clientX <= overlayRect.right &&
@@ -3585,6 +3757,8 @@ export class OverlayCreator {
     };
 
     const handleScroll = (): void => {
+      if (!canHandleScrollSeeking()) return;
+
       const range = getMediaSeekRange(video);
       if (!range || !scrollContent || !timeline) return;
 
@@ -3654,6 +3828,7 @@ export class OverlayCreator {
 
     const handleScrollEnd = (): void => {
       if (
+        !canHandleScrollSeeking() ||
         getIsSettingInitialScroll() ||
         isWheelGestureActive ||
         this.videoStateManager.get(video)?.isVideoDragging
@@ -3873,6 +4048,10 @@ export class OverlayCreator {
     if (this.hoverTrackedDocuments.has(ownerDocument)) return;
 
     const updateFromPointer = (event: MouseEvent): void => {
+      this.lastPointerPoints.set(ownerDocument, {
+        clientX: event.clientX,
+        clientY: event.clientY,
+      });
       this.updateSiteUiPointerPassthrough(
         ownerDocument,
         event.clientX,
@@ -3894,6 +4073,7 @@ export class OverlayCreator {
     };
 
     const clearHoveredVideos = (): void => {
+      this.lastPointerPoints.delete(ownerDocument);
       this.videoStateManager.forEach((state, video) => {
         if (video.ownerDocument === ownerDocument) {
           this.clearWheelHoverLease(video, state);
@@ -3928,6 +4108,22 @@ export class OverlayCreator {
     ownerDocument.defaultView?.addEventListener('blur', clearHoveredVideos);
 
     this.hoverTrackedDocuments.add(ownerDocument);
+  }
+
+  private restoreDocumentHoverAtLastPointer(ownerDocument: Document): void {
+    const point = this.lastPointerPoints.get(ownerDocument);
+    if (!point) return;
+
+    this.updateSiteUiPointerPassthrough(
+      ownerDocument,
+      point.clientX,
+      point.clientY
+    );
+    this.updatePointerHoveredVideosAtPoint(
+      ownerDocument,
+      point.clientX,
+      point.clientY
+    );
   }
 
   /**
@@ -4020,6 +4216,12 @@ export class OverlayCreator {
     video: HTMLVideoElement,
     state: VideoStateT
   ): void {
+    // A disabled Scroll method must not leave a native horizontal scroll box
+    // under the pointer. When Drag or Minimal Player still owns the surface,
+    // wheel defaults can then continue to the page untouched.
+    state.overlay.style.overflowX =
+      this.settingsManager.isScrollSeekingEnabled() ? 'scroll' : 'hidden';
+
     if (DOMUtils.isYouTubeHoverPreview(video)) {
       // YouTube's temporary thumbnail player must remain underneath the
       // pointer so its own hover lifecycle keeps running. Wheel gestures are
@@ -4030,7 +4232,19 @@ export class OverlayCreator {
       return;
     }
 
-    state.overlay.style.setProperty('pointer-events', 'auto');
+    const shouldCaptureVideoSurface =
+      this.settingsManager.isScrollSeekingEnabled() ||
+      this.settingsManager.shouldDragVideoToSeek() ||
+      this.settingsManager.shouldHideVideoControls();
+
+    if (!shouldCaptureVideoSurface) {
+      state.overlay.style.setProperty('pointer-events', 'none', 'important');
+      state.overlay.dataset.mfsPassivePreview = 'true';
+      return;
+    }
+
+    state.overlay.style.removeProperty('pointer-events');
+    state.overlay.style.pointerEvents = 'auto';
     delete state.overlay.dataset.mfsPassivePreview;
   }
 
@@ -4115,12 +4329,18 @@ export class OverlayCreator {
     clientX: number,
     clientY: number
   ): boolean {
-    // Player layouts can move without resizing (for example YouTube's theater
-    // animations). Keep portaled UI attached to the current video rectangle.
+    // Player layouts can move without resizing. Keep portaled UI attached to
+    // the current visible media rectangle, including clipped preview videos.
     this.updateTimelineInteractivityForVideo(video, state.timeline);
+    if (DOMUtils.isYouTubeHoverPreview(video)) {
+      this.syncPassivePreviewWrapper(video, state.wrapper);
+    }
 
-    const rect = state.wrapper.getBoundingClientRect();
+    const rect = DOMUtils.isYouTubeHoverPreview(video)
+      ? this.getVideoActionAreaBounds(video)
+      : state.wrapper.getBoundingClientRect();
     return (
+      video.isConnected &&
       state.wrapper.isConnected &&
       rect.width > 0 &&
       rect.height > 0 &&
@@ -4128,6 +4348,66 @@ export class OverlayCreator {
       clientX <= rect.right &&
       clientY >= rect.top &&
       clientY <= rect.bottom
+    );
+  }
+
+  private syncPassivePreviewWrapper(
+    video: HTMLVideoElement,
+    wrapper: HTMLElement | null
+  ): void {
+    if (wrapper?.dataset.mfsPassivePreviewHost !== 'true') return;
+
+    const rect =
+      this.getPassivePreviewGeometrySource(video).getBoundingClientRect();
+    wrapper.style.position = 'fixed';
+    wrapper.style.top = `${rect.top}px`;
+    wrapper.style.left = `${rect.left}px`;
+    wrapper.style.width = `${rect.width}px`;
+    wrapper.style.height = `${rect.height}px`;
+  }
+
+  private getVideoActionAreaBounds(video: HTMLVideoElement): {
+    top: number;
+    right: number;
+    bottom: number;
+    left: number;
+    width: number;
+    height: number;
+  } {
+    const target = DOMUtils.isYouTubeHoverPreview(video)
+      ? this.getPassivePreviewGeometrySource(video)
+      : (this.findVisibleVideoContainer(video) ?? video);
+    const rect = target.getBoundingClientRect();
+    const { top, height } = this.calculateActionAreaDimensions(
+      rect.height,
+      this.settingsManager.getActionArea()
+    );
+
+    return {
+      top: rect.top + top,
+      right: rect.right,
+      bottom: rect.top + top + height,
+      left: rect.left,
+      width: rect.width,
+      height,
+    };
+  }
+
+  private getPassivePreviewGeometrySource(
+    video: HTMLVideoElement
+  ): HTMLElement {
+    const candidates = [
+      video.closest<HTMLElement>('#player-container-wrapper'),
+      video.closest<HTMLElement>('#media-container'),
+      video.closest<HTMLElement>('#inline-preview-player'),
+    ];
+
+    return (
+      candidates.find((candidate) => {
+        if (!candidate) return false;
+        const rect = candidate.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      }) ?? video
     );
   }
 
