@@ -225,7 +225,7 @@ export function SeekControlsSettings({
 
   return (
     <div>
-      <div className="sticky top-16 z-40" data-testid="sticky-seek-preview">
+      <div className="sticky top-16 z-20" data-testid="sticky-seek-preview">
         <SeekControlsPreview
           actionArea={actionArea}
           actionAreaSize={actionAreaSize}

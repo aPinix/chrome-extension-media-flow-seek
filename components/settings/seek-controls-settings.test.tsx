@@ -56,6 +56,16 @@ const createProps = () => ({
 });
 
 describe('SeekControlsSettings', () => {
+  it('keeps the sticky video preview below the popup header gradient', () => {
+    render(<SeekControlsSettings {...createProps()} />);
+
+    const preview = screen.getByTestId('sticky-seek-preview');
+    expect(preview.className).toContain('top-16');
+    expect(preview.className).not.toContain('top-0');
+    expect(preview.className).toContain('z-20');
+    expect(preview.className).not.toContain('z-40');
+  });
+
   it('keeps every method expanded and focuses the preview with explicit buttons', async () => {
     const user = userEvent.setup();
     const props = createProps();

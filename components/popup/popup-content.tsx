@@ -961,15 +961,15 @@ export function PopupContent() {
         {/* Gradient edge blurs behind the fixed chrome */}
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute top-0 right-2.5 left-0 z-30 h-24 bg-gradient-to-b from-slate-100 via-slate-100/80 to-transparent backdrop-blur-xl backdrop-saturate-150 [mask-image:linear-gradient(to_bottom,black_0%,black_62%,transparent_100%)] dark:from-slate-900 dark:via-slate-900/80"
+          className="pointer-events-none absolute top-0 right-2.5 left-0 z-30 h-24 bg-linear-to-b from-slate-100/80 via-slate-100/60 to-transparent [-webkit-backdrop-filter:saturate(180%)_blur(20px)] [backdrop-filter:saturate(180%)_blur(20px)] [mask-image:linear-gradient(to_bottom,black_0%,black_62%,transparent_100%)] dark:from-slate-900/80 dark:via-slate-900/60"
         />
         <div
           aria-hidden="true"
           className={cn(
-            'pointer-events-none absolute right-2.5 bottom-0 left-0 z-40 bg-gradient-to-t from-slate-100 via-slate-100/80 to-transparent backdrop-blur-xl backdrop-saturate-150 dark:from-slate-900 dark:via-slate-900/80',
+            'pointer-events-none absolute right-2.5 bottom-0 left-0 z-40 bg-linear-to-t from-slate-100/80 via-slate-100/60 to-transparent [-webkit-backdrop-filter:saturate(180%)_blur(20px)] [backdrop-filter:saturate(180%)_blur(20px)] dark:from-slate-900/80 dark:via-slate-900/60',
             showDomainsView
-              ? 'h-36 [mask-image:linear-gradient(to_top,black_0%,black_70%,transparent_100%)]'
-              : 'h-24 [mask-image:linear-gradient(to_top,black_0%,black_58%,transparent_100%)]'
+              ? 'mask-[linear-gradient(to_top,black_0%,black_70%,transparent_100%)] h-36'
+              : 'mask-[linear-gradient(to_top,black_0%,black_58%,transparent_100%)] h-24'
           )}
           data-testid="bottom-gradient-blur"
         />
