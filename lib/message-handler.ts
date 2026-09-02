@@ -102,6 +102,10 @@ export class MessageHandler {
         this.handleUpdateColorizedTimeline(message, sendResponse);
         break;
 
+      case 'updateYouTubeChapteredTimeline':
+        this.handleUpdateYouTubeChapteredTimeline(message, sendResponse);
+        break;
+
       case 'updateTimelinePosition':
         this.handleUpdateTimelinePosition(message, sendResponse);
         break;
@@ -441,6 +445,28 @@ export class MessageHandler {
     );
     overlayCreator.updateTimelineColorization();
 
+    sendResponse({ success: true });
+  }
+
+  private handleUpdateYouTubeChapteredTimeline(
+    message: ChromeMessageT,
+    sendResponse: SendResponse
+  ): void {
+    const { overlayCreator, settingsManager } = this.dependencies;
+
+    if (typeof message.isYouTubeChapteredTimelineEnabled !== 'boolean') {
+      sendResponse({
+        success: false,
+        error: 'Invalid YouTube chaptered timeline setting',
+      });
+      return;
+    }
+
+    settingsManager.updateSetting(
+      'isYouTubeChapteredTimelineEnabled',
+      message.isYouTubeChapteredTimelineEnabled
+    );
+    overlayCreator.updateYouTubeChapteredTimelineState();
     sendResponse({ success: true });
   }
 

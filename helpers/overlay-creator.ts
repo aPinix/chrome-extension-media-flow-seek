@@ -30,6 +30,13 @@ import {
   matchesPrimaryWheelModifier,
 } from '@/helpers/wheel-actions';
 import {
+  extractYouTubeChapterModel,
+  isYouTubeChapterPage,
+  type YouTubeChapterModelT,
+  type YouTubeChapterT,
+  youtubeChapterMutationMayAffectModel,
+} from '@/helpers/youtube-chapters';
+import {
   ActionAreaE,
   type ActionAreaT,
   type VideoStateT,
@@ -55,6 +62,7 @@ const EXTENSION_UI_SELECTOR = [
   '.scrub-timeline',
   '.mfs-media-controls',
   '.mfs-seek-speed-label',
+  '.mfs-youtube-chapter-tooltip',
   '.scrub-debug-indicator',
 ].join(',');
 const SITE_INTERACTIVE_SELECTOR = [
@@ -85,6 +93,8 @@ const WHEEL_HOVER_LEASE_MS = 1500;
 const SEEK_SPEED_LABEL_DISMISS_DELAY_MS = 700;
 const PLAY_PAUSE_WHEEL_GESTURE_END_MS = 500;
 const DEFAULT_TIMELINE_PROGRESS_BACKGROUND = 'rgb(255 255 255 / 0.3)';
+const DEFAULT_TIMELINE_BACKGROUND = 'rgb(255 255 255 / 0.2)';
+const YOUTUBE_CHAPTER_GAP_PX = 4;
 const SETTINGS_LAYOUT_TRANSITION_MS = 320;
 const ACTION_AREA_PREVIEW_MS = 1200;
 const ACTION_AREA_PREVIEW_BACKGROUND = 'rgb(126 34 206 / 0.4)';
@@ -139,6 +149,10 @@ export class OverlayCreator {
   private actionAreaOriginalBackgrounds = new WeakMap<HTMLDivElement, string>();
   private actionAreaOriginalBoxShadows = new WeakMap<HTMLDivElement, string>();
   private actionAreaOriginalTransitions = new WeakMap<HTMLDivElement, string>();
+  private youtubeChapterModels = new WeakMap<
+    HTMLDivElement,
+    YouTubeChapterT[]
+  >();
   private nextVideoId = 1;
 
   constructor(
@@ -365,12 +379,18 @@ export class OverlayCreator {
       this.createWrapperAndDebugIndicator(video, videoId);
     const mediaControls = this.createMediaControlsElement(ownerDocument);
     const seekSpeedLabel = this.createSeekSpeedLabel(ownerDocument);
+    const youtubeChapterTooltip =
+      !DOMUtils.isYouTubeHoverPreview(video) &&
+      isYouTubeChapterPage(ownerDocument.location.href)
+        ? this.createYouTubeChapterTooltipElement(ownerDocument)
+        : undefined;
 
     // Add elements to wrapper
     scrubWrapper.appendChild(scrubOverlay);
     scrubWrapper.appendChild(scrubTimeline);
     scrubWrapper.appendChild(mediaControls);
     scrubWrapper.appendChild(seekSpeedLabel);
+    if (youtubeChapterTooltip) scrubWrapper.appendChild(youtubeChapterTooltip);
 
     // Only add debug indicator to DOM if debug is enabled
     if (this.settingsManager.isDebugEnabled()) {
@@ -389,6 +409,7 @@ export class OverlayCreator {
       wrapper: scrubWrapper,
       debugIndicator: debugIndicator,
       mediaControls,
+      youtubeChapterTooltip,
       isHovering: false,
       isPointerHovering: false,
       isWheelHovering: false,
@@ -444,6 +465,13 @@ export class OverlayCreator {
       debugMode
     );
     videoState.cancelTimelineSeeking = timelineSeekingController.cancel;
+
+    const youtubeChapterController = this.setupYouTubeChapterTimeline(
+      video,
+      videoState
+    );
+    videoState.updateYouTubeChapterMode =
+      youtubeChapterController.updateEnabled;
 
     // Setup overlay functionality
     const updateOverlaySize = this.createOverlaySizeUpdater(
@@ -562,6 +590,7 @@ export class OverlayCreator {
       videoSyncCleanup();
       timelineCleanup();
       timelineSeekingController.cleanup();
+      youtubeChapterController.cleanup();
       videoDraggingController.cleanup();
       playbackController.cleanup();
       mediaControlsController.cleanup();
@@ -675,6 +704,36 @@ export class OverlayCreator {
 
         .mfs-seek-speed-label[data-mfs-portaled="true"][data-mfs-visible="true"] {
           transform: translate(-50%, -100%);
+        }
+
+        .mfs-youtube-chapter-tooltip {
+          all: initial;
+          position: absolute;
+          left: 0;
+          z-index: 2147483646 !important;
+          display: block;
+          box-sizing: border-box;
+          max-width: calc(100% - 16px);
+          overflow: hidden;
+          padding: 5px 8px;
+          border-radius: 6px;
+          background: rgb(15 23 42 / 0.88);
+          color: white;
+          box-shadow: 0 3px 12px rgb(0 0 0 / 0.28);
+          opacity: 0;
+          transition: opacity 100ms ease;
+          pointer-events: none;
+          user-select: none;
+          white-space: nowrap;
+          text-overflow: ellipsis;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          font-size: 11px;
+          font-weight: 600;
+          line-height: 14px;
+        }
+
+        .mfs-youtube-chapter-tooltip[data-mfs-visible="true"] {
+          opacity: 1;
         }
 
         .mfs-media-controls {
@@ -1097,7 +1156,8 @@ export class OverlayCreator {
         html[data-mfs-page-dialog-open="true"] .scrub-wrapper,
         html[data-mfs-page-dialog-open="true"] .scrub-timeline[data-mfs-portaled="true"],
         html[data-mfs-page-dialog-open="true"] .mfs-media-controls[data-mfs-portaled="true"],
-        html[data-mfs-page-dialog-open="true"] .mfs-seek-speed-label[data-mfs-portaled="true"] {
+        html[data-mfs-page-dialog-open="true"] .mfs-seek-speed-label[data-mfs-portaled="true"],
+        html[data-mfs-page-dialog-open="true"] .mfs-youtube-chapter-tooltip {
           visibility: hidden !important;
           pointer-events: none !important;
         }
@@ -1159,6 +1219,16 @@ export class OverlayCreator {
     label.setAttribute('aria-live', 'polite');
     label.setAttribute('aria-atomic', 'true');
     return label;
+  }
+
+  private createYouTubeChapterTooltipElement(
+    ownerDocument: Document
+  ): HTMLDivElement {
+    const tooltip = ownerDocument.createElement('div');
+    tooltip.className = 'mfs-youtube-chapter-tooltip';
+    tooltip.dataset.mfsVisible = 'false';
+    tooltip.setAttribute('aria-hidden', 'true');
+    return tooltip;
   }
 
   private updateTimelineInteractivityForVideo(
@@ -1461,10 +1531,7 @@ export class OverlayCreator {
     if (!target) return false;
 
     timeline.style.opacity = '1';
-    const progressBar = timeline.firstElementChild as HTMLElement | null;
-    if (progressBar) {
-      progressBar.style.width = `${target.progress * 100}%`;
-    }
+    this.setTimelineProgress(timeline, target.progress);
     deferredSeek.stage(target.time);
 
     if (debugMode) {
@@ -1951,17 +2018,191 @@ export class OverlayCreator {
 
   private updateProgressIndicatorColor(progressIndicator: HTMLElement): void {
     if (!this.settingsManager.shouldColorizeTimeline()) {
-      progressIndicator.style.backgroundColor =
-        DEFAULT_TIMELINE_PROGRESS_BACKGROUND;
+      this.applyTimelineProgressColor(
+        progressIndicator,
+        DEFAULT_TIMELINE_PROGRESS_BACKGROUND
+      );
       return;
     }
 
     void getProgressColor(progressIndicator.ownerDocument).then((color) => {
       if (this.settingsManager.shouldColorizeTimeline()) {
-        progressIndicator.style.backgroundColor =
-          getColorizedTimelineBackground(color);
+        this.applyTimelineProgressColor(
+          progressIndicator,
+          getColorizedTimelineBackground(color)
+        );
       }
     });
+  }
+
+  private applyTimelineProgressColor(
+    progressIndicator: HTMLElement,
+    color: string
+  ): void {
+    const timeline = progressIndicator.closest<HTMLElement>('.scrub-timeline');
+    timeline?.style.setProperty('--mfs-timeline-progress-color', color);
+    progressIndicator.style.backgroundColor =
+      timeline?.dataset.mfsYoutubeChaptered === 'true' ? 'transparent' : color;
+  }
+
+  private setTimelineProgress(
+    timeline: HTMLDivElement,
+    progress: number
+  ): void {
+    const clampedProgress = Math.min(1, Math.max(0, progress));
+    const progressIndicator =
+      timeline.querySelector<HTMLElement>(
+        ':scope > .scrub-timeline-progress-indicator'
+      ) ?? (timeline.firstElementChild as HTMLElement | null);
+    if (progressIndicator) {
+      progressIndicator.style.width = `${clampedProgress * 100}%`;
+    }
+
+    const chapters = this.youtubeChapterModels.get(timeline);
+    if (!chapters) return;
+
+    const duration = chapters.at(-1)?.end ?? 0;
+    if (!(duration > 0)) return;
+
+    const fills = timeline.querySelectorAll<HTMLElement>(
+      '.mfs-youtube-chapter-progress'
+    );
+    chapters.forEach((chapter, index) => {
+      const chapterStart = chapter.start / duration;
+      const chapterEnd = chapter.end / duration;
+      const chapterProgress =
+        clampedProgress <= chapterStart
+          ? 0
+          : clampedProgress >= chapterEnd
+            ? 1
+            : (clampedProgress - chapterStart) / (chapterEnd - chapterStart);
+      const fill = fills[index];
+      if (fill) {
+        const percentage = Number((chapterProgress * 100).toFixed(6));
+        fill.style.width = `${percentage}%`;
+      }
+    });
+  }
+
+  private updateYouTubeChapterGap(timeline: HTMLDivElement): void {
+    const layer = timeline.querySelector<HTMLElement>(
+      ':scope > .mfs-youtube-chapters'
+    );
+    if (!layer) return;
+
+    const chapterCount = layer.childElementCount;
+    const width =
+      timeline.getBoundingClientRect().width || timeline.clientWidth;
+    const gap =
+      width > 0 && chapterCount > 1
+        ? Math.min(YOUTUBE_CHAPTER_GAP_PX, width / (chapterCount - 1) / 2)
+        : YOUTUBE_CHAPTER_GAP_PX;
+    layer.style.gap = `${gap}px`;
+  }
+
+  private renderYouTubeChapterModel(
+    timeline: HTMLDivElement,
+    model: YouTubeChapterModelT | null
+  ): void {
+    const progressIndicator = timeline.querySelector<HTMLElement>(
+      ':scope > .scrub-timeline-progress-indicator'
+    );
+
+    if (!model) {
+      this.youtubeChapterModels.delete(timeline);
+      timeline.querySelector(':scope > .mfs-youtube-chapters')?.remove();
+      timeline.style.background = DEFAULT_TIMELINE_BACKGROUND;
+      timeline.style.setProperty(
+        '-webkit-backdrop-filter',
+        'blur(8px) saturate(140%)'
+      );
+      timeline.style.backdropFilter = 'blur(8px) saturate(140%)';
+      delete timeline.dataset.mfsYoutubeChapterSignature;
+      delete timeline.dataset.mfsYoutubeChaptered;
+      if (progressIndicator) {
+        progressIndicator.style.backgroundColor =
+          timeline.style.getPropertyValue('--mfs-timeline-progress-color') ||
+          DEFAULT_TIMELINE_PROGRESS_BACKGROUND;
+        progressIndicator.style.setProperty(
+          '-webkit-backdrop-filter',
+          'blur(8px) saturate(140%)'
+        );
+        progressIndicator.style.backdropFilter = 'blur(8px) saturate(140%)';
+      }
+      return;
+    }
+
+    const signature = JSON.stringify(model.chapters);
+    if (timeline.dataset.mfsYoutubeChapterSignature === signature) {
+      this.youtubeChapterModels.set(timeline, model.chapters);
+      this.updateYouTubeChapterGap(timeline);
+      return;
+    }
+
+    timeline.querySelector(':scope > .mfs-youtube-chapters')?.remove();
+    const layer = timeline.ownerDocument.createElement('div');
+    layer.className = 'mfs-youtube-chapters';
+    layer.setAttribute('aria-hidden', 'true');
+    layer.style.cssText = `
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      display: flex;
+      overflow: hidden;
+      border-radius: inherit;
+      pointer-events: none;
+    `;
+
+    model.chapters.forEach((chapter) => {
+      const segment = timeline.ownerDocument.createElement('div');
+      const fill = timeline.ownerDocument.createElement('div');
+      segment.className = 'mfs-youtube-chapter-segment';
+      segment.style.cssText = `
+        position: relative;
+        min-width: 0;
+        overflow: hidden;
+        background: ${DEFAULT_TIMELINE_BACKGROUND};
+        -webkit-backdrop-filter: blur(8px) saturate(140%);
+        backdrop-filter: blur(8px) saturate(140%);
+      `;
+      segment.style.flexGrow = String(chapter.end - chapter.start);
+      segment.style.flexShrink = '1';
+      segment.style.flexBasis = '0px';
+      fill.className = 'mfs-youtube-chapter-progress';
+      fill.style.cssText = `
+        width: 0%;
+        height: 100%;
+        background: var(--mfs-timeline-progress-color, ${DEFAULT_TIMELINE_PROGRESS_BACKGROUND});
+      `;
+      segment.appendChild(fill);
+      layer.appendChild(segment);
+    });
+
+    const currentColor =
+      timeline.style.getPropertyValue('--mfs-timeline-progress-color') ||
+      progressIndicator?.style.backgroundColor ||
+      DEFAULT_TIMELINE_PROGRESS_BACKGROUND;
+    timeline.style.setProperty('--mfs-timeline-progress-color', currentColor);
+    timeline.style.background = 'transparent';
+    timeline.style.setProperty('-webkit-backdrop-filter', 'none');
+    timeline.style.backdropFilter = 'none';
+    timeline.dataset.mfsYoutubeChaptered = 'true';
+    timeline.dataset.mfsYoutubeChapterSignature = signature;
+    this.youtubeChapterModels.set(timeline, model.chapters);
+    if (progressIndicator) {
+      progressIndicator.style.zIndex = '1';
+      progressIndicator.style.backgroundColor = 'transparent';
+      progressIndicator.style.setProperty('-webkit-backdrop-filter', 'none');
+      progressIndicator.style.backdropFilter = 'none';
+    }
+    timeline.appendChild(layer);
+    this.updateYouTubeChapterGap(timeline);
+
+    const progress = Number.parseFloat(progressIndicator?.style.width ?? '0');
+    this.setTimelineProgress(
+      timeline,
+      Number.isFinite(progress) ? progress / 100 : 0
+    );
   }
 
   updateTimelineColorization(): void {
@@ -1973,6 +2214,201 @@ export class OverlayCreator {
         this.updateProgressIndicatorColor(progressIndicator);
       }
     });
+  }
+
+  updateYouTubeChapteredTimelineState(): void {
+    this.videoStateManager.forEach((state) => {
+      state.updateYouTubeChapterMode?.();
+    });
+
+    if (this.settingsManager.isYouTubeChapteredTimelineEnabled?.() ?? false) {
+      this.previewTimelines();
+    }
+  }
+
+  private setupYouTubeChapterTimeline(
+    video: HTMLVideoElement,
+    state: VideoStateT
+  ): { cleanup: () => void; updateEnabled: () => void } {
+    const { ownerDocument } = video;
+    const ownerWindow = ownerDocument.defaultView ?? window;
+    let mutationObserver: MutationObserver | null = null;
+    let refreshFrame: number | null = null;
+    let watching = false;
+
+    const refresh = () => {
+      refreshFrame = null;
+      if (
+        !(this.settingsManager.isYouTubeChapteredTimelineEnabled?.() ?? false)
+      ) {
+        this.renderYouTubeChapterModel(state.timeline, null);
+        this.hideYouTubeChapterTooltip(state);
+        return;
+      }
+
+      const model = extractYouTubeChapterModel({ ownerDocument, video });
+      this.renderYouTubeChapterModel(state.timeline, model);
+      if (!model) this.hideYouTubeChapterTooltip(state);
+      const range = getMediaSeekRange(video);
+      if (range) {
+        this.setTimelineProgress(
+          state.timeline,
+          getMediaProgress(video, range)
+        );
+      }
+    };
+
+    const scheduleRefresh = () => {
+      if (refreshFrame !== null) return;
+      refreshFrame = ownerWindow.requestAnimationFrame(refresh);
+    };
+
+    const handleMutations = (mutations: MutationRecord[]) => {
+      if (mutations.some(youtubeChapterMutationMayAffectModel)) {
+        scheduleRefresh();
+      }
+    };
+
+    const start = () => {
+      if (watching || !state.youtubeChapterTooltip) return;
+      watching = true;
+      mutationObserver = new ownerWindow.MutationObserver(handleMutations);
+      mutationObserver.observe(ownerDocument.documentElement, {
+        attributeFilter: [
+          'aria-orientation',
+          'class',
+          'href',
+          'role',
+          'style',
+          'title',
+        ],
+        attributes: true,
+        childList: true,
+        subtree: true,
+      });
+      video.addEventListener('loadedmetadata', scheduleRefresh);
+      video.addEventListener('durationchange', scheduleRefresh);
+      ownerDocument.addEventListener('yt-navigate-finish', scheduleRefresh);
+      ownerDocument.addEventListener('yt-page-data-updated', scheduleRefresh);
+      ownerWindow.addEventListener('resize', scheduleRefresh, {
+        passive: true,
+      });
+      scheduleRefresh();
+    };
+
+    const stop = () => {
+      if (!watching) return;
+      watching = false;
+      mutationObserver?.disconnect();
+      mutationObserver = null;
+      video.removeEventListener('loadedmetadata', scheduleRefresh);
+      video.removeEventListener('durationchange', scheduleRefresh);
+      ownerDocument.removeEventListener('yt-navigate-finish', scheduleRefresh);
+      ownerDocument.removeEventListener(
+        'yt-page-data-updated',
+        scheduleRefresh
+      );
+      ownerWindow.removeEventListener('resize', scheduleRefresh);
+      if (refreshFrame !== null) {
+        ownerWindow.cancelAnimationFrame(refreshFrame);
+        refreshFrame = null;
+      }
+    };
+
+    const updateEnabled = () => {
+      if (this.settingsManager.isYouTubeChapteredTimelineEnabled?.() ?? false) {
+        start();
+        scheduleRefresh();
+        return;
+      }
+
+      stop();
+      this.renderYouTubeChapterModel(state.timeline, null);
+      this.hideYouTubeChapterTooltip(state);
+    };
+
+    updateEnabled();
+    return {
+      cleanup: () => {
+        stop();
+        this.renderYouTubeChapterModel(state.timeline, null);
+        this.hideYouTubeChapterTooltip(state);
+      },
+      updateEnabled,
+    };
+  }
+
+  private hideYouTubeChapterTooltip(state: VideoStateT): void {
+    if (!state.youtubeChapterTooltip) return;
+    state.youtubeChapterTooltip.dataset.mfsVisible = 'false';
+    state.youtubeChapterTooltip.setAttribute('aria-hidden', 'true');
+  }
+
+  private updateYouTubeChapterTooltipAtPoint(
+    state: VideoStateT,
+    clientX: number,
+    clientY: number
+  ): void {
+    const tooltip = state.youtubeChapterTooltip;
+    const chapters = this.youtubeChapterModels.get(state.timeline);
+    if (
+      !tooltip ||
+      !chapters ||
+      state.timeline.style.opacity !== '1' ||
+      !(this.settingsManager.isYouTubeChapteredTimelineEnabled?.() ?? false)
+    ) {
+      this.hideYouTubeChapterTooltip(state);
+      return;
+    }
+
+    const timelineRect = state.timeline.getBoundingClientRect();
+    if (
+      timelineRect.width <= 0 ||
+      clientX < timelineRect.left ||
+      clientX > timelineRect.right ||
+      clientY < timelineRect.top ||
+      clientY > timelineRect.bottom
+    ) {
+      this.hideYouTubeChapterTooltip(state);
+      return;
+    }
+
+    const segments = state.timeline.querySelectorAll<HTMLElement>(
+      '.mfs-youtube-chapter-segment'
+    );
+    const segmentIndex = Array.from(segments).findIndex((segment) => {
+      const rect = segment.getBoundingClientRect();
+      return clientX >= rect.left && clientX <= rect.right;
+    });
+    const title = chapters[segmentIndex]?.title;
+    if (!title) {
+      this.hideYouTubeChapterTooltip(state);
+      return;
+    }
+
+    tooltip.textContent = title;
+    tooltip.dataset.mfsVisible = 'true';
+    tooltip.setAttribute('aria-hidden', 'false');
+    const wrapperRect = state.wrapper.getBoundingClientRect();
+    const tooltipWidth =
+      tooltip.offsetWidth ||
+      Math.min(title.length * 6 + 16, wrapperRect.width - 16);
+    const halfWidth = tooltipWidth / 2;
+    const relativeX = clientX - wrapperRect.left;
+    const left = Math.min(
+      Math.max(relativeX, halfWidth + 8),
+      wrapperRect.width - halfWidth - 8
+    );
+    tooltip.style.left = `${left}px`;
+    tooltip.style.transform = 'translateX(-50%)';
+
+    if (this.settingsManager.getTimelinePosition() === 'top') {
+      tooltip.style.top = `${timelineRect.bottom - wrapperRect.top + 8}px`;
+    } else {
+      tooltip.style.top = `${
+        timelineRect.top - wrapperRect.top - tooltip.offsetHeight - 8
+      }px`;
+    }
   }
 
   private createWrapperAndDebugIndicator(
@@ -3377,10 +3813,7 @@ export class OverlayCreator {
         return;
       }
 
-      const progressBar = timeline.firstElementChild as HTMLElement | null;
-      if (progressBar) {
-        progressBar.style.width = `${getMediaProgress(video, range) * 100}%`;
-      }
+      this.setTimelineProgress(timeline, getMediaProgress(video, range));
 
       timeline.dataset.mfsSettingsPreview = 'true';
       timeline.style.opacity = '1';
@@ -3791,10 +4224,7 @@ export class OverlayCreator {
 
       // Show timeline bar and update progress
       timeline.style.opacity = '1';
-      const progressBar = timeline.firstElementChild as HTMLElement;
-      if (progressBar) {
-        progressBar.style.width = `${scrollProgress * 100}%`;
-      }
+      this.setTimelineProgress(timeline, scrollProgress);
 
       // Clear existing timeout
       const currentTimeout = getScrubTimeout();
@@ -4083,6 +4513,7 @@ export class OverlayCreator {
             state.mediaControls.dataset.mfsVideoHovered = 'false';
           }
           this.updateTimelineHoverState(video, state, false);
+          this.hideYouTubeChapterTooltip(state);
         }
       });
     };
@@ -4270,6 +4701,7 @@ export class OverlayCreator {
       }
       this.updateMediaControlsRevealAtPoint(state, clientX, clientY);
       this.updateTimelineHoverState(video, state, state.isPointerHovering);
+      this.updateYouTubeChapterTooltipAtPoint(state, clientX, clientY);
     });
   }
 
@@ -4463,6 +4895,7 @@ export class OverlayCreator {
       if (!(state.isUserScrubbing || isSettingsPreviewVisible)) {
         state.timeline.style.opacity = '0';
       }
+      this.hideYouTubeChapterTooltip(state);
       return;
     }
 
@@ -4470,9 +4903,8 @@ export class OverlayCreator {
     if (state.isUserScrubbing) return;
 
     const range = getMediaSeekRange(video);
-    const progressBar = state.timeline.firstElementChild as HTMLElement | null;
-    if (range && progressBar) {
-      progressBar.style.width = `${getMediaProgress(video, range) * 100}%`;
+    if (range) {
+      this.setTimelineProgress(state.timeline, getMediaProgress(video, range));
     }
   }
 
@@ -4527,10 +4959,7 @@ export class OverlayCreator {
       // Only update if timeline is visible (user is hovering)
       if (timeline.style.opacity === '1') {
         const progress = getMediaProgress(video, range);
-        const progressBar = timeline.firstElementChild as HTMLElement;
-        if (progressBar) {
-          progressBar.style.width = `${progress * 100}%`;
-        }
+        this.setTimelineProgress(timeline, progress);
       }
     };
 

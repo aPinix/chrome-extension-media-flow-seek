@@ -43,6 +43,7 @@ export class SettingsManager {
           'dragVideoToSeek',
           'hideVideoControls',
           'colorizedTimeline',
+          'isYouTubeChapteredTimelineEnabled',
           'timelinePosition',
           'timelineHeight',
           'timelineHeightUnit',
@@ -93,6 +94,9 @@ export class SettingsManager {
             colorizedTimeline:
               stored.colorizedTimeline ??
               this.defaultSettings.colorizedTimeline,
+            isYouTubeChapteredTimelineEnabled:
+              stored.isYouTubeChapteredTimelineEnabled ??
+              this.defaultSettings.isYouTubeChapteredTimelineEnabled,
             timelinePosition:
               stored.timelinePosition ?? this.defaultSettings.timelinePosition,
             timelineHeight:
@@ -218,6 +222,10 @@ export class SettingsManager {
 
   shouldColorizeTimeline(): boolean {
     return this.settings.colorizedTimeline;
+  }
+
+  isYouTubeChapteredTimelineEnabled(): boolean {
+    return this.settings.isYouTubeChapteredTimelineEnabled;
   }
 
   getTimelinePosition(): 'top' | 'bottom' {

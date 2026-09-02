@@ -22,6 +22,8 @@ export type VideoStateT = {
   syncMediaControls?: () => void;
   preserveSourceVolume?: () => void;
   syncPlaybackFeedback?: () => void;
+  updateYouTubeChapterMode?: () => void;
+  youtubeChapterTooltip?: HTMLDivElement;
   syncCleanup?: () => void;
 };
 
@@ -41,6 +43,7 @@ export type ContentSettingsT = {
   dragVideoToSeek: boolean;
   hideVideoControls: boolean;
   colorizedTimeline: boolean;
+  isYouTubeChapteredTimelineEnabled: boolean;
   timelinePosition: 'top' | 'bottom';
   timelineHeight: number;
   timelineHeightUnit: 'px' | '%';
@@ -79,6 +82,7 @@ export type ChromeMessageT = {
   dragVideoToSeek?: boolean;
   hideVideoControls?: boolean;
   colorizedTimeline?: boolean;
+  isYouTubeChapteredTimelineEnabled?: boolean;
   timelinePosition: ContentSettingsT['timelinePosition'];
   timelineHeight: number;
   timelineHeightUnit: ContentSettingsT['timelineHeightUnit'];

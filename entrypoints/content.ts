@@ -130,6 +130,16 @@ export default defineContentScript({
         overlayCreator.updateTimelineColorization();
       }
 
+      const isYouTubeChapteredTimelineEnabled =
+        changes.isYouTubeChapteredTimelineEnabled?.newValue;
+      if (typeof isYouTubeChapteredTimelineEnabled === 'boolean') {
+        settingsManager.updateSetting(
+          'isYouTubeChapteredTimelineEnabled',
+          isYouTubeChapteredTimelineEnabled
+        );
+        overlayCreator.updateYouTubeChapteredTimelineState();
+      }
+
       const scrollSpeedFactor = changes.scrollSpeedFactor?.newValue;
       if (typeof scrollSpeedFactor === 'number') {
         settingsManager.updateSetting(
@@ -211,6 +221,10 @@ export default defineContentScript({
         console.log(
           '📜 Loaded hide video controls setting:',
           settings.hideVideoControls
+        );
+        console.log(
+          '📜 Loaded YouTube chaptered timeline setting:',
+          settings.isYouTubeChapteredTimelineEnabled
         );
         console.log(
           '📜 Loaded timeline position setting:',

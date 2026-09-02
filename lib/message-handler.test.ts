@@ -342,6 +342,81 @@ describe('MessageHandler timeline seeking updates', () => {
     expect(sendResponse).toHaveBeenCalledWith({ success: true });
   });
 
+  it('updates chaptered YouTube timelines immediately', () => {
+    const updateSetting = vi.fn();
+    const updateYouTubeChapteredTimelineState = vi.fn();
+    const handler = new MessageHandler({
+      checkForVideos: vi.fn(),
+      getDebugColorBackground: () => '',
+      getDebugImageBackground: () => '',
+      overlayCreator: {
+        updateYouTubeChapteredTimelineState,
+      } as unknown as OverlayCreator,
+      settingsManager: {
+        isDebugEnabled: () => false,
+        updateSetting,
+      } as unknown as SettingsManager,
+      videoStateManager: {} as VideoStateManager,
+    });
+    const sendResponse = vi.fn();
+    const testHandler = handler as unknown as {
+      handleMessage: (
+        message: ChromeMessageT,
+        respond: (response: { success: boolean; error?: string }) => void
+      ) => void;
+    };
+
+    testHandler.handleMessage(
+      {
+        action: 'updateYouTubeChapteredTimeline',
+        isYouTubeChapteredTimelineEnabled: true,
+      } as ChromeMessageT,
+      sendResponse
+    );
+
+    expect(updateSetting).toHaveBeenCalledWith(
+      'isYouTubeChapteredTimelineEnabled',
+      true
+    );
+    expect(updateYouTubeChapteredTimelineState).toHaveBeenCalledOnce();
+    expect(sendResponse).toHaveBeenCalledWith({ success: true });
+  });
+
+  it('rejects malformed YouTube chaptered timeline messages', () => {
+    const updateSetting = vi.fn();
+    const handler = new MessageHandler({
+      checkForVideos: vi.fn(),
+      getDebugColorBackground: () => '',
+      getDebugImageBackground: () => '',
+      overlayCreator: {
+        updateYouTubeChapteredTimelineState: vi.fn(),
+      } as unknown as OverlayCreator,
+      settingsManager: {
+        isDebugEnabled: () => false,
+        updateSetting,
+      } as unknown as SettingsManager,
+      videoStateManager: {} as VideoStateManager,
+    });
+    const sendResponse = vi.fn();
+    const testHandler = handler as unknown as {
+      handleMessage: (
+        message: ChromeMessageT,
+        respond: (response: { success: boolean; error?: string }) => void
+      ) => void;
+    };
+
+    testHandler.handleMessage(
+      { action: 'updateYouTubeChapteredTimeline' } as ChromeMessageT,
+      sendResponse
+    );
+
+    expect(updateSetting).not.toHaveBeenCalled();
+    expect(sendResponse).toHaveBeenCalledWith({
+      success: false,
+      error: 'Invalid YouTube chaptered timeline setting',
+    });
+  });
+
   it('rejects malformed timeline seeking messages', () => {
     const updateSetting = vi.fn();
     const handler = new MessageHandler({

@@ -32,6 +32,7 @@ export type PopupSettings = {
   dragVideoToSeek: boolean;
   hideVideoControls: boolean;
   colorizedTimeline: boolean;
+  isYouTubeChapteredTimelineEnabled: boolean;
   timelinePosition: 'top' | 'bottom';
   timelineHeight: number;
   timelineHeightUnit: 'px' | '%';
@@ -57,6 +58,7 @@ export const DEFAULT_SETTINGS: Omit<PopupSettings, 'domainRules'> = {
   dragVideoToSeek: false,
   hideVideoControls: false,
   colorizedTimeline: false,
+  isYouTubeChapteredTimelineEnabled: false,
   timelinePosition: 'bottom',
   timelineHeight: 6,
   timelineHeightUnit: 'px',
@@ -88,6 +90,7 @@ export const loadPopupSettings = (): Promise<PopupSettings> => {
         'dragVideoToSeek',
         'hideVideoControls',
         'colorizedTimeline',
+        'isYouTubeChapteredTimelineEnabled',
         'timelinePosition',
         'timelineHeight',
         'timelineHeightUnit',
@@ -159,6 +162,9 @@ export const loadPopupSettings = (): Promise<PopupSettings> => {
           hideVideoControls: migratedSeekSettings.hideVideoControls,
           colorizedTimeline:
             stored.colorizedTimeline ?? DEFAULT_SETTINGS.colorizedTimeline,
+          isYouTubeChapteredTimelineEnabled:
+            stored.isYouTubeChapteredTimelineEnabled ??
+            DEFAULT_SETTINGS.isYouTubeChapteredTimelineEnabled,
           timelinePosition:
             stored.timelinePosition ?? DEFAULT_SETTINGS.timelinePosition,
           timelineHeight:

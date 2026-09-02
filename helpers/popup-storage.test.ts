@@ -36,6 +36,8 @@ describe('timeline seeking storage', () => {
     expect(settings.hideVideoControls).toBe(false);
     expect(DEFAULT_SETTINGS.colorizedTimeline).toBe(false);
     expect(settings.colorizedTimeline).toBe(false);
+    expect(DEFAULT_SETTINGS.isYouTubeChapteredTimelineEnabled).toBe(false);
+    expect(settings.isYouTubeChapteredTimelineEnabled).toBe(false);
     expect(DEFAULT_SETTINGS.isPlayPauseWheelEnabled).toBe(true);
     expect(settings.isPlayPauseWheelEnabled).toBe(true);
     expect(DEFAULT_SETTINGS.scrollSpeedFactor).toBe(1);
@@ -201,6 +203,28 @@ describe('timeline seeking storage', () => {
 
     expect(settings.colorizedTimeline).toBe(true);
     expect(set).toHaveBeenCalledWith({ colorizedTimeline: false });
+  });
+
+  it('loads and saves the YouTube chaptered timeline preference', async () => {
+    const set = vi.fn();
+    vi.stubGlobal('chrome', {
+      storage: {
+        sync: {
+          get: vi.fn((_keys, callback) =>
+            callback({ isYouTubeChapteredTimelineEnabled: true })
+          ),
+          set,
+        },
+      },
+    });
+
+    const settings = await loadPopupSettings();
+    saveSettings({ isYouTubeChapteredTimelineEnabled: false });
+
+    expect(settings.isYouTubeChapteredTimelineEnabled).toBe(true);
+    expect(set).toHaveBeenCalledWith({
+      isYouTubeChapteredTimelineEnabled: false,
+    });
   });
 });
 

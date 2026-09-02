@@ -14,6 +14,7 @@ const createSettingsManager = ({
   dragVideoToSeek = false,
   hideVideoControls = false,
   colorizedTimeline = false,
+  isYouTubeChapteredTimelineEnabled = false,
   invertHorizontalScroll = false,
   showTimelineOnHover = false,
   timelineHeight = 6,
@@ -29,6 +30,7 @@ const createSettingsManager = ({
   dragVideoToSeek?: boolean;
   hideVideoControls?: boolean;
   colorizedTimeline?: boolean;
+  isYouTubeChapteredTimelineEnabled?: boolean;
   invertHorizontalScroll?: boolean;
   showTimelineOnHover?: boolean;
   timelineHeight?: number;
@@ -49,6 +51,7 @@ const createSettingsManager = ({
     isDebugEnabled: () => false,
     isScrollSeekingEnabled: () => isScrollSeekingEnabled,
     isTimelineSeekingEnabled: () => isTimelineSeekingEnabled,
+    isYouTubeChapteredTimelineEnabled: () => isYouTubeChapteredTimelineEnabled,
     shouldDragVideoToSeek: () => dragVideoToSeek,
     shouldHideVideoControls: () => hideVideoControls,
     shouldColorizeTimeline: () => colorizedTimeline,
@@ -4279,5 +4282,154 @@ describe('OverlayCreator video dragging seeking', () => {
 
     controller.cleanup();
     deferredSeek.cancel();
+  });
+});
+
+describe('OverlayCreator YouTube chaptered timeline', () => {
+  const createChapterHarness = () => {
+    const videoStateManager = new VideoStateManager();
+    const overlayCreator = new OverlayCreator(
+      createSettingsManager({ isYouTubeChapteredTimelineEnabled: true }),
+      videoStateManager,
+      vi.fn()
+    );
+    const { state, video } = createVideoState();
+    const progressIndicator = state.timeline.firstElementChild as HTMLElement;
+    progressIndicator.className = 'scrub-timeline-progress-indicator';
+    progressIndicator.style.backgroundColor = 'rgb(255 0 0)';
+    const tooltip = document.createElement('div');
+    tooltip.className = 'mfs-youtube-chapter-tooltip';
+    state.youtubeChapterTooltip = tooltip;
+    state.wrapper.appendChild(tooltip);
+    videoStateManager.set(video, state);
+
+    const methods = overlayCreator as unknown as {
+      hideYouTubeChapterTooltip: (state: VideoStateT) => void;
+      renderYouTubeChapterModel: (
+        timeline: HTMLDivElement,
+        model: {
+          chapters: Array<{ end: number; start: number; title?: string }>;
+          source: 'markers' | 'segments';
+        } | null
+      ) => void;
+      setTimelineProgress: (timeline: HTMLDivElement, progress: number) => void;
+      setupYouTubeChapterTimeline: (
+        video: HTMLVideoElement,
+        state: VideoStateT
+      ) => { cleanup: () => void; updateEnabled: () => void };
+      updateYouTubeChapterTooltipAtPoint: (
+        state: VideoStateT,
+        clientX: number,
+        clientY: number
+      ) => void;
+    };
+
+    return { methods, overlayCreator, progressIndicator, state, video };
+  };
+
+  it('renders proportional segments and fills progress across chapter boundaries', () => {
+    const { methods, progressIndicator, state } = createChapterHarness();
+    methods.renderYouTubeChapterModel(state.timeline, {
+      chapters: [
+        { end: 20, start: 0, title: 'Intro' },
+        { end: 60, start: 20, title: 'Build' },
+        { end: 100, start: 60, title: 'Finish' },
+      ],
+      source: 'markers',
+    });
+    methods.setTimelineProgress(state.timeline, 0.3);
+
+    const layer = state.timeline.querySelector<HTMLElement>(
+      '.mfs-youtube-chapters'
+    );
+    const segments = state.timeline.querySelectorAll<HTMLElement>(
+      '.mfs-youtube-chapter-segment'
+    );
+    const fills = state.timeline.querySelectorAll<HTMLElement>(
+      '.mfs-youtube-chapter-progress'
+    );
+
+    expect(layer?.style.gap).toBe('4px');
+    expect(state.timeline.style.background).toBe('transparent');
+    expect(state.timeline.style.backdropFilter).toBe('none');
+    expect(segments).toHaveLength(3);
+    expect(segments[0]?.style.backdropFilter).toBe('blur(8px) saturate(140%)');
+    expect(segments[0]?.style.flexGrow).toBe('20');
+    expect(segments[1]?.style.flexGrow).toBe('40');
+    expect(progressIndicator.style.width).toBe('30%');
+    expect(progressIndicator.style.backgroundColor).toBe('transparent');
+    expect(progressIndicator.style.backdropFilter).toBe('none');
+    expect(fills[0]?.style.width).toBe('100%');
+    expect(fills[1]?.style.width).toBe('25%');
+    expect(fills[2]?.style.width).toBe('0%');
+  });
+
+  it('returns to the continuous renderer when chapter data disappears', () => {
+    const { methods, progressIndicator, state } = createChapterHarness();
+    methods.renderYouTubeChapterModel(state.timeline, {
+      chapters: [
+        { end: 50, start: 0 },
+        { end: 100, start: 50 },
+      ],
+      source: 'segments',
+    });
+    methods.setTimelineProgress(state.timeline, 0.65);
+    methods.renderYouTubeChapterModel(state.timeline, null);
+
+    expect(state.timeline.querySelector('.mfs-youtube-chapters')).toBeNull();
+    expect(state.timeline.dataset.mfsYoutubeChaptered).toBeUndefined();
+    expect(progressIndicator.style.width).toBe('65%');
+    expect(progressIndicator.style.backgroundColor).not.toBe('transparent');
+    expect(progressIndicator.style.backdropFilter).toBe(
+      'blur(8px) saturate(140%)'
+    );
+  });
+
+  it('shows a titled segment tooltip and hides it over a gap', () => {
+    const { methods, state } = createChapterHarness();
+    methods.renderYouTubeChapterModel(state.timeline, {
+      chapters: [
+        { end: 50, start: 0, title: 'Intro' },
+        { end: 100, start: 50, title: 'Demo' },
+      ],
+      source: 'markers',
+    });
+    state.timeline.style.opacity = '1';
+    const segments = state.timeline.querySelectorAll<HTMLElement>(
+      '.mfs-youtube-chapter-segment'
+    );
+    const firstSegment = segments.item(0);
+    const secondSegment = segments.item(1);
+    if (!firstSegment || !secondSegment) throw new Error('Missing segments');
+    firstSegment.getBoundingClientRect = () =>
+      ({ left: 10, right: 108 }) as DOMRect;
+    secondSegment.getBoundingClientRect = () =>
+      ({ left: 112, right: 210 }) as DOMRect;
+
+    methods.updateYouTubeChapterTooltipAtPoint(state, 50, 116);
+    expect(state.youtubeChapterTooltip?.textContent).toBe('Intro');
+    expect(state.youtubeChapterTooltip?.dataset.mfsVisible).toBe('true');
+    expect(state.youtubeChapterTooltip?.style.top).toBe('86px');
+
+    methods.updateYouTubeChapterTooltipAtPoint(state, 110, 116);
+    expect(state.youtubeChapterTooltip?.dataset.mfsVisible).toBe('false');
+    expect(state.youtubeChapterTooltip?.getAttribute('aria-hidden')).toBe(
+      'true'
+    );
+  });
+
+  it('disconnects its YouTube DOM observer during overlay cleanup', () => {
+    const { methods, state, video } = createChapterHarness();
+    const observe = vi.spyOn(window.MutationObserver.prototype, 'observe');
+    const disconnect = vi.spyOn(
+      window.MutationObserver.prototype,
+      'disconnect'
+    );
+
+    const controller = methods.setupYouTubeChapterTimeline(video, state);
+    expect(observe).toHaveBeenCalledOnce();
+
+    controller.cleanup();
+    expect(disconnect).toHaveBeenCalledOnce();
   });
 });

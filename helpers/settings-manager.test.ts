@@ -5,6 +5,14 @@ import { describe, expect, it } from 'vitest';
 import { SettingsManager } from '@/helpers/settings-manager';
 
 describe('SettingsManager seek mode gates', () => {
+  it('defaults YouTube chaptered timelines to off and updates them independently', () => {
+    const settings = new SettingsManager();
+
+    expect(settings.isYouTubeChapteredTimelineEnabled()).toBe(false);
+    settings.updateSetting('isYouTubeChapteredTimelineEnabled', true);
+    expect(settings.isYouTubeChapteredTimelineEnabled()).toBe(true);
+  });
+
   it('defaults action area size to percentage units', () => {
     const settings = new SettingsManager();
 

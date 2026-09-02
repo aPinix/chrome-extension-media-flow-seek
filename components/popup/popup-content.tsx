@@ -17,6 +17,7 @@ import { SectionTitle } from '@/components/popup/section-title';
 import { SiteAccessView } from '@/components/popup/site-access-view';
 import { ViewTitle } from '@/components/popup/view-title';
 import { SeekControlsSettings } from '@/components/settings/seek-controls-settings';
+import { YouTubeSettings } from '@/components/settings/youtube-settings';
 import { useTheme } from '@/components/theme-provider';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -189,6 +190,10 @@ export function PopupContent() {
   const [colorizedTimeline, setColorizedTimeline] = useState(
     DEFAULT_SETTINGS.colorizedTimeline
   );
+  const [
+    isYouTubeChapteredTimelineEnabled,
+    setIsYouTubeChapteredTimelineEnabled,
+  ] = useState(DEFAULT_SETTINGS.isYouTubeChapteredTimelineEnabled);
   const [timelinePosition, setTimelinePosition] = useState<'top' | 'bottom'>(
     'bottom'
   );
@@ -237,6 +242,8 @@ export function PopupContent() {
     dragVideoToSeek === DEFAULT_SETTINGS.dragVideoToSeek &&
     hideVideoControls === DEFAULT_SETTINGS.hideVideoControls &&
     colorizedTimeline === DEFAULT_SETTINGS.colorizedTimeline &&
+    isYouTubeChapteredTimelineEnabled ===
+      DEFAULT_SETTINGS.isYouTubeChapteredTimelineEnabled &&
     timelinePosition === DEFAULT_SETTINGS.timelinePosition &&
     timelineHeight === DEFAULT_SETTINGS.timelineHeight &&
     timelineHeightUnit === DEFAULT_SETTINGS.timelineHeightUnit &&
@@ -263,6 +270,9 @@ export function PopupContent() {
       setDragVideoToSeek(settings.dragVideoToSeek);
       setHideVideoControls(settings.hideVideoControls);
       setColorizedTimeline(settings.colorizedTimeline);
+      setIsYouTubeChapteredTimelineEnabled(
+        settings.isYouTubeChapteredTimelineEnabled
+      );
       setTimelinePosition(settings.timelinePosition);
       setTimelineHeight(settings.timelineHeight);
       setTimelineHeightUnit(settings.timelineHeightUnit);
@@ -428,6 +438,15 @@ export function PopupContent() {
     });
   };
 
+  const handleYouTubeChapteredTimelineToggle = (checked: boolean) => {
+    setIsYouTubeChapteredTimelineEnabled(checked);
+    saveSettings({ isYouTubeChapteredTimelineEnabled: checked });
+    sendMessageToCurrentTab({
+      action: 'updateYouTubeChapteredTimeline',
+      isYouTubeChapteredTimelineEnabled: checked,
+    });
+  };
+
   const handleTimelinePositionChange = (position: 'top' | 'bottom') => {
     setTimelinePosition(position);
     saveSettings({ timelinePosition: position });
@@ -565,6 +584,9 @@ export function PopupContent() {
     setDragVideoToSeek(defaultSettings.dragVideoToSeek);
     setHideVideoControls(defaultSettings.hideVideoControls);
     setColorizedTimeline(defaultSettings.colorizedTimeline);
+    setIsYouTubeChapteredTimelineEnabled(
+      defaultSettings.isYouTubeChapteredTimelineEnabled
+    );
     setTimelinePosition(defaultSettings.timelinePosition);
     setTimelineHeight(defaultSettings.timelineHeight);
     setTimelineHeightUnit(defaultSettings.timelineHeightUnit);
@@ -585,6 +607,8 @@ export function PopupContent() {
       dragVideoToSeek: defaultSettings.dragVideoToSeek,
       hideVideoControls: defaultSettings.hideVideoControls,
       colorizedTimeline: defaultSettings.colorizedTimeline,
+      isYouTubeChapteredTimelineEnabled:
+        defaultSettings.isYouTubeChapteredTimelineEnabled,
       timelinePosition: defaultSettings.timelinePosition,
       timelineHeight: defaultSettings.timelineHeight,
       timelineHeightUnit: defaultSettings.timelineHeightUnit,
@@ -633,6 +657,11 @@ export function PopupContent() {
     sendMessageToCurrentTab({
       action: 'updateColorizedTimeline',
       colorizedTimeline: defaultSettings.colorizedTimeline,
+    });
+    sendMessageToCurrentTab({
+      action: 'updateYouTubeChapteredTimeline',
+      isYouTubeChapteredTimelineEnabled:
+        defaultSettings.isYouTubeChapteredTimelineEnabled,
     });
     sendMessageToCurrentTab({
       action: 'updateTimelinePosition',
@@ -898,6 +927,17 @@ export function PopupContent() {
                       title="Match Site Color"
                     />
                   </CardListItemWrapper>
+                </div>
+
+                <div className="flex flex-none flex-col">
+                  <SectionTitle title="YouTube" />
+                  <YouTubeSettings
+                    chapteredTimelineEnabled={isYouTubeChapteredTimelineEnabled}
+                    extensionEnabled={isEnabled}
+                    onChapteredTimelineEnabledChange={
+                      handleYouTubeChapteredTimelineToggle
+                    }
+                  />
                 </div>
               </div>
             </ScrollArea>
