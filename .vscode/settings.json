@@ -25,8 +25,8 @@
   "vitest.nodeExecutable": "/opt/homebrew/bin/node",
 
   // tailwindcss
-  "tailwindCSS.classAttributes": ["class", "className", ".*class.*"],
-  "tailwindCSS.classFunctions": ["cn", "clsx", "cva", "tw", "tw.style"],
+  // "tailwindCSS.classAttributes": ["class", "className", ".*class.*"],
+  // "tailwindCSS.classFunctions": ["cn", "clsx", "cva", "tw", "tw.style"],
   // "tailwindCSS.experimental.classRegex": [
   //   "tw`([^`]*)",
   //   ["tw.style\\(([^)]*)\\)", "'([^']*)'"]

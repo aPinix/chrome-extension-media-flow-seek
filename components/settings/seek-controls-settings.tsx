@@ -8,6 +8,7 @@ import {
 import { type ReactNode, useState } from 'react';
 
 import { AppBetaBadge } from '@/components/app/app-beta-badge';
+import { AppKbd } from '@/components/app/app-kbd';
 import { AppSelect } from '@/components/app/app-select';
 import { AppSwitch } from '@/components/app/app-switch';
 import { ScrollSpeedFactorControl } from '@/components/scroll-speed-factor-control';
@@ -334,13 +335,14 @@ export function SeekControlsSettings({
                 </div>
                 <p className="text-slate-500 text-xs dark:text-slate-400">
                   Hold{' '}
-                  <kbd
-                    aria-label={primaryModifierLabel}
-                    className="inline-flex h-4.5 min-w-4.5 -translate-y-px items-center justify-center rounded-lg bg-slate-200 px-1 font-sans text-[10px] text-slate-600 leading-none dark:bg-slate-600 dark:text-slate-200"
-                  >
-                    {primaryModifierKey}
-                  </kbd>
-                  : swipe left to pause, right to play
+                  <AppKbd aria-label={`${primaryModifierKey} + Scroll Left`}>
+                    {primaryModifierKey} + Scroll Left
+                  </AppKbd>{' '}
+                  to pause,{' '}
+                  <AppKbd aria-label={`${primaryModifierKey} + Scroll Right`}>
+                    {primaryModifierKey} + Scroll Right
+                  </AppKbd>{' '}
+                  to play
                 </p>
               </div>
               <AppSwitch

@@ -9,6 +9,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { AppBetaBadge } from '@/components/app/app-beta-badge';
+import { AppKbd } from '@/components/app/app-kbd';
 import { AppSwitch } from '@/components/app/app-switch';
 import { XBrandIcon } from '@/components/icons/icons';
 import { CardListItem } from '@/components/popup/card-list-item';
@@ -91,19 +92,7 @@ function ShortcutKeycaps({ shortcut }: { shortcut: string }) {
   return (
     <span aria-hidden="true" className="inline-flex items-center gap-1">
       {keys.map((key, index) => (
-        <kbd
-          className={cn(
-            'grid shrink-0 place-items-center border-0 bg-slate-200 p-0 font-sans text-slate-600 leading-none shadow-none transition-colors group-hover/button:bg-brand-100 group-hover/button:text-brand-600 dark:bg-slate-600 dark:text-slate-200 dark:group-hover/button:bg-brand-800 dark:group-hover/button:text-brand-100',
-            isStatus
-              ? 'h-5 rounded-md px-1.5 text-[9px]'
-              : 'size-4.5 rounded-[4px] text-[10px]'
-          )}
-          key={`${key}-${index}`}
-        >
-          <span className="flex translate-y-px items-center justify-center leading-none">
-            {key}
-          </span>
-        </kbd>
+        <AppKbd key={`${key}-${index}`}>{key}</AppKbd>
       ))}
     </span>
   );
