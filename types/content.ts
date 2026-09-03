@@ -54,6 +54,7 @@ export type ContentSettingsT = {
     domain: string;
     type: DomainRuleTypeT;
     enabled: boolean;
+    createdAt?: number;
   }>;
 };
 

@@ -2,7 +2,9 @@
 
 import { describe, expect, it } from 'vitest';
 
+import { createDomainRule } from '@/helpers/domains';
 import { SettingsManager } from '@/helpers/settings-manager';
+import { DomainModeE } from '@/types/domains';
 
 describe('SettingsManager seek mode gates', () => {
   it('defaults YouTube chaptered timelines to off and updates them independently', () => {
@@ -60,6 +62,24 @@ describe('SettingsManager seek mode gates', () => {
 
     settings.updateSetting('hideVideoControls', true);
     expect(settings.hasActiveVideoFeatures()).toBe(true);
+    expect(settings.shouldRun()).toBe(true);
+  });
+
+  it('gives an exact page rule priority over a broader host rule', () => {
+    const settings = new SettingsManager();
+    settings.updateSetting('domainRules', [
+      createDomainRule('*', DomainModeE.On),
+      createDomainRule('localhost', DomainModeE.On),
+      createDomainRule(
+        'localhost/app/2399420/Le_Mans_Ultimate/',
+        DomainModeE.Off
+      ),
+    ]);
+
+    window.history.replaceState({}, '', '/app/2399420/Le_Mans_Ultimate/');
+    expect(settings.shouldRun()).toBe(false);
+
+    window.history.replaceState({}, '', '/app/another-game/');
     expect(settings.shouldRun()).toBe(true);
   });
 });

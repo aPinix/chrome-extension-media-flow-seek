@@ -25,12 +25,25 @@ describe('universal domain defaults', () => {
     });
   });
 
-  it('keeps every initial preset website at Default', () => {
+  it('puts apinix.com first and explicitly turns it Off', () => {
+    const rules = getDefaultDomainRules();
+    const siteDomains = rules
+      .filter(({ domain }) => domain !== '*')
+      .map(({ domain }) => domain);
+
+    expect(rules[1]).toEqual({
+      domain: 'apinix.com',
+      type: DomainRuleTypeE.Blacklist,
+      enabled: true,
+    });
     expect(
-      getDefaultDomainRules()
-        .filter(({ domain }) => domain !== '*')
+      rules
+        .filter(({ domain }) => domain !== '*' && domain !== 'apinix.com')
         .every(({ enabled }) => !enabled)
     ).toBe(true);
+    expect(siteDomains).toEqual(
+      [...siteDomains].sort((first, second) => first.localeCompare(second))
+    );
   });
 
   it.each([DomainRuleTypeE.Whitelist, DomainRuleTypeE.Blacklist])(
@@ -45,8 +58,11 @@ describe('universal domain defaults', () => {
       const migrated = mergeAndMigrateDomainRules(legacyRules);
       expect(isGlobalDefaultOn(migrated)).toBe(true);
       expect(
+        getDomainMode(migrated.find(({ domain }) => domain === 'apinix.com'))
+      ).toBe(DomainModeE.Off);
+      expect(
         migrated
-          .filter(({ domain }) => domain !== '*')
+          .filter(({ domain }) => domain !== '*' && domain !== 'apinix.com')
           .every(({ enabled }) => !enabled)
       ).toBe(true);
     }
@@ -127,6 +143,17 @@ describe('site access modes', () => {
     expect(getDomainMode(next[1])).toBe(DomainModeE.Default);
   });
 
+  it('preserves creation time when changing a saved row mode', () => {
+    const rules = [
+      createDomainRule('*', DomainModeE.On),
+      createDomainRule('example.com', DomainModeE.On, 1234),
+    ];
+
+    expect(
+      setDomainMode(rules, 'example.com', DomainModeE.Off)[1]?.createdAt
+    ).toBe(1234);
+  });
+
   it('reorders and restores sites without moving the wildcard', () => {
     const removed = createDomainRule('b.com', DomainModeE.Off);
     const rules = [
@@ -159,11 +186,24 @@ describe('site access modes', () => {
 
 describe('whole-site normalization', () => {
   it.each([
-    ['WWW.Example.COM/path', 'example.com'],
-    ['https://news.bbc.co.uk/story', 'bbc.co.uk'],
-    ['http://localhost:3000/test', 'localhost'],
-    ['127.0.0.1:8080', '127.0.0.1'],
-    ['https://[::1]:8080', '::1'],
+    ['WWW.Example.COM/path', 'www.example.com/path'],
+    ['https://news.bbc.co.uk/story', 'news.bbc.co.uk/story'],
+    ['http://localhost:3000/test', 'localhost:3000/test'],
+    ['127.0.0.1:8080', '127.0.0.1:8080'],
+    ['https://[::1]:8080', '[::1]:8080'],
+    [
+      'https://store.steampowered.com/app/2399420/Le_Mans_Ultimate/',
+      'store.steampowered.com/app/2399420/Le_Mans_Ultimate',
+    ],
+    [
+      'https://store.steampowered.com/app/2399420/Le_Mans_Ultimate////',
+      'store.steampowered.com/app/2399420/Le_Mans_Ultimate',
+    ],
+    [
+      'https://store.steampowered.com/app/2399420/Le_Mans_Ultimate////?utm_source=test??autoplay=1',
+      'store.steampowered.com/app/2399420/Le_Mans_Ultimate',
+    ],
+    ['example.com???one=1??two=2', 'example.com'],
   ])('normalizes %s to %s', (input, expected) => {
     expect(normalizeSiteInput(input)).toBe(expected);
   });
@@ -175,8 +215,11 @@ describe('whole-site normalization', () => {
     }
   );
 
-  it('normalizes duplicates to the same saved domain', () => {
+  it('keeps page-specific targets distinct from whole-domain targets', () => {
     expect(normalizeSiteInput('https://www.example.com/video')).toBe(
+      'www.example.com/video'
+    );
+    expect(normalizeSiteInput('https://www.example.com/video')).not.toBe(
       normalizeSiteInput('example.com')
     );
   });

@@ -1,9 +1,15 @@
-import { GlobeIcon, PlusIcon } from 'lucide-react';
+import { CrosshairIcon, GlobeIcon, PlusIcon } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { AppSwitch } from '@/components/app/app-switch';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import {
   getDomainMode,
   isGlobalDefaultOn,
@@ -11,12 +17,13 @@ import {
   setDomainMode,
   setGlobalDefault,
 } from '@/helpers/domains';
-import type { DomainConfigT, DomainModeT } from '@/types/domains';
+import type { DomainConfigT, DomainModeT, DomainSortT } from '@/types/domains';
 import { DomainModeE } from '@/types/domains';
 
 import { CardListItemWrapper } from './card-list-item-wrapper';
 import { DomainFavicon } from './domain-favicon';
 import { DomainModeControl } from './domain-mode-control';
+import { DomainName } from './domain-name';
 import { DomainRulesList } from './domain-rules-list';
 import { ItemRowText } from './item-row-text';
 import { ViewTitle } from './view-title';
@@ -31,15 +38,19 @@ const ROW_REMOVAL_DURATION_MS = 250;
 interface SiteAccessViewPropsI {
   currentDomain: string;
   domainRules: DomainConfigT[];
+  domainSort: DomainSortT;
   isActive: boolean;
   onDomainRulesChange: (rules: DomainConfigT[]) => void;
+  onDomainSortChange: (sort: DomainSortT) => void;
 }
 
 export function SiteAccessView({
   currentDomain,
   domainRules,
+  domainSort,
   isActive,
   onDomainRulesChange,
+  onDomainSortChange,
 }: SiteAccessViewPropsI) {
   const [undoDeletions, setUndoDeletions] = useState<DeletionHistoryEntryI[]>(
     []
@@ -144,6 +155,7 @@ export function SiteAccessView({
         setDomainMode(domainRules, currentDomain, mode, {
           addAtTop: true,
           addMissing: true,
+          createdAt: Date.now(),
         })
       );
     },
@@ -154,18 +166,19 @@ export function SiteAccessView({
     ({ domain }) => domain === currentDomain
   );
   const globalDefaultOn = isGlobalDefaultOn(domainRules);
-  const scrollToTop = useCallback(() => {
-    const viewport = scrollAreaRef.current?.querySelector<HTMLElement>(
-      '[data-slot="scroll-area-viewport"]'
-    );
-    viewport?.scrollTo({
+  const showCurrentDomainRule = useCallback(() => {
+    const row = Array.from(
+      scrollAreaRef.current?.querySelectorAll<HTMLElement>('[data-domain]') ??
+        []
+    ).find((element) => element.dataset.domain === currentDomain);
+
+    row?.scrollIntoView({
       behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
         ? 'auto'
         : 'smooth',
-      top: 0,
+      block: 'center',
     });
-  }, []);
-
+  }, [currentDomain]);
   return (
     <div className="relative flex min-h-0 flex-1 flex-col bg-slate-100 dark:bg-slate-900">
       <ScrollArea
@@ -186,10 +199,10 @@ export function SiteAccessView({
             <CardListItemWrapper>
               <div className="card-list-item flex min-h-14 items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 transition-all dark:border-slate-600 dark:bg-slate-800/70">
                 <div
-                  className={`relative flex size-5 shrink-0 items-center justify-center ${
+                  className={`relative flex size-5 shrink-0 items-center justify-center transition-colors duration-200 ${
                     globalDefaultOn
-                      ? 'text-sky-500 dark:text-sky-400'
-                      : 'text-slate-400 dark:text-slate-500'
+                      ? 'text-lime-600 dark:text-lime-400'
+                      : 'text-rose-600 dark:text-rose-400'
                   }`}
                   data-testid="global-default-icon"
                 >
@@ -197,21 +210,41 @@ export function SiteAccessView({
                 </div>
                 <ItemRowText
                   className="flex-1"
-                  description="Default for sites without a custom setting"
-                  title="Run on all websites"
+                  description={
+                    <>
+                      BetterVideo is{' '}
+                      <span
+                        className={`font-bold transition-colors duration-200 ${
+                          globalDefaultOn
+                            ? 'text-lime-600 dark:text-lime-400'
+                            : 'text-rose-600 dark:text-rose-400'
+                        }`}
+                        data-testid="global-default-state"
+                      >
+                        {globalDefaultOn ? 'Enabled' : 'Disabled'}
+                      </span>{' '}
+                      by default on websites without a custom setting.
+                    </>
+                  }
+                  title="Run by Default"
+                  titleClassName={`transition-colors duration-200 ${
+                    globalDefaultOn
+                      ? 'text-lime-600 dark:text-lime-400'
+                      : 'text-rose-600 dark:text-rose-400'
+                  }`}
                 />
                 <AppSwitch
-                  aria-label="Run on all websites by default"
+                  aria-label="Run BetterVideo by default on websites"
                   checked={globalDefaultOn}
-                  className="data-checked:border-sky-500 data-checked:bg-sky-500 group-has-[:focus-visible]/field-label:data-checked:border-sky-500"
+                  className="data-checked:border-lime-500 data-unchecked:border-rose-500 data-checked:bg-lime-500 data-unchecked:bg-rose-500 group-has-[:focus-visible]/field-label:data-checked:border-lime-500 group-has-[:focus-visible]/field-label:data-unchecked:border-rose-500 dark:data-unchecked:border-rose-400 dark:data-unchecked:bg-rose-400"
                   onCheckedChange={(checked) =>
                     onDomainRulesChange(setGlobalDefault(domainRules, checked))
                   }
                   thumbIcon={
                     <GlobeIcon
                       aria-hidden="true"
-                      className={`size-3 ${
-                        globalDefaultOn ? 'text-sky-500' : 'text-slate-400'
+                      className={`size-3 transition-colors duration-200 ${
+                        globalDefaultOn ? 'text-lime-600' : 'text-rose-600'
                       }`}
                     />
                   }
@@ -224,45 +257,63 @@ export function SiteAccessView({
                   <ItemRowText
                     className="flex-1"
                     description="Current website"
-                    title={currentDomain}
+                    title={<DomainName domain={currentDomain} />}
                     titleTooltip={currentDomain}
                   />
                   <DomainModeControl
+                    globalDefaultOn={globalDefaultOn}
                     label={`Access for current website ${currentDomain}`}
                     onChange={handleCurrentModeChange}
                     value={getDomainMode(currentRule)}
                   />
-                  <Button
-                    aria-label={
-                      currentRule
-                        ? `${currentDomain} is already in website settings`
-                        : `Add ${currentDomain} to website settings`
-                    }
-                    className="size-7 shrink-0 rounded-full bg-emerald-500/15 p-0 text-emerald-700 transition-[color,background-color,transform,opacity] hover:scale-105 hover:bg-emerald-500/25 hover:text-emerald-800 disabled:opacity-30 dark:bg-emerald-400/15 dark:text-emerald-300 dark:hover:bg-emerald-400/25 dark:hover:text-emerald-200"
-                    disabled={Boolean(currentRule)}
-                    onClick={() =>
-                      onDomainRulesChange(
-                        setDomainMode(
-                          domainRules,
-                          currentDomain,
-                          DomainModeE.Default,
-                          {
-                            addAtTop: true,
-                            addMissing: true,
-                          }
-                        )
-                      )
-                    }
-                    title={
-                      currentRule
-                        ? 'Already added to website settings'
-                        : 'Add to website settings'
-                    }
-                    type="button"
-                    variant="ghost"
-                  >
-                    <PlusIcon className="size-5" />
-                  </Button>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            aria-label={
+                              currentRule
+                                ? `Show ${currentDomain} in website settings`
+                                : `Add ${currentDomain} to website settings`
+                            }
+                            className="size-7 shrink-0 rounded-full bg-emerald-500/15 p-0 text-emerald-700 transition-[color,background-color,transform,opacity] hover:scale-105 hover:bg-emerald-500/25 hover:text-emerald-800 dark:bg-emerald-400/15 dark:text-emerald-300 dark:hover:bg-emerald-400/25 dark:hover:text-emerald-200"
+                            onClick={() => {
+                              if (currentRule) {
+                                showCurrentDomainRule();
+                                return;
+                              }
+
+                              onDomainRulesChange(
+                                setDomainMode(
+                                  domainRules,
+                                  currentDomain,
+                                  DomainModeE.Default,
+                                  {
+                                    addAtTop: true,
+                                    addMissing: true,
+                                    createdAt: Date.now(),
+                                  }
+                                )
+                              );
+                            }}
+                            type="button"
+                            variant="ghost"
+                          >
+                            {currentRule ? (
+                              <CrosshairIcon className="size-4" />
+                            ) : (
+                              <PlusIcon className="size-5" />
+                            )}
+                          </Button>
+                        }
+                      />
+                      <TooltipContent>
+                        {currentRule
+                          ? 'Already exists'
+                          : 'Add to website settings'}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </div>
               ) : null}
             </CardListItemWrapper>
@@ -272,16 +323,17 @@ export function SiteAccessView({
             canRedo={redoDeletions.length > 0}
             canUndo={undoDeletions.length > 0}
             domainRules={domainRules}
+            globalDefaultOn={globalDefaultOn}
             isActive={isActive}
             onAdd={(domain, mode) =>
               onDomainRulesChange(
                 setDomainMode(domainRules, domain, mode, {
                   addAtTop: true,
                   addMissing: true,
+                  createdAt: Date.now(),
                 })
               )
             }
-            onAddStart={scrollToTop}
             onModeChange={handleSiteModeChange}
             onOrderChange={(siteRules) =>
               onDomainRulesChange([
@@ -291,8 +343,10 @@ export function SiteAccessView({
             }
             onRedo={handleRedo}
             onRemove={handleRemove}
+            onSortChange={onDomainSortChange}
             onUndo={handleUndo}
             removingDomain={removingDomain}
+            sort={domainSort}
           />
         </div>
       </ScrollArea>

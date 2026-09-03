@@ -1,5 +1,6 @@
 import { IS_DEVELOPMENT } from '@/config/variables.config';
 import {
+  doesSiteRuleMatchUrl,
   getDefaultDomainRules,
   mergeAndMigrateDomainRules,
 } from '@/helpers/domains';
@@ -262,20 +263,19 @@ export class SettingsManager {
       return false;
     }
 
-    const currentHostname = window.location.hostname.toLowerCase();
-
     let shouldRunDomain = false;
+    const currentUrl = new URL(window.location.href);
 
     // Filter enabled rules, but always include global rule
     const enabledRules = this.settings.domainRules.filter(
       (rule) => rule.domain === '*' || rule.enabled
     );
 
-    // Sort by specificity (specific domains first, wildcard last)
+    // Sort by specificity (page paths first, wildcard last)
     const sortedRules = [...enabledRules].sort((a, b) => {
       if (a.domain === '*') return 1;
       if (b.domain === '*') return -1;
-      return 0;
+      return b.domain.length - a.domain.length;
     });
 
     // Check rules in order of specificity
@@ -284,14 +284,7 @@ export class SettingsManager {
         // Wildcard rule applies to all domains
         shouldRunDomain = rule.type === DomainRuleTypeE.Whitelist;
       } else {
-        const ruleDomain = rule.domain.toLowerCase();
-
-        // Check for exact match or subdomain match
-        const isMatch =
-          currentHostname === ruleDomain ||
-          currentHostname.endsWith(`.${ruleDomain}`);
-
-        if (isMatch) {
+        if (doesSiteRuleMatchUrl(rule.domain, currentUrl)) {
           // Specific domain rule takes precedence
           shouldRunDomain = rule.type === DomainRuleTypeE.Whitelist;
           break;

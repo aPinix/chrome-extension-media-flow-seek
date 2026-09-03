@@ -34,7 +34,7 @@ import { getCurrentDomain } from '@/lib/popup-utils';
 import { cn } from '@/lib/utils';
 import { getExtensionVersion } from '@/lib/version';
 import { ActionAreaE, type ActionAreaT } from '@/types/content';
-import type { DomainConfigT } from '@/types/domains';
+import type { DomainConfigT, DomainSortT } from '@/types/domains';
 import { ShortcutHotkeyStateE } from '@/types/shortcut';
 
 import { CardListItemWrapper } from './card-list-item-wrapper';
@@ -168,6 +168,7 @@ export function PopupContent() {
   const { theme } = useTheme();
   const carouselRef = useRef<HTMLElement>(null);
   const programmaticViewRef = useRef<boolean | null>(null);
+  const domainSortTouchedRef = useRef(false);
   const [isEnabled, setIsEnabled] = useState(true);
   const [isDebugEnabled, setIsDebugEnabled] = useState(false);
   const [isScrollSeekingEnabled, setIsScrollSeekingEnabled] = useState(
@@ -199,6 +200,9 @@ export function PopupContent() {
   );
   const [toggleShortcut, setToggleShortcut] = useState<string>('');
   const [domainRules, setDomainRules] = useState<DomainConfigT[]>([]);
+  const [domainSort, setDomainSort] = useState<DomainSortT>(
+    DEFAULT_SETTINGS.domainSort
+  );
   const [currentDomain, setCurrentDomain] = useState('');
   const [showDomainsView, setShowDomainsView] = useState(false);
   const [fastScrollHotkey, setFastScrollHotkey] = useState<ScrollHotkeyT>(
@@ -277,6 +281,7 @@ export function PopupContent() {
       setTimelineHeight(settings.timelineHeight);
       setTimelineHeightUnit(settings.timelineHeightUnit);
       setDomainRules(settings.domainRules);
+      if (!domainSortTouchedRef.current) setDomainSort(settings.domainSort);
       setActionArea(settings.actionArea || 'full');
       setActionAreaSize(settings.actionAreaSize);
       setActionAreaSizeUnit(settings.actionAreaSizeUnit);
@@ -312,6 +317,12 @@ export function PopupContent() {
       action: 'updateDomainRules',
       domainRules: newRules,
     });
+  }, []);
+
+  const updateDomainSort = useCallback((sort: DomainSortT) => {
+    domainSortTouchedRef.current = true;
+    setDomainSort(sort);
+    saveSettings({ domainSort: sort });
   }, []);
 
   const handleEnabledToggle = (checked: boolean) => {
@@ -952,8 +963,10 @@ export function PopupContent() {
             <SiteAccessView
               currentDomain={currentDomain}
               domainRules={domainRules}
+              domainSort={domainSort}
               isActive={showDomainsView}
               onDomainRulesChange={updateDomainRules}
+              onDomainSortChange={updateDomainSort}
             />
           </div>
         </main>

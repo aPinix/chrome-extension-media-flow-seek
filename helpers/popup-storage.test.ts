@@ -7,6 +7,7 @@ import {
   subscribeToEnabledChanges,
 } from '@/helpers/popup-storage';
 import { SETTINGS_SCHEMA_VERSION } from '@/helpers/settings-migration';
+import { DomainSortE } from '@/types/domains';
 
 describe('timeline seeking storage', () => {
   afterEach(() => {
@@ -44,6 +45,28 @@ describe('timeline seeking storage', () => {
     expect(settings.scrollSpeedFactor).toBe(1);
     expect(DEFAULT_SETTINGS.actionAreaSizeUnit).toBe('%');
     expect(settings.actionAreaSizeUnit).toBe('%');
+    expect(DEFAULT_SETTINGS.domainSort).toBe(DomainSortE.Custom);
+    expect(settings.domainSort).toBe(DomainSortE.Custom);
+  });
+
+  it('loads and saves the website sort preference', async () => {
+    const set = vi.fn();
+    vi.stubGlobal('chrome', {
+      storage: {
+        sync: {
+          get: vi.fn((_keys, callback) =>
+            callback({ domainSort: DomainSortE.DateDescending })
+          ),
+          set,
+        },
+      },
+    });
+
+    const settings = await loadPopupSettings();
+    saveSettings({ domainSort: DomainSortE.Custom });
+
+    expect(settings.domainSort).toBe(DomainSortE.DateDescending);
+    expect(set).toHaveBeenCalledWith({ domainSort: DomainSortE.Custom });
   });
 
   it('migrates dormant legacy children without activating them', async () => {

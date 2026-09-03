@@ -1,7 +1,6 @@
 import { GripVerticalIcon, PencilIcon, Trash2Icon } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
-import { parse } from 'tldts';
 
 import { AppInputText } from '@/components/app/app-input-text';
 import { Button } from '@/components/ui/button';
@@ -17,6 +16,7 @@ import type { DomainConfigT, DomainModeT } from '@/types/domains';
 
 import { DomainFavicon } from './domain-favicon';
 import { DomainModeControl } from './domain-mode-control';
+import { DomainName } from './domain-name';
 
 export const DOMAIN_RULE_DRAG_TYPE = 'site-access-rule';
 
@@ -26,6 +26,7 @@ export interface DomainRuleDragItemI {
 }
 
 interface DomainListItemPropsI {
+  globalDefaultOn: boolean;
   highlighted?: boolean;
   index: number;
   isEntering?: boolean;
@@ -39,11 +40,13 @@ interface DomainListItemPropsI {
   onRegisterRow: (domain: string, element: HTMLLIElement | null) => void;
   onRemove: (domain: string) => void;
   rule: DomainConfigT;
+  showDragHandle?: boolean;
   showDivider?: boolean;
   sortingDisabled?: boolean;
 }
 
 export function DomainListItem({
+  globalDefaultOn,
   highlighted,
   index,
   isEntering,
@@ -57,24 +60,17 @@ export function DomainListItem({
   onRegisterRow,
   onRemove,
   rule,
+  showDragHandle = true,
   showDivider,
   sortingDisabled,
 }: DomainListItemPropsI) {
   const rowRef = useRef<HTMLLIElement>(null);
-  const handleRef = useRef<HTMLButtonElement>(null);
   const dragPreviewRef = useRef<HTMLLIElement>(null);
   const dragPreviewResetFrameRef = useRef<number | null>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(rule.domain);
   const [isEditInvalid, setIsEditInvalid] = useState(false);
-
-  const parsedDomain = parse(rule.domain);
-  const publicSuffix = parsedDomain.publicSuffix;
-  const suffix = publicSuffix ? `.${publicSuffix}` : '';
-  const domainName = suffix
-    ? rule.domain.slice(0, -suffix.length)
-    : rule.domain;
 
   useEffect(() => {
     if (!isEditing) return;
@@ -165,7 +161,7 @@ export function DomainListItem({
   );
 
   connectDrop(rowRef);
-  connectDrag(handleRef);
+  connectDrag(rowRef);
 
   useLayoutEffect(() => {
     const row = rowRef.current;
@@ -205,14 +201,18 @@ export function DomainListItem({
     <li
       aria-hidden={isRemoving || undefined}
       className={cn(
-        'group/domain-row relative grid h-13 min-h-0 grid-cols-[20px_24px_minmax(0,1fr)_80px_28px] items-center gap-1 overflow-hidden rounded-none bg-white pr-2 pl-2 transition-[height,opacity,transform,background-color] duration-250 ease-in-out hover:bg-slate-50/70 motion-reduce:transition-none dark:bg-slate-800/70 dark:hover:bg-slate-700/20',
+        'group/domain-row relative grid h-13 min-h-0 items-center gap-1 overflow-hidden rounded-none bg-white pr-2 pl-2 transition-[height,opacity,transform,background-color,grid-template-columns] duration-250 ease-in-out hover:bg-slate-50/70 motion-reduce:transition-none dark:bg-slate-800/70 dark:hover:bg-slate-700/20',
+        showDragHandle
+          ? 'grid-cols-[20px_24px_minmax(0,1fr)_80px_28px]'
+          : 'grid-cols-[0px_24px_minmax(0,1fr)_80px_28px]',
         showDivider &&
           "after:absolute after:right-3 after:bottom-0 after:left-8 after:h-px after:bg-slate-100/70 after:content-[''] dark:after:bg-white/5",
-        highlighted && 'bg-brand-50/80 dark:bg-brand-900/35',
+        highlighted && 'bg-lime-100/80 dark:bg-lime-900/35',
         isDragging && 'opacity-35',
         isEntering && 'h-0 -translate-y-2 opacity-0',
         isRemoving && 'pointer-events-none h-0 -translate-x-2 opacity-0'
       )}
+      data-domain={rule.domain}
       data-entering={isEntering || undefined}
       data-removing={isRemoving || undefined}
       inert={isRemoving || undefined}
@@ -224,10 +224,14 @@ export function DomainListItem({
       <button
         aria-label={`Move ${rule.domain}. Hold Alt and press an arrow key to reorder.`}
         className={cn(
-          'flex h-full w-5 cursor-grab touch-none items-center justify-center self-stretch rounded-sm text-slate-400 outline-none hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-brand/35 focus-visible:ring-inset active:cursor-grabbing dark:text-slate-500 dark:hover:text-slate-300',
+          'flex h-full min-w-0 cursor-grab touch-none items-center justify-center self-stretch overflow-hidden rounded-sm text-slate-400 outline-none transition-[transform,opacity] duration-250 ease-in-out hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-brand/35 focus-visible:ring-inset active:cursor-grabbing motion-reduce:transition-none dark:text-slate-500 dark:hover:text-slate-300',
           (sortingDisabled || isEditing || isRemoving) &&
-            'cursor-not-allowed opacity-35'
+            'cursor-not-allowed opacity-35',
+          showDragHandle
+            ? 'translate-x-0'
+            : 'pointer-events-none -translate-x-3 opacity-0'
         )}
+        data-drag-handle-visible={showDragHandle}
         disabled={sortingDisabled || isEditing || isRemoving}
         onKeyDown={(event) => {
           if (!event.altKey) return;
@@ -239,7 +243,6 @@ export function DomainListItem({
             onKeyboardMove(index, 1);
           }
         }}
-        ref={handleRef}
         type="button"
       >
         <GripVerticalIcon className="size-4" />
@@ -256,7 +259,7 @@ export function DomainListItem({
               render={
                 <button
                   aria-label={`Edit ${rule.domain}`}
-                  className="absolute inset-0 z-10 flex size-6 items-center justify-center rounded-md bg-brand-50 text-brand opacity-0 outline-none transition-[color,background-color,opacity] duration-150 hover:bg-brand-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-brand/35 group-hover/domain-edit:opacity-100 dark:bg-brand-900/60 dark:text-brand-200 dark:hover:bg-brand-800/70"
+                  className="absolute inset-0 z-10 flex size-6 cursor-pointer items-center justify-center rounded-md bg-brand-50 text-brand opacity-0 outline-none transition-[color,background-color,opacity] duration-150 hover:bg-brand-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-brand/35 group-hover/domain-edit:opacity-100 dark:bg-brand-900/60 dark:text-brand-200 dark:hover:bg-brand-800/70"
                   onClick={startEditing}
                   type="button"
                 >
@@ -300,15 +303,24 @@ export function DomainListItem({
           />
         </form>
       ) : (
-        <div className="min-w-0 truncate font-medium text-slate-900 text-sm dark:text-white">
-          <span>{domainName}</span>
-          {suffix ? (
-            <span className="text-muted-foreground">{suffix}</span>
-          ) : null}
-        </div>
+        <button
+          aria-label={`Domain ${rule.domain}. Double-click to edit.`}
+          className="min-w-0 cursor-text select-none truncate rounded-sm text-left font-medium text-slate-900 text-sm outline-none focus-visible:ring-2 focus-visible:ring-brand/35 dark:text-white"
+          onDoubleClick={startEditing}
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            startEditing();
+          }}
+          title={`Double-click to edit ${rule.domain}`}
+          type="button"
+        >
+          <DomainName domain={rule.domain} />
+        </button>
       )}
 
       <DomainModeControl
+        globalDefaultOn={globalDefaultOn}
         label={`Access for ${rule.domain}`}
         onChange={(mode) => onModeChange(rule.domain, mode)}
         value={getDomainMode(rule)}

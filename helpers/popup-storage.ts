@@ -14,7 +14,8 @@ import {
   migrateSeekSettings,
   SETTINGS_SCHEMA_VERSION,
 } from '@/helpers/settings-migration';
-import type { DomainConfigT } from '@/types/domains';
+import type { DomainConfigT, DomainSortT } from '@/types/domains';
+import { DomainSortE } from '@/types/domains';
 
 export type PopupSettings = {
   settingsSchemaVersion: number;
@@ -40,6 +41,7 @@ export type PopupSettings = {
   actionAreaSize: number;
   actionAreaSizeUnit: 'px' | '%';
   domainRules: DomainConfigT[];
+  domainSort: DomainSortT;
 };
 
 export const DEFAULT_SETTINGS: Omit<PopupSettings, 'domainRules'> = {
@@ -65,7 +67,15 @@ export const DEFAULT_SETTINGS: Omit<PopupSettings, 'domainRules'> = {
   actionArea: 'full',
   actionAreaSize: 30,
   actionAreaSizeUnit: '%',
+  domainSort: DomainSortE.Custom,
 };
+
+const domainSortValues = new Set<DomainSortT>(Object.values(DomainSortE));
+
+const normalizeDomainSort = (sort: unknown): DomainSortT =>
+  domainSortValues.has(sort as DomainSortT)
+    ? (sort as DomainSortT)
+    : DEFAULT_SETTINGS.domainSort;
 
 export const mergeDomainRules = (
   existingRules: DomainConfigT[]
@@ -98,6 +108,7 @@ export const loadPopupSettings = (): Promise<PopupSettings> => {
         'actionAreaSize',
         'actionAreaSizeUnit',
         'domainRules',
+        'domainSort',
       ],
       (result) => {
         const stored = result as Partial<PopupSettings>;
@@ -177,6 +188,7 @@ export const loadPopupSettings = (): Promise<PopupSettings> => {
           actionAreaSizeUnit:
             stored.actionAreaSizeUnit ?? DEFAULT_SETTINGS.actionAreaSizeUnit,
           domainRules: finalRules,
+          domainSort: normalizeDomainSort(stored.domainSort),
         });
       }
     );

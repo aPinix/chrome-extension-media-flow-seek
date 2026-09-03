@@ -4,14 +4,9 @@ import { DomainRuleTypeE } from '@/types/domains';
 export const DOMAIN_CONFIGS: DomainConfigT[] = [
   { domain: '*', type: DomainRuleTypeE.Whitelist, enabled: true },
   {
-    domain: 'youtube.com',
-    type: DomainRuleTypeE.Whitelist,
-    enabled: false,
-  },
-  {
-    domain: 'vimeo.com',
-    type: DomainRuleTypeE.Whitelist,
-    enabled: false,
+    domain: 'apinix.com',
+    type: DomainRuleTypeE.Blacklist,
+    enabled: true,
   },
   {
     domain: 'dailymotion.com',
@@ -19,27 +14,17 @@ export const DOMAIN_CONFIGS: DomainConfigT[] = [
     enabled: false,
   },
   {
-    domain: 'x.com',
+    domain: 'facebook.com',
     type: DomainRuleTypeE.Whitelist,
     enabled: false,
   },
   {
-    domain: 'twitch.tv',
-    type: DomainRuleTypeE.Whitelist,
-    enabled: false,
-  },
-  {
-    domain: 'tiktok.com',
+    domain: 'hulu.com',
     type: DomainRuleTypeE.Whitelist,
     enabled: false,
   },
   {
     domain: 'instagram.com',
-    type: DomainRuleTypeE.Whitelist,
-    enabled: false,
-  },
-  {
-    domain: 'facebook.com',
     type: DomainRuleTypeE.Whitelist,
     enabled: false,
   },
@@ -54,7 +39,27 @@ export const DOMAIN_CONFIGS: DomainConfigT[] = [
     enabled: false,
   },
   {
-    domain: 'hulu.com',
+    domain: 'tiktok.com',
+    type: DomainRuleTypeE.Whitelist,
+    enabled: false,
+  },
+  {
+    domain: 'twitch.tv',
+    type: DomainRuleTypeE.Whitelist,
+    enabled: false,
+  },
+  {
+    domain: 'vimeo.com',
+    type: DomainRuleTypeE.Whitelist,
+    enabled: false,
+  },
+  {
+    domain: 'x.com',
+    type: DomainRuleTypeE.Whitelist,
+    enabled: false,
+  },
+  {
+    domain: 'youtube.com',
     type: DomainRuleTypeE.Whitelist,
     enabled: false,
   },

@@ -13,8 +13,8 @@ import { useState } from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { createDomainRule } from '@/helpers/domains';
-import type { DomainConfigT } from '@/types/domains';
-import { DomainModeE } from '@/types/domains';
+import type { DomainConfigT, DomainSortT } from '@/types/domains';
+import { DomainModeE, DomainSortE } from '@/types/domains';
 
 import { SiteAccessView } from './site-access-view';
 
@@ -35,23 +35,29 @@ const INITIAL_RULES: DomainConfigT[] = [
 function SiteAccessHarness({
   currentDomain = 'youtube.com',
   initialRules = INITIAL_RULES,
+  initialSort = DomainSortE.Custom,
   isActive = true,
 }: {
   currentDomain?: string;
   initialRules?: DomainConfigT[];
+  initialSort?: DomainSortT;
   isActive?: boolean;
 }) {
   const [rules, setRules] = useState(initialRules);
+  const [sort, setSort] = useState<DomainSortT>(initialSort);
   return (
     <>
       <div id="domain-toolbar-root" />
       <SiteAccessView
         currentDomain={currentDomain}
         domainRules={rules}
+        domainSort={sort}
         isActive={isActive}
         onDomainRulesChange={setRules}
+        onDomainSortChange={setSort}
       />
       <output data-testid="rules">{JSON.stringify(rules)}</output>
+      <output data-testid="sort">{sort}</output>
     </>
   );
 }
@@ -81,38 +87,50 @@ describe('SiteAccessView', () => {
     expect(screen.getByText('Choose where BetterVideo runs')).toBeTruthy();
   });
 
-  it('puts website settings actions and search in the bottom toolbar dock', () => {
+  it('puts history after the website settings title and search in the bottom toolbar', () => {
     render(<SiteAccessHarness />);
 
     const controls = screen.getByTestId('domain-bottom-toolbar');
     const classNames = controls.className.split(/\s+/);
 
-    expect(classNames).toContain('h-10');
+    expect(classNames).toContain('h-12');
     expect(classNames).toContain('items-center');
+    const heading = screen.getByRole('heading', { name: 'Website settings' });
+    const history = screen.getByRole('toolbar', {
+      name: 'Website settings history',
+    });
+    expect(heading.parentElement?.parentElement?.contains(history)).toBe(true);
     expect(
-      screen.getByRole('heading', { name: 'Website settings' })
-    ).toBeTruthy();
-    expect(
-      within(controls).getByRole('button', {
+      within(history).getByRole('button', {
         name: 'Undo website removal',
       })
     ).toBeTruthy();
     expect(
-      within(controls).getByRole('button', {
+      within(history).getByRole('button', {
         name: 'Redo website removal',
       })
     ).toBeTruthy();
     const addButton = within(controls).getByRole('button', {
       name: 'Add website',
     });
-    expect(addButton.className).toContain('bg-brand-500');
-    expect(addButton.className).toContain('text-white');
+    const search = within(controls).getByRole('searchbox', {
+      name: 'Search website settings',
+    });
+    expect(addButton.className).toContain('bg-lime-400');
+    expect(addButton.className).toContain('text-lime-950');
     expect(addButton.className).toContain('shadow-sm');
-    expect(
-      within(controls).getByRole('searchbox', {
-        name: 'Search website settings',
-      })
-    ).toBeTruthy();
+    expect(addButton.querySelector('svg')?.classList).toContain('lucide-plus');
+    expect(addButton.textContent).toBe('');
+    expect((addButton as HTMLButtonElement).disabled).toBe(true);
+    expect(search.className).toContain('h-10');
+    expect(search.parentElement).toBe(addButton.parentElement);
+    expect(controls.querySelector('.lucide-search')).toBeTruthy();
+    const sortButton = screen.getByRole('button', {
+      name: 'Sort website settings: Custom order',
+    });
+    expect(sortButton.querySelector('svg')?.classList).toContain(
+      'lucide-list-restart'
+    );
   });
 
   it('focuses the search input whenever the Domains view becomes active', async () => {
@@ -135,7 +153,17 @@ describe('SiteAccessView', () => {
     const currentControl = screen.getByRole('group', {
       name: 'Access for current website youtube.com',
     });
-    await user.click(within(currentControl).getByRole('radio', { name: 'On' }));
+    const onMode = within(currentControl).getByRole('radio', { name: 'On' });
+    const offMode = within(currentControl).getByRole('radio', { name: 'Off' });
+
+    expect(onMode.closest('label')?.querySelector('svg')?.classList).toContain(
+      'lucide-check-check'
+    );
+    expect(offMode.closest('label')?.querySelector('svg')?.classList).toContain(
+      'lucide-ban'
+    );
+
+    await user.click(onMode);
 
     const savedControl = screen.getByRole('group', {
       name: 'Access for youtube.com',
@@ -188,49 +216,55 @@ describe('SiteAccessView', () => {
     );
   });
 
-  it('uses prominent colored add and editor actions', async () => {
+  it('uses the lime add action and creates the row immediately', async () => {
     const user = userEvent.setup();
+    vi.mocked(Element.prototype.scrollIntoView).mockClear();
     render(<SiteAccessHarness />);
 
     const currentSiteAdd = screen.getByRole('button', {
-      name: 'youtube.com is already in website settings',
+      name: 'Show youtube.com in website settings',
     });
-    expect(currentSiteAdd.querySelector('svg')?.classList).toContain('size-5');
+    expect(currentSiteAdd.querySelector('svg')?.classList).toContain(
+      'lucide-crosshair'
+    );
+    expect(currentSiteAdd.querySelector('svg')?.classList).toContain('size-4');
 
-    await user.click(screen.getByRole('button', { name: 'Add website' }));
-    const discard = await screen.findByRole('button', {
-      name: 'Discard website',
-    });
-    const create = await screen.findByRole('button', {
-      name: 'Create website',
-    });
+    const search = screen.getByRole('searchbox', {
+      name: 'Search website settings',
+    }) as HTMLInputElement;
+    const add = screen.getByRole('button', { name: 'Add website' });
+    await user.type(search, 'example.org');
+    expect(add.className).toContain('bg-lime-400');
+    await user.click(add);
 
-    expect(discard.className).toContain('size-5');
-    expect(discard.className).toContain('rounded-md');
-    expect(discard.className).toContain('bg-red-500/15');
-    expect(create.className).toContain('size-5');
-    expect(create.className).toContain('rounded-md');
-    expect(create.className).toContain('bg-emerald-500/15');
-
-    await user.hover(discard);
-    expect(await screen.findByText('Discard (Esc)')).toBeTruthy();
-    await user.hover(create);
-    expect(await screen.findByText('Create (Enter)')).toBeTruthy();
+    expect(search.value).toBe('');
+    expect(screen.queryByPlaceholderText('example.com')).toBeNull();
+    expect(readRules()[1]?.domain).toBe('example.org');
+    expect(typeof readRules()[1]?.createdAt).toBe('number');
+    await waitFor(() =>
+      expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
+        behavior: 'smooth',
+        block: 'center',
+      })
+    );
   });
 
-  it('scrolls to the top when the Add website editor opens', async () => {
+  it('adds from Enter using the same inline search flow', async () => {
     const user = userEvent.setup();
-    render(<SiteAccessHarness />);
-    const scrollViewport = screen
-      .getByTestId('site-access-scroll-container')
-      .querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]');
-
-    await user.click(screen.getByRole('button', { name: 'Add website' }));
-
-    expect(scrollViewport?.scrollTo).toHaveBeenCalledWith({
-      behavior: 'smooth',
-      top: 0,
+    render(<SiteAccessHarness initialSort={DomainSortE.Custom} />);
+    const search = screen.getByRole('searchbox', {
+      name: 'Search website settings',
     });
+
+    await user.type(search, 'enter.example{Enter}');
+
+    expect(readRules()[1]?.domain).toBe('enter.example');
+    expect(
+      screen
+        .getByRole('list', { name: 'Saved website settings' })
+        .querySelector<HTMLElement>('[data-domain]')?.dataset.domain
+    ).toBe('enter.example');
+    expect((search as HTMLInputElement).value).toBe('');
   });
 
   it('mutes domain suffixes and edits a saved domain from its favicon', async () => {
@@ -240,12 +274,22 @@ describe('SiteAccessView', () => {
     const editDomain = screen.getByRole('button', {
       name: 'Edit youtube.com',
     });
+    const currentDomainControl = screen.getByRole('group', {
+      name: 'Access for current website youtube.com',
+    });
+    const currentDomainRow =
+      currentDomainControl.closest<HTMLElement>('.card-list-item');
     const domainRow = editDomain.closest('li');
+    if (!currentDomainRow) throw new Error('Expected the current domain row');
     if (!domainRow) throw new Error('Expected a saved domain row');
+    expect(within(currentDomainRow).getByText('.com').className).toContain(
+      'text-muted-foreground'
+    );
     expect(within(domainRow).getByText('.com').className).toContain(
       'text-muted-foreground'
     );
     expect(editDomain.className).toContain('absolute');
+    expect(editDomain.className).toContain('cursor-pointer');
     expect(editDomain.className).toContain(
       'group-hover/domain-edit:opacity-100'
     );
@@ -259,16 +303,45 @@ describe('SiteAccessView', () => {
     });
     expect((input as HTMLInputElement).value).toBe('youtube.com');
     await user.clear(input);
-    await user.type(input, 'example.net{Enter}');
+    await user.type(
+      input,
+      'https://example.net/channel///?autoplay=1??source=popup{Enter}'
+    );
 
     await waitFor(() =>
-      expect(readRules().some(({ domain }) => domain === 'example.net')).toBe(
-        true
-      )
+      expect(
+        readRules().some(({ domain }) => domain === 'example.net/channel')
+      ).toBe(true)
     );
     expect(readRules().some(({ domain }) => domain === 'youtube.com')).toBe(
       false
     );
+  });
+
+  it('starts editing when the saved domain text is double-clicked', async () => {
+    const user = userEvent.setup();
+    render(<SiteAccessHarness />);
+
+    const domainText = screen.getByRole('button', {
+      name: 'Domain youtube.com. Double-click to edit.',
+    });
+
+    await user.click(domainText);
+    expect(
+      screen.queryByRole('textbox', {
+        name: 'Domain name for youtube.com',
+      })
+    ).toBeNull();
+
+    await user.dblClick(domainText);
+    const input = await screen.findByRole('textbox', {
+      name: 'Domain name for youtube.com',
+    });
+
+    expect(document.activeElement).toBe(input);
+    expect((input as HTMLInputElement).value).toBe('youtube.com');
+    expect((input as HTMLInputElement).selectionStart).toBe(0);
+    expect((input as HTMLInputElement).selectionEnd).toBe('youtube.com'.length);
   });
 
   it('animates removal and keeps persistent undo and redo controls', async () => {
@@ -284,6 +357,7 @@ describe('SiteAccessView', () => {
     expect(undoButton.disabled).toBe(true);
     expect(redoButton.disabled).toBe(true);
     for (const historyButton of [undoButton, redoButton]) {
+      expect(historyButton.className).toContain('size-5');
       expect(historyButton.className).toContain('disabled:bg-slate-300');
       expect(historyButton.className).toContain('disabled:text-slate-500');
       expect(historyButton.className).toContain('dark:disabled:bg-slate-700');
@@ -367,62 +441,96 @@ describe('SiteAccessView', () => {
         .slice(0, 3)
     ).toEqual(['*', 'example.com', 'youtube.com']);
     expect(
-      (
-        screen.getByRole('button', {
-          name: 'example.com is already in website settings',
-        }) as HTMLButtonElement
-      ).disabled
-    ).toBe(true);
+      screen.getByRole('button', {
+        name: 'Show example.com in website settings',
+      })
+    ).toBeTruthy();
   });
 
-  it('normalizes inline additions and cancels duplicate submissions', async () => {
+  it('reveals an existing current website from the plus button', async () => {
+    const user = userEvent.setup();
+    vi.mocked(Element.prototype.scrollIntoView).mockClear();
+    render(<SiteAccessHarness />);
+
+    const existingButton = screen.getByRole('button', {
+      name: 'Show youtube.com in website settings',
+    });
+
+    await user.hover(existingButton);
+    expect(await screen.findByText('Already exists')).toBeTruthy();
+    await user.click(existingButton);
+
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
+      behavior: 'smooth',
+      block: 'center',
+    });
+  });
+
+  it('enables Add for a valid unsaved URL and creates it directly', async () => {
     const user = userEvent.setup();
     render(<SiteAccessHarness />);
 
     const addButton = screen.getByRole('button', { name: /Add website/i });
-    await user.click(addButton);
-    const editor = screen.getByPlaceholderText('example.com');
-    await user.type(editor, 'https://news.bbc.co.uk/story{Enter}');
-    expect(readRules()[1]?.domain).toBe('bbc.co.uk');
-
-    await waitFor(() =>
-      expect((addButton as HTMLButtonElement).disabled).toBe(false)
-    );
-    await user.click(addButton);
-    await user.type(
-      screen.getByPlaceholderText('example.com'),
-      'https://www.bbc.co.uk/another{Enter}'
-    );
-
-    await waitFor(() =>
-      expect(screen.queryByPlaceholderText('example.com')).toBeNull()
-    );
-    expect(
-      readRules().filter(({ domain }) => domain === 'bbc.co.uk')
-    ).toHaveLength(1);
-    await waitFor(() =>
-      expect(Element.prototype.scrollIntoView).toHaveBeenCalled()
-    );
-  });
-
-  it('shows validation feedback and supports Escape to discard', async () => {
-    const user = userEvent.setup();
-    render(<SiteAccessHarness />);
-
-    const addButton = screen.getByRole('button', { name: /Add website/i });
-    await user.click(addButton);
+    const search = screen.getByRole('searchbox', {
+      name: 'Search website settings',
+    });
     expect((addButton as HTMLButtonElement).disabled).toBe(true);
-    const editor = screen.getByPlaceholderText('example.com');
-    await user.type(editor, 'chrome://settings{Enter}');
-    expect(screen.getByRole('alert').textContent).toContain('valid website');
 
-    await user.type(editor, '{Escape}');
-    await waitFor(() =>
-      expect(screen.queryByPlaceholderText('example.com')).toBeNull()
+    await user.type(search, 'chrome://settings');
+    expect((addButton as HTMLButtonElement).disabled).toBe(true);
+    await user.clear(search);
+    const toolbar = screen.getByTestId('domain-bottom-toolbar');
+    await user.type(
+      search,
+      'https://store.steampowered.com/app/2399420/Le_Mans_Ultimate////?utm_source=popup??autoplay=1'
     );
-    await waitFor(() =>
-      expect((addButton as HTMLButtonElement).disabled).toBe(false)
+    expect((addButton as HTMLButtonElement).disabled).toBe(false);
+    expect(toolbar.querySelector('.lucide-search')).toBeNull();
+    expect(
+      toolbar
+        .querySelector('img')
+        ?.getAttribute('src')
+        ?.includes('store.steampowered.com')
+    ).toBe(true);
+    await user.hover(addButton);
+    expect(
+      await screen.findByText(
+        'Add domain: store.steampowered.com/app/2399420/Le_Mans_Ultimate'
+      )
+    ).toBeTruthy();
+    await user.click(addButton);
+    expect(readRules()[1]?.domain).toBe(
+      'store.steampowered.com/app/2399420/Le_Mans_Ultimate'
     );
+    expect((search as HTMLInputElement).value).toBe('');
+    expect(screen.queryByPlaceholderText('example.com')).toBeNull();
+    await user.type(
+      search,
+      'https://store.steampowered.com/app/2399420/Le_Mans_Ultimate/?another=query'
+    );
+    expect((addButton as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      readRules().filter(
+        ({ domain }) =>
+          domain === 'store.steampowered.com/app/2399420/Le_Mans_Ultimate'
+      )
+    ).toHaveLength(1);
+  });
+
+  it('keeps invalid Enter submissions in the search field', async () => {
+    const user = userEvent.setup();
+    render(<SiteAccessHarness />);
+
+    const addButton = screen.getByRole('button', { name: /Add website/i });
+    const search = screen.getByRole('searchbox', {
+      name: 'Search website settings',
+    });
+    const rulesBefore = readRules();
+    await user.type(search, 'chrome://settings{Enter}');
+
+    expect((addButton as HTMLButtonElement).disabled).toBe(true);
+    expect((search as HTMLInputElement).value).toBe('chrome://settings');
+    expect(readRules()).toEqual(rulesBefore);
   });
 
   it('filters saved websites by domain fragments and pasted URLs', async () => {
@@ -471,15 +579,147 @@ describe('SiteAccessView', () => {
     ).toHaveLength(3);
   });
 
-  it('reorders immediately with Alt+Arrow and announces the new position', () => {
-    render(<SiteAccessHarness />);
+  it('sorts by website or creation date and inserts at the sorted position', async () => {
+    const user = userEvent.setup();
+    vi.mocked(Element.prototype.scrollIntoView).mockClear();
+    render(<SiteAccessHarness initialSort={DomainSortE.DomainAscending} />);
 
-    fireEvent.keyDown(
-      screen.getByRole('button', {
-        name: /Move youtube\.com/,
-      }),
-      { altKey: true, key: 'ArrowDown' }
+    const getVisibleDomains = () =>
+      Array.from(
+        screen
+          .getByRole('list', { name: 'Saved website settings' })
+          .querySelectorAll<HTMLElement>('[data-domain]')
+      ).map(({ dataset }) => dataset.domain);
+
+    expect(
+      screen
+        .getByRole('button', {
+          name: 'Sort website settings: Website · Ascending',
+        })
+        .querySelector('svg')?.classList
+    ).toContain('lucide-arrow-down-a-z');
+    expect(getVisibleDomains()).toEqual([
+      'twitch.tv',
+      'vimeo.com',
+      'youtube.com',
+    ]);
+
+    const search = screen.getByRole('searchbox', {
+      name: 'Search website settings',
+    });
+    await user.type(search, 'alpha.example{Enter}');
+
+    expect(getVisibleDomains()).toEqual([
+      'alpha.example',
+      'twitch.tv',
+      'vimeo.com',
+      'youtube.com',
+    ]);
+    await waitFor(() =>
+      expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
+        behavior: 'smooth',
+        block: 'center',
+      })
     );
+
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Sort website settings: Website · Ascending',
+      })
+    );
+    const websiteDescending = await screen.findByRole('button', {
+      name: 'Website · Descending',
+    });
+    const dateAscending = screen.getByRole('button', {
+      name: 'Date added · Ascending',
+    });
+    const dateDescending = screen.getByRole('button', {
+      name: 'Date added · Descending',
+    });
+    const customOrder = screen.getByRole('button', {
+      name: 'Custom order',
+    });
+    expect(websiteDescending.querySelector('svg')?.classList).toContain(
+      'lucide-arrow-up-a-z'
+    );
+    expect(dateAscending.querySelector('svg')?.classList).toContain(
+      'lucide-list-sort-ascending'
+    );
+    expect(dateDescending.querySelector('svg')?.classList).toContain(
+      'lucide-arrow-up-a-z'
+    );
+    expect(customOrder.querySelector('svg')?.classList).toContain(
+      'lucide-list-restart'
+    );
+    await user.click(dateDescending);
+    expect(getVisibleDomains()[0]).toBe('alpha.example');
+    expect(
+      screen
+        .getByRole('button', {
+          name: 'Sort website settings: Date added · Descending',
+        })
+        .querySelector('svg')?.classList
+    ).toContain('lucide-arrow-up-a-z');
+  });
+
+  it('disables reordering outside Custom and preserves the saved custom order', async () => {
+    const user = userEvent.setup();
+    render(<SiteAccessHarness initialSort={DomainSortE.DomainAscending} />);
+
+    const initialRules = readRules();
+    const moveTwitch = screen.getByRole('button', {
+      name: /Move twitch\.tv/,
+    }) as HTMLButtonElement;
+    const twitchRow = moveTwitch.closest('li');
+
+    expect(moveTwitch.disabled).toBe(true);
+    expect(moveTwitch.dataset.dragHandleVisible).toBe('false');
+    expect(moveTwitch.className).toContain('-translate-x-3');
+    expect(moveTwitch.className).toContain('opacity-0');
+    expect(twitchRow?.className).toContain('grid-cols-[0px_24px_');
+
+    fireEvent.keyDown(moveTwitch, { altKey: true, key: 'ArrowDown' });
+
+    expect(screen.getByTestId('sort').textContent).toBe(
+      DomainSortE.DomainAscending
+    );
+    expect(readRules()).toEqual(initialRules);
+
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Sort website settings: Website · Ascending',
+      })
+    );
+    await user.click(screen.getByRole('button', { name: 'Custom order' }));
+
+    expect(moveTwitch.disabled).toBe(false);
+    expect(moveTwitch.dataset.dragHandleVisible).toBe('true');
+    expect(moveTwitch.className).toContain('translate-x-0');
+    expect(moveTwitch.className).not.toContain('opacity-0');
+    expect(twitchRow?.className).toContain('grid-cols-[20px_24px_');
+    expect(
+      Array.from(
+        screen
+          .getByRole('list', { name: 'Saved website settings' })
+          .querySelectorAll<HTMLElement>('[data-domain]')
+      ).map(({ dataset }) => dataset.domain)
+    ).toEqual(['youtube.com', 'vimeo.com', 'twitch.tv']);
+  });
+
+  it('reorders immediately with Alt+Arrow and announces the new position', () => {
+    render(<SiteAccessHarness initialSort={DomainSortE.Custom} />);
+
+    const moveYoutube = screen.getByRole('button', {
+      name: /Move youtube\.com/,
+    }) as HTMLButtonElement;
+    const youtubeRow = moveYoutube.closest('li');
+
+    expect(moveYoutube.disabled).toBe(false);
+    expect(moveYoutube.className).toContain('cursor-grab');
+    expect(moveYoutube.draggable).toBe(false);
+    expect(youtubeRow?.draggable).toBe(true);
+
+    fireEvent.keyDown(moveYoutube, { altKey: true, key: 'ArrowDown' });
 
     expect(
       readRules()
@@ -496,15 +736,61 @@ describe('SiteAccessView', () => {
     render(<SiteAccessHarness />);
     const before = readRules().slice(1);
     const globalDefaultIcon = screen.getByTestId('global-default-icon');
+    const globalDefaultSwitch = screen.getByRole('switch', {
+      name: 'Run BetterVideo by default on websites',
+    });
+    const defaultMode = screen.getAllByRole('radio', { name: 'Default' })[0];
 
-    expect(globalDefaultIcon.className).toContain('text-sky-500');
-
-    await user.click(
-      screen.getByRole('switch', { name: 'Run on all websites by default' })
+    expect(globalDefaultIcon.className).toContain('text-lime-600');
+    expect(globalDefaultIcon.className).toContain('transition-colors');
+    const globalDefaultTitle = screen.getByText('Run by Default');
+    const globalDefaultState = screen.getByTestId('global-default-state');
+    expect(globalDefaultTitle.className).toContain('text-lime-600');
+    expect(globalDefaultTitle.className).toContain('transition-colors');
+    expect(globalDefaultState.textContent).toBe('Enabled');
+    expect(globalDefaultState.className).toContain('font-bold');
+    expect(globalDefaultState.className).toContain('text-lime-600');
+    expect(globalDefaultState.parentElement?.textContent).toBe(
+      'BetterVideo is Enabled by default on websites without a custom setting.'
     );
+    expect(defaultMode?.closest('label')?.className).toContain('text-lime-500');
+    expect(globalDefaultSwitch.className).toContain('data-checked:bg-lime-500');
+    expect(globalDefaultSwitch.className).toContain(
+      'data-unchecked:bg-rose-500'
+    );
+
+    await user.click(globalDefaultSwitch);
 
     expect(readRules()[0]?.type).toBe('blacklist');
     expect(readRules().slice(1)).toEqual(before);
-    expect(globalDefaultIcon.className).toContain('text-slate-400');
+    expect(globalDefaultTitle.textContent).toBe('Run by Default');
+    expect(globalDefaultState.textContent).toBe('Disabled');
+    expect(globalDefaultState.className).toContain('text-rose-600');
+    expect(globalDefaultIcon.className).toContain('text-rose-600');
+    expect(globalDefaultTitle.className).toContain('text-rose-600');
+    expect(defaultMode?.closest('label')?.className).toContain('text-rose-500');
+    const switchGlobe = globalDefaultSwitch.querySelector('svg');
+    expect(switchGlobe?.classList).toContain('text-rose-600');
+    expect(switchGlobe?.classList).toContain('transition-colors');
+  });
+
+  it('shows the global website default in Default mode tooltips', async () => {
+    const user = userEvent.setup();
+    render(<SiteAccessHarness />);
+    const defaultMode = screen.getAllByRole('radio', { name: 'Default' })[0];
+
+    if (!defaultMode) throw new Error('Expected a Default domain mode');
+
+    await user.hover(defaultMode);
+    expect(await screen.findByText('Default: On')).toBeTruthy();
+
+    await user.unhover(defaultMode);
+    await user.click(
+      screen.getByRole('switch', {
+        name: 'Run BetterVideo by default on websites',
+      })
+    );
+    await user.hover(defaultMode);
+    expect(await screen.findByText('Default: Off')).toBeTruthy();
   });
 });

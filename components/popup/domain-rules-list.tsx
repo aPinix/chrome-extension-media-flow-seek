@@ -1,5 +1,8 @@
 import {
-  CheckIcon,
+  ArrowDownAZIcon,
+  ArrowUpAZIcon,
+  ListRestartIcon,
+  ListSortAscendingIcon,
   PlusIcon,
   Redo2Icon,
   SearchIcon,
@@ -21,6 +24,10 @@ import { createPortal } from 'react-dom';
 
 import { AppButton } from '@/components/app/app-button';
 import { AppInputText } from '@/components/app/app-input-text';
+import {
+  AppSortPicker,
+  type AppSortPickerOptionI,
+} from '@/components/app/app-sort-picker';
 import { SectionTitle } from '@/components/popup/section-title';
 import { Button } from '@/components/ui/button';
 import {
@@ -29,79 +36,156 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { normalizeSiteInput, reorderSiteRules } from '@/helpers/domains';
-import { cn } from '@/lib/utils';
-import type { DomainConfigT, DomainModeT } from '@/types/domains';
-import { DomainModeE } from '@/types/domains';
+import {
+  getSiteRuleHostname,
+  normalizeSiteInput,
+  reorderSiteRules,
+} from '@/helpers/domains';
+import type { DomainConfigT, DomainModeT, DomainSortT } from '@/types/domains';
+import { DomainModeE, DomainSortE } from '@/types/domains';
 
 import { DomainFavicon } from './domain-favicon';
 import { DomainListItem } from './domain-list-item';
-import { DomainModeControl } from './domain-mode-control';
 
 interface DomainRulesListPropsI {
   canRedo: boolean;
   canUndo: boolean;
   domainRules: DomainConfigT[];
+  globalDefaultOn: boolean;
   isActive: boolean;
   onAdd: (domain: string, mode: DomainModeT) => void;
-  onAddStart: () => void;
   onModeChange: (domain: string, mode: DomainModeT) => void;
   onOrderChange: (siteRules: DomainConfigT[]) => void;
   onRedo: () => void;
   onRemove: (domain: string) => void;
+  onSortChange: (sort: DomainSortT) => void;
   onUndo: () => void;
   removingDomain?: string;
+  sort: DomainSortT;
 }
 
-const EDITOR_TRANSITION_DURATION_MS = 200;
+const domainSortLabel: Record<DomainSortT, string> = {
+  [DomainSortE.Custom]: 'Custom order',
+  [DomainSortE.DateAscending]: 'Date added · Ascending',
+  [DomainSortE.DateDescending]: 'Date added · Descending',
+  [DomainSortE.DomainAscending]: 'Website · Ascending',
+  [DomainSortE.DomainDescending]: 'Website · Descending',
+};
+
+const domainSortOptions: readonly AppSortPickerOptionI<DomainSortT>[] = [
+  {
+    icon: ArrowDownAZIcon,
+    label: domainSortLabel[DomainSortE.DomainAscending],
+    value: DomainSortE.DomainAscending,
+  },
+  {
+    icon: ArrowUpAZIcon,
+    label: domainSortLabel[DomainSortE.DomainDescending],
+    value: DomainSortE.DomainDescending,
+  },
+  {
+    icon: ListSortAscendingIcon,
+    label: domainSortLabel[DomainSortE.DateAscending],
+    value: DomainSortE.DateAscending,
+  },
+  {
+    icon: ArrowUpAZIcon,
+    label: domainSortLabel[DomainSortE.DateDescending],
+    value: DomainSortE.DateDescending,
+  },
+  {
+    icon: ListRestartIcon,
+    label: domainSortLabel[DomainSortE.Custom],
+    value: DomainSortE.Custom,
+  },
+];
+
+const getSortedSiteRules = (
+  siteRules: DomainConfigT[],
+  sort: DomainSortT,
+  creationOrder: Map<string, number>
+): DomainConfigT[] => {
+  if (sort === DomainSortE.Custom) return siteRules;
+
+  const direction =
+    sort === DomainSortE.DateDescending || sort === DomainSortE.DomainDescending
+      ? -1
+      : 1;
+  const isDomainSort =
+    sort === DomainSortE.DomainAscending ||
+    sort === DomainSortE.DomainDescending;
+
+  return [...siteRules].sort((first, second) => {
+    if (isDomainSort) {
+      const comparison = first.domain.localeCompare(second.domain, undefined, {
+        sensitivity: 'base',
+      });
+      if (comparison) return comparison * direction;
+    } else {
+      const firstHasDate = first.createdAt !== undefined;
+      const secondHasDate = second.createdAt !== undefined;
+      if (
+        firstHasDate &&
+        secondHasDate &&
+        first.createdAt !== second.createdAt
+      ) {
+        return ((first.createdAt ?? 0) - (second.createdAt ?? 0)) * direction;
+      }
+      if (firstHasDate !== secondHasDate) {
+        return (firstHasDate ? 1 : -1) * direction;
+      }
+    }
+
+    return (
+      ((creationOrder.get(first.domain) ?? 0) -
+        (creationOrder.get(second.domain) ?? 0)) *
+      direction
+    );
+  });
+};
 
 function SortableDomainRulesList({
   canRedo,
   canUndo,
   domainRules,
+  globalDefaultOn,
   isActive,
   onAdd,
-  onAddStart,
   onModeChange,
   onOrderChange,
   onRedo,
   onRemove,
+  onSortChange,
   onUndo,
   removingDomain,
+  sort,
 }: DomainRulesListPropsI) {
   const externalSiteRules = useMemo(
     () => domainRules.filter(({ domain }) => domain !== '*'),
     [domainRules]
   );
   const [siteRules, setSiteRules] = useState(externalSiteRules);
-  const [isAdding, setIsAdding] = useState(false);
-  const [isEditorVisible, setIsEditorVisible] = useState(false);
   const [enteringDomains, setEnteringDomains] = useState(
     () => new Set<string>()
   );
-  const [editorValue, setEditorValue] = useState('');
-  const [editorMode, setEditorMode] = useState<DomainModeT>(
-    DomainModeE.Default
-  );
-  const [editorError, setEditorError] = useState('');
   const [searchValue, setSearchValue] = useState('');
   const [highlightedDomain, setHighlightedDomain] = useState('');
   const [announcement, setAnnouncement] = useState('');
   const [toolbarTarget, setToolbarTarget] = useState<HTMLElement | null>(null);
   const siteRulesRef = useRef(siteRules);
-  const editorInputRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const creationOrderRef = useRef(
+    new Map(externalSiteRules.map(({ domain }, index) => [domain, index]))
+  );
   const dragSnapshotRef = useRef(siteRules);
   const draggedDomainRef = useRef<string | null>(null);
   const isDraggingRef = useRef(false);
   const rowRefs = useRef(new Map<string, HTMLLIElement>());
   const reorderPositionsRef = useRef<Map<string, number> | null>(null);
   const rowAnimationsRef = useRef(new Map<string, Animation>());
+  const pendingAdditionRef = useRef<string | null>(null);
+  const revealAddedDomainRef = useRef<string | null>(null);
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const editorTransitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null
-  );
-  const editorEntryFrameRef = useRef<number | null>(null);
   const rowEntryFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -117,6 +201,21 @@ function SortableDomainRulesList({
     const addedDomains = externalSiteRules
       .filter(({ domain }) => !currentDomains.has(domain))
       .map(({ domain }) => domain);
+
+    let nextCreationOrder =
+      Math.max(-1, ...creationOrderRef.current.values()) + 1;
+    for (const { domain } of externalSiteRules) {
+      if (!creationOrderRef.current.has(domain)) {
+        creationOrderRef.current.set(domain, nextCreationOrder);
+        nextCreationOrder += 1;
+      }
+    }
+
+    const pendingAddition = pendingAdditionRef.current;
+    if (pendingAddition && addedDomains.includes(pendingAddition)) {
+      pendingAdditionRef.current = null;
+      revealAddedDomainRef.current = pendingAddition;
+    }
     siteRulesRef.current = externalSiteRules;
     setSiteRules(externalSiteRules);
 
@@ -142,11 +241,30 @@ function SortableDomainRulesList({
     });
   }, [enteringDomains]);
 
-  useEffect(() => {
-    if (isEditorVisible) {
-      editorInputRef.current?.focus({ preventScroll: true });
-    }
-  }, [isEditorVisible]);
+  useLayoutEffect(() => {
+    const domain = revealAddedDomainRef.current;
+    if (!domain || enteringDomains.size) return;
+
+    const row = rowRefs.current.get(domain);
+    if (!row) return;
+
+    revealAddedDomainRef.current = null;
+    setHighlightedDomain(domain);
+    setAnnouncement(`${domain} added to website settings.`);
+    row.scrollIntoView({
+      behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+        ? 'auto'
+        : 'smooth',
+      block: 'center',
+    });
+    searchInputRef.current?.focus({ preventScroll: true });
+
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    highlightTimerRef.current = setTimeout(
+      () => setHighlightedDomain(''),
+      1400
+    );
+  }, [enteringDomains]);
 
   useLayoutEffect(() => {
     setToolbarTarget(document.getElementById('domain-toolbar-root'));
@@ -155,12 +273,6 @@ function SortableDomainRulesList({
   useEffect(
     () => () => {
       if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
-      if (editorTransitionTimerRef.current) {
-        clearTimeout(editorTransitionTimerRef.current);
-      }
-      if (editorEntryFrameRef.current !== null) {
-        cancelAnimationFrame(editorEntryFrameRef.current);
-      }
       if (rowEntryFrameRef.current !== null) {
         cancelAnimationFrame(rowEntryFrameRef.current);
       }
@@ -173,8 +285,11 @@ function SortableDomainRulesList({
 
   useLayoutEffect(() => {
     const previousPositions = reorderPositionsRef.current;
+    if (!previousPositions) return;
+
+    const pendingAddition = pendingAdditionRef.current;
+    if (pendingAddition && !rowRefs.current.has(pendingAddition)) return;
     reorderPositionsRef.current = null;
-    if (!previousPositions || !isDraggingRef.current) return;
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
 
     for (const [domain, element] of rowRefs.current) {
@@ -208,50 +323,12 @@ function SortableDomainRulesList({
     }
   });
 
-  const openEditor = useCallback(() => {
-    if (editorTransitionTimerRef.current) {
-      clearTimeout(editorTransitionTimerRef.current);
-      editorTransitionTimerRef.current = null;
-    }
-    if (editorEntryFrameRef.current !== null) {
-      cancelAnimationFrame(editorEntryFrameRef.current);
-    }
-
-    setIsAdding(true);
-    setIsEditorVisible(false);
-    setEditorValue('');
-    setEditorMode(DomainModeE.Default);
-    setEditorError('');
-    onAddStart();
-    editorEntryFrameRef.current = requestAnimationFrame(() => {
-      setIsEditorVisible(true);
-      editorEntryFrameRef.current = null;
-    });
-  }, [onAddStart]);
-
-  const closeEditor = useCallback(() => {
-    if (editorEntryFrameRef.current !== null) {
-      cancelAnimationFrame(editorEntryFrameRef.current);
-      editorEntryFrameRef.current = null;
-    }
-    if (editorTransitionTimerRef.current) {
-      clearTimeout(editorTransitionTimerRef.current);
-    }
-
-    setIsEditorVisible(false);
-    editorTransitionTimerRef.current = setTimeout(() => {
-      setIsAdding(false);
-      setEditorValue('');
-      setEditorMode(DomainModeE.Default);
-      setEditorError('');
-      editorTransitionTimerRef.current = null;
-    }, EDITOR_TRANSITION_DURATION_MS);
-  }, []);
-
   const highlightExisting = useCallback((domain: string) => {
     setHighlightedDomain(domain);
     rowRefs.current.get(domain)?.scrollIntoView({
-      behavior: 'smooth',
+      behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+        ? 'auto'
+        : 'smooth',
       block: 'nearest',
     });
     if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
@@ -260,31 +337,6 @@ function SortableDomainRulesList({
       1400
     );
   }, []);
-
-  const submitEditor = useCallback(
-    (event?: FormEvent) => {
-      event?.preventDefault();
-      const normalizedDomain = normalizeSiteInput(editorValue);
-      if (!normalizedDomain) {
-        setEditorError('Enter a valid website or HTTP(S) URL.');
-        return;
-      }
-
-      if (
-        siteRulesRef.current.some(
-          ({ domain }) => domain.toLowerCase() === normalizedDomain
-        )
-      ) {
-        closeEditor();
-        requestAnimationFrame(() => highlightExisting(normalizedDomain));
-        return;
-      }
-
-      onAdd(normalizedDomain, editorMode);
-      closeEditor();
-    },
-    [closeEditor, editorMode, editorValue, highlightExisting, onAdd]
-  );
 
   const handleHoverMove = useCallback((domain: string, targetIndex: number) => {
     const currentRules = siteRulesRef.current;
@@ -312,12 +364,16 @@ function SortableDomainRulesList({
     });
   }, []);
 
-  const handleDragStart = useCallback((domain: string) => {
-    if (isDraggingRef.current) return;
-    isDraggingRef.current = true;
-    draggedDomainRef.current = domain;
-    dragSnapshotRef.current = siteRulesRef.current;
-  }, []);
+  const handleDragStart = useCallback(
+    (domain: string) => {
+      if (isDraggingRef.current || sort !== DomainSortE.Custom) return;
+
+      isDraggingRef.current = true;
+      draggedDomainRef.current = domain;
+      dragSnapshotRef.current = siteRulesRef.current;
+    },
+    [sort]
+  );
 
   const handleDragEnd = useCallback(
     (didDrop: boolean) => {
@@ -336,14 +392,13 @@ function SortableDomainRulesList({
 
   const handleKeyboardMove = useCallback(
     (index: number, direction: -1 | 1) => {
-      const targetIndex = index + direction;
-      if (targetIndex < 0 || targetIndex >= siteRulesRef.current.length) return;
+      if (sort !== DomainSortE.Custom) return;
 
-      const nextRules = reorderSiteRules(
-        siteRulesRef.current,
-        index,
-        targetIndex
-      );
+      const currentRules = siteRulesRef.current;
+      const targetIndex = index + direction;
+      if (targetIndex < 0 || targetIndex >= currentRules.length) return;
+
+      const nextRules = reorderSiteRules(currentRules, index, targetIndex);
       const movedRule = nextRules[targetIndex];
       siteRulesRef.current = nextRules;
       setSiteRules(nextRules);
@@ -354,7 +409,7 @@ function SortableDomainRulesList({
         );
       }
     },
-    [onOrderChange]
+    [onOrderChange, sort]
   );
 
   const handleRename = useCallback(
@@ -372,6 +427,12 @@ function SortableDomainRulesList({
         return false;
       }
 
+      const creationOrder = creationOrderRef.current.get(domain);
+      creationOrderRef.current.delete(domain);
+      if (creationOrder !== undefined) {
+        creationOrderRef.current.set(normalizedDomain, creationOrder);
+      }
+
       const nextRules = siteRulesRef.current.map((rule) =>
         rule.domain === domain ? { ...rule, domain: normalizedDomain } : rule
       );
@@ -384,33 +445,144 @@ function SortableDomainRulesList({
     [highlightExisting, onOrderChange]
   );
 
-  const normalizedEditorDomain = normalizeSiteInput(editorValue) ?? undefined;
   const trimmedSearchValue = searchValue.trim();
-  const normalizedSearchValue = (
-    normalizeSiteInput(trimmedSearchValue) ?? trimmedSearchValue
-  ).toLowerCase();
-  const visibleSiteRules = normalizedSearchValue
-    ? siteRules.filter(({ domain }) =>
-        domain.toLowerCase().includes(normalizedSearchValue)
+  const searchDomain = normalizeSiteInput(trimmedSearchValue);
+  const isSearchDomainSaved = Boolean(
+    searchDomain &&
+      siteRules.some(
+        ({ domain }) => domain.toLowerCase() === searchDomain.toLowerCase()
       )
-    : siteRules;
+  );
+  const canAddSearchDomain = Boolean(
+    searchDomain && !pendingAdditionRef.current && !isSearchDomainSaved
+  );
+  const sortedSiteRules = useMemo(
+    () => getSortedSiteRules(siteRules, sort, creationOrderRef.current),
+    [siteRules, sort]
+  );
+  const normalizedSearchValue = (
+    searchDomain ?? trimmedSearchValue
+  ).toLowerCase();
+  const searchHostname = searchDomain
+    ? getSiteRuleHostname(searchDomain)
+    : null;
+  const visibleSiteRules = normalizedSearchValue
+    ? sortedSiteRules.filter(({ domain }) => {
+        const normalizedDomain = domain.toLowerCase();
+        const domainHostname = getSiteRuleHostname(domain);
+        return (
+          normalizedDomain.includes(normalizedSearchValue) ||
+          Boolean(
+            searchHostname &&
+              domainHostname &&
+              (searchHostname === domainHostname ||
+                searchHostname.endsWith(`.${domainHostname}`))
+          )
+        );
+      })
+    : sortedSiteRules;
   const isFiltering = Boolean(trimmedSearchValue);
+
+  const captureRowPositions = useCallback(() => {
+    reorderPositionsRef.current = new Map(
+      Array.from(rowRefs.current, ([domain, element]) => [
+        domain,
+        element.getBoundingClientRect().top,
+      ])
+    );
+  }, []);
+
+  const handleSortChange = useCallback(
+    (nextSort: DomainSortT) => {
+      captureRowPositions();
+      onSortChange(nextSort);
+      setAnnouncement(
+        `Website settings sorted by ${domainSortLabel[nextSort]}.`
+      );
+    },
+    [captureRowPositions, onSortChange]
+  );
+
+  const submitSearchDomain = useCallback(
+    (event?: FormEvent) => {
+      event?.preventDefault();
+      if (!searchDomain) return;
+
+      if (isSearchDomainSaved) {
+        highlightExisting(searchDomain);
+        return;
+      }
+      if (pendingAdditionRef.current) return;
+
+      captureRowPositions();
+      pendingAdditionRef.current = searchDomain;
+      setSearchValue('');
+      onAdd(searchDomain, DomainModeE.Default);
+    },
+    [
+      captureRowPositions,
+      highlightExisting,
+      isSearchDomainSaved,
+      onAdd,
+      searchDomain,
+    ]
+  );
+
+  const historyControls = (
+    <div
+      aria-label="Website settings history"
+      className="flex items-center gap-1"
+      role="toolbar"
+    >
+      <Button
+        aria-label="Undo website removal"
+        className="size-5 shrink-0 rounded-full bg-amber-500/15 p-0 text-amber-600 transition-colors hover:bg-amber-500/25 hover:text-amber-700 disabled:bg-slate-300 disabled:text-slate-500 dark:bg-amber-400/15 dark:text-amber-300 dark:disabled:bg-slate-700 dark:disabled:text-slate-400 dark:hover:bg-amber-400/25 dark:hover:text-amber-200"
+        disabled={!canUndo || Boolean(removingDomain)}
+        onClick={onUndo}
+        size="icon-xs"
+        title="Undo last website removal"
+        type="button"
+        variant="ghost"
+      >
+        <Undo2Icon className="size-3" />
+      </Button>
+      <Button
+        aria-label="Redo website removal"
+        className="size-5 shrink-0 rounded-full bg-amber-500/15 p-0 text-amber-600 transition-colors hover:bg-amber-500/25 hover:text-amber-700 disabled:bg-slate-300 disabled:text-slate-500 dark:bg-amber-400/15 dark:text-amber-300 dark:disabled:bg-slate-700 dark:disabled:text-slate-400 dark:hover:bg-amber-400/25 dark:hover:text-amber-200"
+        disabled={!canRedo || Boolean(removingDomain)}
+        onClick={onRedo}
+        size="icon-xs"
+        title="Redo website removal"
+        type="button"
+        variant="ghost"
+      >
+        <Redo2Icon className="size-3" />
+      </Button>
+    </div>
+  );
 
   const toolbar = (
     <div
       aria-label="Website settings tools"
-      className="flex h-10 items-center gap-1.5"
+      className="flex h-12 items-center"
       data-testid="domain-bottom-toolbar"
       role="toolbar"
     >
-      <div className="relative min-w-0 flex-1">
-        <SearchIcon
-          aria-hidden="true"
-          className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-slate-400 dark:text-slate-500"
-        />
+      <form className="relative min-w-0 flex-1" onSubmit={submitSearchDomain}>
+        {searchDomain ? (
+          <DomainFavicon
+            className="pointer-events-none absolute top-1/2 left-2.5 size-5 -translate-y-1/2"
+            domain={searchDomain}
+          />
+        ) : (
+          <SearchIcon
+            aria-hidden="true"
+            className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-slate-400 dark:text-slate-500"
+          />
+        )}
         <AppInputText
           aria-label="Search website settings"
-          className="h-8 rounded-full pr-8 pl-8 text-xs"
+          className="h-10 rounded-full pr-18 pl-8 text-sm"
           onChange={(event) => setSearchValue(event.target.value)}
           placeholder="Search domains or URLs"
           ref={searchInputRef}
@@ -421,7 +593,7 @@ function SortableDomainRulesList({
         {searchValue ? (
           <Button
             aria-label="Clear website search"
-            className="absolute top-1/2 right-1.5 size-5 -translate-y-1/2 rounded-full p-0 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+            className="absolute top-1/2 right-11 size-5 -translate-y-1/2 rounded-full p-0 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-200"
             onClick={() => setSearchValue('')}
             title="Clear search"
             type="button"
@@ -430,43 +602,41 @@ function SortableDomainRulesList({
             <XIcon className="size-3.5" />
           </Button>
         ) : null}
-      </div>
-      <Button
-        aria-label="Undo website removal"
-        className="size-8 shrink-0 rounded-full bg-amber-500/15 p-0 text-amber-600 transition-colors hover:bg-amber-500/25 hover:text-amber-700 disabled:bg-slate-300 disabled:text-slate-500 dark:bg-amber-400/15 dark:text-amber-300 dark:disabled:bg-slate-700 dark:disabled:text-slate-400 dark:hover:bg-amber-400/25 dark:hover:text-amber-200"
-        disabled={!canUndo || Boolean(removingDomain)}
-        onClick={onUndo}
-        size="icon-xs"
-        title="Undo last website removal"
-        type="button"
-        variant="ghost"
-      >
-        <Undo2Icon className="size-3.5" />
-      </Button>
-      <Button
-        aria-label="Redo website removal"
-        className="size-8 shrink-0 rounded-full bg-amber-500/15 p-0 text-amber-600 transition-colors hover:bg-amber-500/25 hover:text-amber-700 disabled:bg-slate-300 disabled:text-slate-500 dark:bg-amber-400/15 dark:text-amber-300 dark:disabled:bg-slate-700 dark:disabled:text-slate-400 dark:hover:bg-amber-400/25 dark:hover:text-amber-200"
-        disabled={!canRedo || Boolean(removingDomain)}
-        onClick={onRedo}
-        size="icon-xs"
-        title="Redo website removal"
-        type="button"
-        variant="ghost"
-      >
-        <Redo2Icon className="size-3.5" />
-      </Button>
-      <AppButton
-        aria-label="Add website"
-        className="h-8 shrink-0 gap-1 rounded-full bg-brand-500 px-3 font-semibold text-white shadow-sm ring-1 ring-brand-600/30 transition-[background-color,box-shadow,transform] hover:-translate-y-px hover:bg-brand-600 hover:text-white hover:shadow-md active:translate-y-0 dark:bg-brand-500 dark:text-white dark:hover:bg-brand-400"
-        disabled={isAdding}
-        onClick={openEditor}
-        size="sm"
-        type="button"
-      >
-        <PlusIcon className="size-4 stroke-[2.5]" />
-        Add
-      </AppButton>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <AppButton
+                  aria-label="Add website"
+                  className="absolute top-1/2 right-1 size-8 -translate-y-1/2 rounded-full bg-lime-400 p-0 text-lime-950 shadow-sm ring-1 ring-lime-500/40 transition-[background-color,box-shadow,transform] hover:bg-lime-300 hover:text-lime-950 hover:shadow-md disabled:bg-slate-300 disabled:text-slate-500 disabled:ring-transparent dark:bg-lime-400 dark:text-lime-950 dark:disabled:bg-slate-700 dark:disabled:text-slate-400 dark:hover:bg-lime-300"
+                  disabled={!canAddSearchDomain}
+                  size="sm"
+                  type="submit"
+                >
+                  <PlusIcon className="size-4 stroke-[2.5]" />
+                </AppButton>
+              }
+            />
+            <TooltipContent>
+              {isSearchDomainSaved
+                ? 'Domain already exists'
+                : searchDomain
+                  ? `Add domain: ${searchDomain}`
+                  : 'Enter a valid domain'}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </form>
     </div>
+  );
+
+  const sortControl = (
+    <AppSortPicker
+      label="Sort website settings"
+      onValueChange={handleSortChange}
+      options={domainSortOptions}
+      value={sort}
+    />
   );
 
   return (
@@ -476,107 +646,23 @@ function SortableDomainRulesList({
         aria-labelledby="website-settings-title"
         className="flex flex-none flex-col pt-6"
       >
-        <SectionTitle id="website-settings-title" title="Website settings" />
-
-        {isAdding ? (
-          <form
-            aria-hidden={!isEditorVisible || undefined}
-            className={cn(
-              'relative grid h-13 min-h-0 origin-top grid-cols-[20px_24px_minmax(0,1fr)_80px_28px] items-center gap-1 overflow-hidden rounded-t-xl bg-white pr-2 pl-2 opacity-100 transition-[height,opacity,transform] duration-200 ease-out motion-reduce:transition-none dark:bg-slate-800/70',
-              siteRules.length &&
-                "after:absolute after:right-3 after:bottom-0 after:left-3 after:h-px after:bg-slate-100/70 after:content-[''] dark:after:bg-white/5",
-              editorError && 'h-18 pb-3',
-              !isEditorVisible && 'h-0 -translate-y-2 scale-y-95 opacity-0'
-            )}
-            inert={!isEditorVisible || undefined}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape') {
-                event.preventDefault();
-                closeEditor();
-              }
-            }}
-            onSubmit={submitEditor}
-          >
-            <span aria-hidden="true" className="w-5" />
-            <div className="flex h-full items-center justify-center">
-              <DomainFavicon domain={normalizedEditorDomain} />
-            </div>
-            <div className="min-w-0">
-              <AppInputText
-                aria-describedby={editorError ? 'site-editor-error' : undefined}
-                aria-invalid={Boolean(editorError)}
-                className="h-7 rounded-md px-2 text-xs"
-                onChange={(event) => {
-                  setEditorValue(event.target.value);
-                  if (editorError) setEditorError('');
-                }}
-                placeholder="example.com"
-                ref={editorInputRef}
-                value={editorValue}
-              />
-            </div>
-            <DomainModeControl
-              label="Access for new website"
-              onChange={setEditorMode}
-              value={editorMode}
-            />
-            <TooltipProvider>
-              <div className="flex h-full w-7 flex-col items-center justify-center gap-0.5">
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        aria-label="Discard website"
-                        className="size-5 shrink-0 rounded-md bg-red-500/15 p-0 text-red-600 transition-[color,background-color,transform] hover:scale-105 hover:bg-red-500/25 hover:text-red-700 dark:bg-red-400/15 dark:text-red-300 dark:hover:bg-red-400/25 dark:hover:text-red-200"
-                        onClick={closeEditor}
-                        type="button"
-                        variant="ghost"
-                      >
-                        <XIcon className="size-3" />
-                      </Button>
-                    }
-                  />
-                  <TooltipContent side="left">Discard (Esc)</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        aria-label="Create website"
-                        className="size-5 shrink-0 rounded-md bg-emerald-500/15 p-0 text-emerald-700 transition-[color,background-color,transform] hover:scale-105 hover:bg-emerald-500/25 hover:text-emerald-800 dark:bg-emerald-400/15 dark:text-emerald-300 dark:hover:bg-emerald-400/25 dark:hover:text-emerald-200"
-                        type="submit"
-                        variant="ghost"
-                      >
-                        <CheckIcon className="size-3" />
-                      </Button>
-                    }
-                  />
-                  <TooltipContent side="left">Create (Enter)</TooltipContent>
-                </Tooltip>
-              </div>
-            </TooltipProvider>
-            {editorError ? (
-              <span
-                className="absolute bottom-0.5 left-14 text-[9px] text-red-600 dark:text-red-300"
-                id="site-editor-error"
-                role="alert"
-              >
-                {editorError}
-              </span>
-            ) : null}
-          </form>
-        ) : null}
+        <SectionTitle
+          className="justify-start gap-1.5"
+          id="website-settings-title"
+          title="Website settings"
+        >
+          {historyControls}
+          {sortControl}
+        </SectionTitle>
 
         {visibleSiteRules.length ? (
           <ul
             aria-label="Saved website settings"
-            className={cn(
-              'list-none overflow-hidden rounded-xl bg-white dark:bg-slate-800/70',
-              isAdding && 'rounded-t-none'
-            )}
+            className="list-none overflow-hidden rounded-xl bg-white dark:bg-slate-800/70"
           >
             {visibleSiteRules.map((rule, index) => (
               <DomainListItem
+                globalDefaultOn={globalDefaultOn}
                 highlighted={highlightedDomain === rule.domain}
                 index={index}
                 isEntering={enteringDomains.has(rule.domain)}
@@ -595,17 +681,13 @@ function SortableDomainRulesList({
                 onRename={handleRename}
                 rule={rule}
                 showDivider={index < visibleSiteRules.length - 1}
-                sortingDisabled={isAdding || isFiltering}
+                showDragHandle={sort === DomainSortE.Custom}
+                sortingDisabled={isFiltering || sort !== DomainSortE.Custom}
               />
             ))}
           </ul>
         ) : (
-          <div
-            className={cn(
-              'flex min-h-24 flex-col items-center justify-center rounded-xl bg-white px-6 text-center dark:bg-slate-800/70',
-              isAdding && 'rounded-t-none'
-            )}
-          >
+          <div className="flex min-h-24 flex-col items-center justify-center rounded-xl bg-white px-6 text-center dark:bg-slate-800/70">
             <p className="font-medium text-slate-700 text-xs dark:text-slate-200">
               {siteRules.length ? 'No matching websites' : 'No custom websites'}
             </p>

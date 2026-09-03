@@ -35,9 +35,14 @@ const isUntouchedLegacyDefaults = (rules: DomainConfigT[]): boolean => {
         globalRule.type === DomainRuleTypeE.Whitelist) &&
       youtubeRule?.enabled &&
       youtubeRule.type === DomainRuleTypeE.Whitelist &&
-      otherRules.every(
-        (rule) => !rule.enabled && rule.type === DomainRuleTypeE.Whitelist
-      )
+      otherRules.every((rule) => {
+        const preset = DOMAIN_CONFIGS.find(
+          ({ domain }) => domain === rule.domain
+        );
+        return (
+          preset && rule.enabled === preset.enabled && rule.type === preset.type
+        );
+      })
   );
 };
 
@@ -46,11 +51,16 @@ export const mergeAndMigrateDomainRules = (
   existingRules: DomainConfigT[]
 ): DomainConfigT[] => {
   if (isUntouchedLegacyDefaults(existingRules)) {
-    return existingRules.map((rule) => ({
-      ...rule,
-      enabled: rule.domain === '*',
-      type: DomainRuleTypeE.Whitelist,
-    }));
+    return existingRules.map((rule) => {
+      const preset = DOMAIN_CONFIGS.find(
+        ({ domain }) => domain === rule.domain
+      );
+      return {
+        ...rule,
+        enabled: preset?.enabled ?? false,
+        type: preset?.type ?? DomainRuleTypeE.Whitelist,
+      };
+    });
   }
 
   if (existingRules.some(({ domain }) => domain === '*')) {
@@ -76,33 +86,44 @@ export const getDomainMode = (rule: DomainConfigT | undefined): DomainModeT => {
 
 export const createDomainRule = (
   domain: string,
-  mode: DomainModeT = DomainModeE.Default
-): DomainConfigT => ({
-  domain,
-  enabled: mode !== DomainModeE.Default,
-  type:
-    mode === DomainModeE.Off
-      ? DomainRuleTypeE.Blacklist
-      : DomainRuleTypeE.Whitelist,
-});
+  mode: DomainModeT = DomainModeE.Default,
+  createdAt?: number
+): DomainConfigT => {
+  const rule: DomainConfigT = {
+    domain,
+    enabled: mode !== DomainModeE.Default,
+    type:
+      mode === DomainModeE.Off
+        ? DomainRuleTypeE.Blacklist
+        : DomainRuleTypeE.Whitelist,
+  };
+  if (createdAt !== undefined) rule.createdAt = createdAt;
+  return rule;
+};
 
 export const setDomainMode = (
   rules: DomainConfigT[],
   domain: string,
   mode: DomainModeT,
-  options: { addMissing?: boolean; addAtTop?: boolean } = {}
+  options: {
+    addMissing?: boolean;
+    addAtTop?: boolean;
+    createdAt?: number;
+  } = {}
 ): DomainConfigT[] => {
   const existingIndex = rules.findIndex((rule) => rule.domain === domain);
 
   if (existingIndex >= 0) {
     return rules.map((rule, index) =>
-      index === existingIndex ? createDomainRule(domain, mode) : rule
+      index === existingIndex
+        ? { ...rule, ...createDomainRule(domain, mode) }
+        : rule
     );
   }
 
   if (!options.addMissing) return rules;
 
-  const nextRule = createDomainRule(domain, mode);
+  const nextRule = createDomainRule(domain, mode, options.createdAt);
   if (!options.addAtTop) return [...rules, nextRule];
 
   const firstSiteIndex = rules.findIndex((rule) => rule.domain !== '*');
@@ -174,7 +195,52 @@ export const restoreSiteRule = (
 const hostnamePattern =
   /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))*$/;
 
-/** Convert a hostname or HTTP(S) URL to one whole-site rule domain. */
+export interface SiteRuleTargetI {
+  host: string;
+  hostname: string;
+  port: string;
+  suffix: string;
+}
+
+const getUrlSuffix = (url: URL): string =>
+  `${url.pathname === '/' ? '' : url.pathname}${url.search}${url.hash}`;
+
+export const parseSiteRuleTarget = (target: string): SiteRuleTargetI | null => {
+  if (!target || target === '*') return null;
+
+  try {
+    const url = new URL(`https://${target}`);
+    return {
+      host: url.host.toLowerCase(),
+      hostname: url.hostname.toLowerCase().replace(/^\[|\]$/g, ''),
+      port: url.port,
+      suffix: getUrlSuffix(url),
+    };
+  } catch {
+    return null;
+  }
+};
+
+export const getSiteRuleHostname = (target: string): string | null =>
+  parseSiteRuleTarget(target)?.hostname ?? null;
+
+export const doesSiteRuleMatchUrl = (target: string, url: URL): boolean => {
+  const parsedTarget = parseSiteRuleTarget(target);
+  if (!parsedTarget) return false;
+
+  const currentHostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  const hostMatches = parsedTarget.port
+    ? url.host.toLowerCase() === parsedTarget.host
+    : currentHostname === parsedTarget.hostname ||
+      currentHostname.endsWith(`.${parsedTarget.hostname}`);
+
+  return (
+    hostMatches &&
+    (!parsedTarget.suffix || getUrlSuffix(url) === parsedTarget.suffix)
+  );
+};
+
+/** Convert a hostname or HTTP(S) URL to a host with an optional page suffix. */
 export const normalizeSiteInput = (input: string): string | null => {
   const value = input.trim();
   if (!value || value.includes('*')) return null;
@@ -187,6 +253,7 @@ export const normalizeSiteInput = (input: string): string | null => {
   }
 
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+  if (url.username || url.password) return null;
 
   const hostname = url.hostname
     .toLowerCase()
@@ -197,5 +264,9 @@ export const normalizeSiteInput = (input: string): string | null => {
   const parsed = parse(hostname);
   if (!parsed.isIp && !hostnamePattern.test(hostname)) return null;
 
-  return (parsed.domain || hostname).toLowerCase();
+  const formattedHostname = hostname.includes(':') ? `[${hostname}]` : hostname;
+  const host = `${formattedHostname}${url.port ? `:${url.port}` : ''}`;
+  const pathname = url.pathname === '/' ? '' : url.pathname.replace(/\/+$/, '');
+
+  return `${host}${pathname}${url.hash}`;
 };
