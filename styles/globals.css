@@ -13,18 +13,18 @@
   /* colors -------------------- */
 
   /* colors: brand */
-  --color-brand: var(--color-rose-600);
-  --color-brand-50: var(--color-rose-50);
-  --color-brand-100: var(--color-rose-100);
-  --color-brand-200: var(--color-rose-200);
-  --color-brand-300: var(--color-rose-300);
-  --color-brand-400: var(--color-rose-400);
-  --color-brand-500: var(--color-rose-500);
-  --color-brand-600: var(--color-rose-600);
-  --color-brand-700: var(--color-rose-700);
-  --color-brand-800: var(--color-rose-800);
-  --color-brand-900: var(--color-rose-900);
-  --color-brand-950: var(--color-rose-950);
+  --color-brand: var(--color-violet-600);
+  --color-brand-50: var(--color-violet-50);
+  --color-brand-100: var(--color-violet-100);
+  --color-brand-200: var(--color-violet-200);
+  --color-brand-300: var(--color-violet-300);
+  --color-brand-400: var(--color-violet-400);
+  --color-brand-500: var(--color-violet-500);
+  --color-brand-600: var(--color-violet-600);
+  --color-brand-700: var(--color-violet-700);
+  --color-brand-800: var(--color-violet-800);
+  --color-brand-900: var(--color-violet-900);
+  --color-brand-950: var(--color-violet-950);
 
   /* colors: status */
   --color-success-light: var(--color-success-light);
