@@ -81,7 +81,7 @@ function SeekMethodCard({
     <section
       className={cn(
         'overflow-hidden rounded-xl border border-slate-200 bg-white transition-[border-color,box-shadow,background-color] dark:border-slate-800 dark:bg-slate-900',
-        focused && 'border-violet-500 dark:border-violet-400'
+        focused && 'border-brand-500 dark:border-brand-400'
       )}
       data-method={id}
     >
@@ -91,7 +91,7 @@ function SeekMethodCard({
             className={cn(
               'mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-500 transition-colors dark:bg-slate-700 dark:text-slate-300',
               enabled &&
-                'bg-violet-50 text-violet-600 dark:bg-violet-950 dark:text-violet-400'
+                'bg-brand-50 text-brand-600 dark:bg-brand-950 dark:text-brand-400'
             )}
             data-testid={`${id}-method-icon`}
           >
@@ -116,9 +116,9 @@ function SeekMethodCard({
             aria-label={`Preview ${accessibleTitle}`}
             aria-pressed={focused}
             className={cn(
-              'inline-flex h-6 cursor-pointer items-center gap-1 rounded-md border border-slate-200 bg-white px-2 font-semibold text-[10px] text-slate-500 transition-colors hover:border-violet-300 hover:bg-violet-50 hover:text-violet-600 focus-visible:outline-2 focus-visible:outline-violet-500 focus-visible:outline-offset-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-violet-700 dark:hover:bg-violet-950 dark:hover:text-violet-400',
+              'inline-flex h-6 cursor-pointer items-center gap-1 rounded-md border border-slate-200 bg-white px-2 font-semibold text-[10px] text-slate-500 transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-600 focus-visible:outline-2 focus-visible:outline-brand-500 focus-visible:outline-offset-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-brand-700 dark:hover:bg-brand-950 dark:hover:text-brand-400',
               focused &&
-                'border-violet-300 bg-violet-50 text-violet-600 dark:border-violet-700 dark:bg-violet-950 dark:text-violet-400'
+                'border-brand-300 bg-brand-50 text-brand-600 dark:border-brand-700 dark:bg-brand-950 dark:text-brand-400'
             )}
             onClick={onPreview}
             type="button"
@@ -395,7 +395,7 @@ export function SeekControlsSettings({
 
       <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
         <div className="mb-4 flex items-start gap-3">
-          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-violet-50 text-violet-600 dark:bg-violet-950 dark:text-violet-400">
+          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-950 dark:text-brand-400">
             <LayoutTemplateIcon className="size-4" />
           </span>
           <div>

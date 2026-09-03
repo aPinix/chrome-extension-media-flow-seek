@@ -153,7 +153,7 @@
   /* colors: app */
   --background: oklch(1 0 0);
   --foreground: oklch(0.141 0.005 285.823);
-  --primary: var(--color-violet-600);
+  --primary: var(--color-brand-500);
   --primary-foreground: oklch(
     from var(--primary) var(--contrast-threshold-lightness) 0 h
   ); /* oklch(0.405 0.101 131.063) */

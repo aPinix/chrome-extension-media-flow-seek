@@ -113,7 +113,7 @@ describe('SeekControlsPreview', () => {
     expect(preview.getAttribute('aria-label')).toContain('top timeline at 12%');
     expect(screen.getByTestId('action-area-overlay').style.top).toBe('30%');
     expect(screen.getByTestId('action-area-overlay').className).toContain(
-      'border-violet-300/90'
+      'border-brand-300/90'
     );
     expect(screen.getByTestId('timeline-overlay').style.top).toBe('0px');
     expect(screen.getByTestId('timeline-overlay').className).toContain(
@@ -123,7 +123,7 @@ describe('SeekControlsPreview', () => {
       'backdrop-blur-[8px]'
     );
     expect(screen.getByTestId('timeline-progress').className).toContain(
-      'bg-violet-400/80'
+      'bg-brand-400/80'
     );
     expect(screen.getByTestId('drag-gesture-cue').className).toContain(
       'bg-white/20'

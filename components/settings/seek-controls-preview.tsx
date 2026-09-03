@@ -471,7 +471,7 @@ export function SeekControlsPreview({
         <div
           aria-hidden="true"
           className={cn(
-            'absolute inset-x-0 z-10 border-2 border-violet-300/90 bg-violet-400/25 transition-[top,height] duration-300 ease-in-out motion-reduce:transition-none dark:border-violet-400/80 dark:bg-violet-600/30',
+            'absolute inset-x-0 z-10 border-2 border-brand-300/90 bg-brand-400/25 transition-[top,height] duration-300 ease-in-out motion-reduce:transition-none dark:border-brand-400/80 dark:bg-brand-600/30',
             isFullActionArea && 'inset-0 h-full rounded-lg',
             actionArea === ActionAreaE.Top && 'top-0 rounded-t-lg',
             actionArea === ActionAreaE.Middle && 'rounded',
@@ -539,7 +539,7 @@ export function SeekControlsPreview({
             className={cn(
               'absolute inset-y-0 left-0 w-[34%] overflow-visible backdrop-blur-sm backdrop-saturate-[1.4]',
               colorizedTimeline
-                ? 'bg-violet-400/80 dark:bg-violet-600/80'
+                ? 'bg-brand-400/80 dark:bg-brand-600/80'
                 : 'bg-white/30'
             )}
             data-testid="timeline-progress"
@@ -551,7 +551,7 @@ export function SeekControlsPreview({
       {focusedMethod === 'scroll' ? (
         <button
           aria-label="Show next scroll input device"
-          className="absolute inset-0 z-[60] cursor-pointer rounded-xl bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/90 focus-visible:ring-inset"
+          className="absolute inset-0 z-60 cursor-pointer rounded-xl bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/90 focus-visible:ring-inset"
           onClick={() =>
             setScrollDeviceIndex(
               (current) => (current + 1) % SCROLL_DEVICE_PHASE_COUNT

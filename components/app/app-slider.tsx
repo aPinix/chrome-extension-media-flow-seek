@@ -48,7 +48,7 @@ export function AppSlider({
           data-slot="app-slider-track"
         >
           <SliderPrimitive.Indicator
-            className="h-full select-none bg-primary"
+            className="h-full select-none bg-brand-500"
             data-slot="app-slider-range"
           />
         </SliderPrimitive.Track>

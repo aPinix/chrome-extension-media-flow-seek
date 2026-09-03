@@ -43,7 +43,7 @@ const ActionAreaSizeControl = ({
     <div className={cn('flex items-center gap-3', className)}>
       <AppSlider
         aria-label="Action area size"
-        className="flex-1 rounded-full has-focus-visible:ring-2 has-focus-visible:ring-violet-500/35 dark:has-focus-visible:ring-violet-400/35"
+        className="flex-1 rounded-full has-focus-visible:ring-2 has-focus-visible:ring-brand-500/35 dark:has-focus-visible:ring-brand-400/35"
         disabled={disabled}
         max={100}
         min={10}

@@ -81,14 +81,14 @@ describe('SeekControlsSettings', () => {
     expect(scrollPreview.getAttribute('aria-pressed')).toBe('true');
     expect(scrollPreview.className).toContain('cursor-pointer');
     expect(screen.getByTestId('scroll-method-icon').className).toContain(
-      'bg-violet-50'
+      'bg-brand-50'
     );
     expect(
       document.querySelector('[data-method="scroll"]')?.className
-    ).not.toContain('bg-violet-50/40');
+    ).not.toContain('bg-brand-50/40');
     expect(
       document.querySelector('[data-method="scroll"]')?.className
-    ).toContain('border-violet-500');
+    ).toContain('border-brand-500');
     expect(dragPreview.getAttribute('aria-pressed')).toBe('false');
     expect(screen.getByText('Inverse Scroll')).toBeTruthy();
     expect(screen.queryByText(/Begin with a horizontal movement/)).toBeNull();
