@@ -34,6 +34,7 @@ export type PopupSettings = {
   hideVideoControls: boolean;
   colorizedTimeline: boolean;
   isYouTubeChapteredTimelineEnabled: boolean;
+  isSeekbarThumbnailPreviewEnabled: boolean;
   timelinePosition: 'top' | 'bottom';
   timelineHeight: number;
   timelineHeightUnit: 'px' | '%';
@@ -61,6 +62,7 @@ export const DEFAULT_SETTINGS: Omit<PopupSettings, 'domainRules'> = {
   hideVideoControls: false,
   colorizedTimeline: false,
   isYouTubeChapteredTimelineEnabled: false,
+  isSeekbarThumbnailPreviewEnabled: false,
   timelinePosition: 'bottom',
   timelineHeight: 6,
   timelineHeightUnit: 'px',
@@ -101,6 +103,7 @@ export const loadPopupSettings = (): Promise<PopupSettings> => {
         'hideVideoControls',
         'colorizedTimeline',
         'isYouTubeChapteredTimelineEnabled',
+        'isSeekbarThumbnailPreviewEnabled',
         'timelinePosition',
         'timelineHeight',
         'timelineHeightUnit',
@@ -176,6 +179,9 @@ export const loadPopupSettings = (): Promise<PopupSettings> => {
           isYouTubeChapteredTimelineEnabled:
             stored.isYouTubeChapteredTimelineEnabled ??
             DEFAULT_SETTINGS.isYouTubeChapteredTimelineEnabled,
+          isSeekbarThumbnailPreviewEnabled:
+            stored.isSeekbarThumbnailPreviewEnabled ??
+            DEFAULT_SETTINGS.isSeekbarThumbnailPreviewEnabled,
           timelinePosition:
             stored.timelinePosition ?? DEFAULT_SETTINGS.timelinePosition,
           timelineHeight:

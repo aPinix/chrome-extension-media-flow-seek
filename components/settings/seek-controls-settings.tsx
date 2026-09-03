@@ -84,6 +84,8 @@ function SeekMethodCard({
         focused && 'border-brand-500 dark:border-brand-400'
       )}
       data-method={id}
+      onFocusCapture={onPreview}
+      onPointerDownCapture={onPreview}
     >
       <div className="flex items-start gap-3 px-3 py-3">
         <div className="flex min-w-0 flex-1 items-start gap-3">
@@ -149,6 +151,7 @@ interface SeekControlsSettingsPropsI {
   isDragSeekingEnabled: boolean;
   isPlayPauseWheelEnabled: boolean;
   isScrollSeekingEnabled: boolean;
+  isSeekbarThumbnailPreviewEnabled: boolean;
   isSeekbarSeekingEnabled: boolean;
   onActionAreaChange: (actionArea: ActionAreaT) => void;
   onActionAreaReset: () => void;
@@ -187,6 +190,7 @@ export function SeekControlsSettings({
   isDragSeekingEnabled,
   isPlayPauseWheelEnabled,
   isScrollSeekingEnabled,
+  isSeekbarThumbnailPreviewEnabled,
   isSeekbarSeekingEnabled,
   onActionAreaChange,
   onActionAreaReset,
@@ -413,6 +417,7 @@ export function SeekControlsSettings({
           actionAreaSizeUnit={actionAreaSizeUnit}
           height={timelineHeight}
           isSeekbarSeekingEnabled={isSeekbarSeekingEnabled}
+          isSeekbarThumbnailPreviewEnabled={isSeekbarThumbnailPreviewEnabled}
           onActionAreaChange={onActionAreaChange}
           onActionAreaReset={onActionAreaReset}
           onActionAreaSizeChange={onActionAreaSizeChange}

@@ -2,6 +2,7 @@ import {
   BugIcon,
   EyeOffIcon,
   GlobeIcon,
+  ImagesIcon,
   PaletteIcon,
   PowerIcon,
   SlidersHorizontalIcon,
@@ -195,6 +196,10 @@ export function PopupContent() {
     isYouTubeChapteredTimelineEnabled,
     setIsYouTubeChapteredTimelineEnabled,
   ] = useState(DEFAULT_SETTINGS.isYouTubeChapteredTimelineEnabled);
+  const [
+    isSeekbarThumbnailPreviewEnabled,
+    setIsSeekbarThumbnailPreviewEnabled,
+  ] = useState(DEFAULT_SETTINGS.isSeekbarThumbnailPreviewEnabled);
   const [timelinePosition, setTimelinePosition] = useState<'top' | 'bottom'>(
     'bottom'
   );
@@ -248,6 +253,8 @@ export function PopupContent() {
     colorizedTimeline === DEFAULT_SETTINGS.colorizedTimeline &&
     isYouTubeChapteredTimelineEnabled ===
       DEFAULT_SETTINGS.isYouTubeChapteredTimelineEnabled &&
+    isSeekbarThumbnailPreviewEnabled ===
+      DEFAULT_SETTINGS.isSeekbarThumbnailPreviewEnabled &&
     timelinePosition === DEFAULT_SETTINGS.timelinePosition &&
     timelineHeight === DEFAULT_SETTINGS.timelineHeight &&
     timelineHeightUnit === DEFAULT_SETTINGS.timelineHeightUnit &&
@@ -276,6 +283,9 @@ export function PopupContent() {
       setColorizedTimeline(settings.colorizedTimeline);
       setIsYouTubeChapteredTimelineEnabled(
         settings.isYouTubeChapteredTimelineEnabled
+      );
+      setIsSeekbarThumbnailPreviewEnabled(
+        settings.isSeekbarThumbnailPreviewEnabled
       );
       setTimelinePosition(settings.timelinePosition);
       setTimelineHeight(settings.timelineHeight);
@@ -458,6 +468,15 @@ export function PopupContent() {
     });
   };
 
+  const handleSeekbarThumbnailPreviewToggle = (checked: boolean) => {
+    setIsSeekbarThumbnailPreviewEnabled(checked);
+    saveSettings({ isSeekbarThumbnailPreviewEnabled: checked });
+    sendMessageToCurrentTab({
+      action: 'updateSeekbarThumbnailPreview',
+      isSeekbarThumbnailPreviewEnabled: checked,
+    });
+  };
+
   const handleTimelinePositionChange = (position: 'top' | 'bottom') => {
     setTimelinePosition(position);
     saveSettings({ timelinePosition: position });
@@ -598,6 +617,9 @@ export function PopupContent() {
     setIsYouTubeChapteredTimelineEnabled(
       defaultSettings.isYouTubeChapteredTimelineEnabled
     );
+    setIsSeekbarThumbnailPreviewEnabled(
+      defaultSettings.isSeekbarThumbnailPreviewEnabled
+    );
     setTimelinePosition(defaultSettings.timelinePosition);
     setTimelineHeight(defaultSettings.timelineHeight);
     setTimelineHeightUnit(defaultSettings.timelineHeightUnit);
@@ -620,6 +642,8 @@ export function PopupContent() {
       colorizedTimeline: defaultSettings.colorizedTimeline,
       isYouTubeChapteredTimelineEnabled:
         defaultSettings.isYouTubeChapteredTimelineEnabled,
+      isSeekbarThumbnailPreviewEnabled:
+        defaultSettings.isSeekbarThumbnailPreviewEnabled,
       timelinePosition: defaultSettings.timelinePosition,
       timelineHeight: defaultSettings.timelineHeight,
       timelineHeightUnit: defaultSettings.timelineHeightUnit,
@@ -673,6 +697,11 @@ export function PopupContent() {
       action: 'updateYouTubeChapteredTimeline',
       isYouTubeChapteredTimelineEnabled:
         defaultSettings.isYouTubeChapteredTimelineEnabled,
+    });
+    sendMessageToCurrentTab({
+      action: 'updateSeekbarThumbnailPreview',
+      isSeekbarThumbnailPreviewEnabled:
+        defaultSettings.isSeekbarThumbnailPreviewEnabled,
     });
     sendMessageToCurrentTab({
       action: 'updateTimelinePosition',
@@ -850,6 +879,9 @@ export function PopupContent() {
                       isPlayPauseWheelEnabled={isPlayPauseWheelEnabled}
                       isScrollSeekingEnabled={isScrollSeekingEnabled}
                       isSeekbarSeekingEnabled={isTimelineSeekingEnabled}
+                      isSeekbarThumbnailPreviewEnabled={
+                        isSeekbarThumbnailPreviewEnabled
+                      }
                       onActionAreaChange={applyActionArea}
                       onActionAreaReset={() =>
                         applyActionArea(DEFAULT_SETTINGS.actionArea)
@@ -893,12 +925,37 @@ export function PopupContent() {
                 </div>
 
                 <div className="flex flex-none flex-col">
-                  <SectionTitle title="Player Appearance" />
+                  <SectionTitle title="Extra Features" />
                   <CardListItemWrapper
                     className={cn(
                       !isEnabled && 'pointer-events-none opacity-50'
                     )}
                   >
+                    <CardListItem
+                      components={{
+                        RightSlot: (
+                          <AppSwitch
+                            aria-label="Show seekbar thumbnail previews"
+                            checked={isSeekbarThumbnailPreviewEnabled}
+                            onCheckedChange={
+                              handleSeekbarThumbnailPreviewToggle
+                            }
+                          />
+                        ),
+                      }}
+                      description="Preview the frame, time, and chapter under the pointer"
+                      icon={ImagesIcon}
+                      iconIsToggled={isSeekbarThumbnailPreviewEnabled}
+                      title={
+                        <span className="inline-flex items-center gap-2">
+                          Hover Thumbnails
+                          <AppBetaBadge
+                            featureName="Hover Thumbnails"
+                            tooltip="Frame previews are best effort and may be unavailable for protected or streaming video sources."
+                          />
+                        </span>
+                      }
+                    />
                     <CardListItem
                       components={{
                         RightSlot: (

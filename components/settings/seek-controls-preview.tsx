@@ -497,19 +497,6 @@ export function SeekControlsPreview({
           {focusedMethod === 'drag' ? (
             <DragGestureCue cueRef={dragCueRef} />
           ) : null}
-          {focusedMethod === 'seekbar' ? (
-            <span
-              className="absolute z-30 block size-5 -translate-y-1/2"
-              data-testid="seekbar-gesture-cue"
-              ref={seekbarCueRef}
-              style={{
-                left: '34%',
-                top: seekbarCursorTop,
-              }}
-            >
-              <MousePointer2Icon className="size-full translate-x-[-3.333px] fill-white text-white drop-shadow-lg" />
-            </span>
-          ) : null}
         </div>
 
         <span
@@ -547,6 +534,22 @@ export function SeekControlsPreview({
           />
         </div>
       </div>
+
+      {focusedMethod === 'seekbar' ? (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute z-50 block size-5 origin-top-left overflow-visible"
+          data-registration-point="top-left"
+          data-testid="seekbar-gesture-cue"
+          ref={seekbarCueRef}
+          style={{
+            left: '34%',
+            top: seekbarCursorTop,
+          }}
+        >
+          <MousePointer2Icon className="size-full translate-x-[-3.333px] translate-y-[-3.333px] overflow-visible fill-white text-white drop-shadow-lg" />
+        </span>
+      ) : null}
 
       {focusedMethod === 'scroll' ? (
         <button

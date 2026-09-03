@@ -45,6 +45,7 @@ export class SettingsManager {
           'hideVideoControls',
           'colorizedTimeline',
           'isYouTubeChapteredTimelineEnabled',
+          'isSeekbarThumbnailPreviewEnabled',
           'timelinePosition',
           'timelineHeight',
           'timelineHeightUnit',
@@ -98,6 +99,9 @@ export class SettingsManager {
             isYouTubeChapteredTimelineEnabled:
               stored.isYouTubeChapteredTimelineEnabled ??
               this.defaultSettings.isYouTubeChapteredTimelineEnabled,
+            isSeekbarThumbnailPreviewEnabled:
+              stored.isSeekbarThumbnailPreviewEnabled ??
+              this.defaultSettings.isSeekbarThumbnailPreviewEnabled,
             timelinePosition:
               stored.timelinePosition ?? this.defaultSettings.timelinePosition,
             timelineHeight:
@@ -195,7 +199,8 @@ export class SettingsManager {
   shouldShowTimelineOnHover(): boolean {
     return (
       this.settings.showTimelineOnHover ||
-      this.settings.isTimelineSeekingEnabled
+      this.settings.isTimelineSeekingEnabled ||
+      this.settings.isSeekbarThumbnailPreviewEnabled
     );
   }
 
@@ -217,6 +222,7 @@ export class SettingsManager {
       this.settings.dragVideoToSeek ||
       this.settings.isTimelineSeekingEnabled ||
       this.settings.showTimelineOnHover ||
+      this.settings.isSeekbarThumbnailPreviewEnabled ||
       this.settings.hideVideoControls
     );
   }
@@ -227,6 +233,10 @@ export class SettingsManager {
 
   isYouTubeChapteredTimelineEnabled(): boolean {
     return this.settings.isYouTubeChapteredTimelineEnabled;
+  }
+
+  isSeekbarThumbnailPreviewEnabled(): boolean {
+    return this.settings.isSeekbarThumbnailPreviewEnabled;
   }
 
   getTimelinePosition(): 'top' | 'bottom' {

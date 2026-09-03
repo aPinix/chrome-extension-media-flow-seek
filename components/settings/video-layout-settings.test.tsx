@@ -35,6 +35,7 @@ const baseProps = {
   actionAreaSize: 30,
   actionAreaSizeUnit: '%' as const,
   height: 6,
+  isSeekbarThumbnailPreviewEnabled: false,
   isSeekbarSeekingEnabled: false,
   position: 'bottom' as const,
   showTimelineOnHover: false,
@@ -192,6 +193,23 @@ describe('VideoLayoutSettings', () => {
       screen.getByText(/Locked on while Click & Drag Seekbar/)
     ).toBeTruthy();
     expect(callbacks.onShowTimelineOnHoverChange).not.toHaveBeenCalled();
+  });
+
+  it('locks hover visibility while thumbnail previews are enabled', () => {
+    render(
+      <VideoLayoutSettings
+        {...baseProps}
+        {...createCallbacks()}
+        isSeekbarThumbnailPreviewEnabled={true}
+      />
+    );
+
+    const hoverSwitch = screen.getByRole('switch', {
+      name: 'Show timeline on hover',
+    });
+    expect(hoverSwitch.getAttribute('aria-checked')).toBe('true');
+    expect(hoverSwitch.getAttribute('aria-disabled')).toBe('true');
+    expect(screen.getByText(/Locked on while Hover Thumbnails/)).toBeTruthy();
   });
 
   it('keeps timeline height reset enabled until both 6 and px are restored', async () => {

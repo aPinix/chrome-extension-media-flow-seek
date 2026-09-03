@@ -24,6 +24,10 @@ export type VideoStateT = {
   syncPlaybackFeedback?: () => void;
   updateYouTubeChapterMode?: () => void;
   youtubeChapterTooltip?: HTMLDivElement;
+  thumbnailPreview?: HTMLDivElement;
+  updateThumbnailPreviewAtPoint?: (clientX: number, clientY: number) => void;
+  hideThumbnailPreview?: () => void;
+  updateThumbnailPreviewMode?: () => void;
   syncCleanup?: () => void;
 };
 
@@ -44,6 +48,7 @@ export type ContentSettingsT = {
   hideVideoControls: boolean;
   colorizedTimeline: boolean;
   isYouTubeChapteredTimelineEnabled: boolean;
+  isSeekbarThumbnailPreviewEnabled: boolean;
   timelinePosition: 'top' | 'bottom';
   timelineHeight: number;
   timelineHeightUnit: 'px' | '%';
@@ -84,6 +89,7 @@ export type ChromeMessageT = {
   hideVideoControls?: boolean;
   colorizedTimeline?: boolean;
   isYouTubeChapteredTimelineEnabled?: boolean;
+  isSeekbarThumbnailPreviewEnabled?: boolean;
   timelinePosition: ContentSettingsT['timelinePosition'];
   timelineHeight: number;
   timelineHeightUnit: ContentSettingsT['timelineHeightUnit'];

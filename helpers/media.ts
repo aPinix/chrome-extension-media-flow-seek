@@ -28,7 +28,7 @@ const NATIVE_SEEK_REQUEST_EVENT = 'media-flow-seek:native-player-seek';
 const NATIVE_SEEK_TIME_ATTRIBUTE = 'data-media-flow-seek-native-time';
 const NATIVE_SEEK_RESULT_ATTRIBUTE = 'data-media-flow-seek-native-result';
 const MEDIA_FLOW_SEEK_ELEMENT_SELECTOR =
-  '.scrub-wrapper, .scrub-timeline, .scrub-overlay, .mfs-media-controls, .mfs-seek-speed-label';
+  '.scrub-wrapper, .scrub-timeline, .scrub-overlay, .mfs-media-controls, .mfs-seek-speed-label, .mfs-seekbar-thumbnail-preview';
 const FORCED_SEEK_RETRY_EVENTS: Array<keyof HTMLMediaElementEventMap> = [
   'progress',
   'durationchange',

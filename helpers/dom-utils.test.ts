@@ -11,6 +11,16 @@ afterEach(() => {
 });
 
 describe('DOMUtils mouse video discovery', () => {
+  it('ignores the extension-owned thumbnail decoder video', () => {
+    const preview = document.createElement('div');
+    preview.className = 'mfs-seekbar-thumbnail-preview';
+    const video = document.createElement('video');
+    preview.appendChild(video);
+    document.body.appendChild(preview);
+
+    expect(DOMUtils.findAllVideos()).not.toContain(video);
+  });
+
   it('checks immediately while throttling subsequent pointer movement', () => {
     vi.useFakeTimers();
     const callback = vi.fn();

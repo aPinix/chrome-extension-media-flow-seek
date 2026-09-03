@@ -39,6 +39,8 @@ describe('timeline seeking storage', () => {
     expect(settings.colorizedTimeline).toBe(false);
     expect(DEFAULT_SETTINGS.isYouTubeChapteredTimelineEnabled).toBe(false);
     expect(settings.isYouTubeChapteredTimelineEnabled).toBe(false);
+    expect(DEFAULT_SETTINGS.isSeekbarThumbnailPreviewEnabled).toBe(false);
+    expect(settings.isSeekbarThumbnailPreviewEnabled).toBe(false);
     expect(DEFAULT_SETTINGS.isPlayPauseWheelEnabled).toBe(true);
     expect(settings.isPlayPauseWheelEnabled).toBe(true);
     expect(DEFAULT_SETTINGS.scrollSpeedFactor).toBe(1);
@@ -168,6 +170,28 @@ describe('timeline seeking storage', () => {
 
     expect(settings.isTimelineSeekingEnabled).toBe(true);
     expect(set).toHaveBeenCalledWith({ isTimelineSeekingEnabled: false });
+  });
+
+  it('loads and saves the seekbar thumbnail preview preference', async () => {
+    const set = vi.fn();
+    vi.stubGlobal('chrome', {
+      storage: {
+        sync: {
+          get: vi.fn((_keys, callback) =>
+            callback({ isSeekbarThumbnailPreviewEnabled: true })
+          ),
+          set,
+        },
+      },
+    });
+
+    const settings = await loadPopupSettings();
+    saveSettings({ isSeekbarThumbnailPreviewEnabled: false });
+
+    expect(settings.isSeekbarThumbnailPreviewEnabled).toBe(true);
+    expect(set).toHaveBeenCalledWith({
+      isSeekbarThumbnailPreviewEnabled: false,
+    });
   });
 
   it('loads and saves the hide video controls preference', async () => {

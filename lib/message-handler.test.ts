@@ -223,6 +223,87 @@ describe('MessageHandler timeline seeking updates', () => {
     expect(sendResponse).toHaveBeenCalledWith({ success: true });
   });
 
+  it('applies seekbar thumbnail preview messages and reconciles overlays', () => {
+    const updateSetting = vi.fn();
+    const updateSeekbarThumbnailPreviewState = vi.fn();
+    const updateTimelineSeekingState = vi.fn();
+    const checkForVideos = vi.fn();
+    const handler = new MessageHandler({
+      checkForVideos,
+      getDebugColorBackground: () => '',
+      getDebugImageBackground: () => '',
+      overlayCreator: {
+        updateSeekbarThumbnailPreviewState,
+        updateTimelineSeekingState,
+      } as unknown as OverlayCreator,
+      settingsManager: {
+        isDebugEnabled: () => false,
+        shouldRun: () => true,
+        updateSetting,
+      } as unknown as SettingsManager,
+      videoStateManager: {} as VideoStateManager,
+    });
+    const sendResponse = vi.fn();
+    const testHandler = handler as unknown as {
+      handleMessage: (
+        message: ChromeMessageT,
+        respond: (response: { success: boolean; error?: string }) => void
+      ) => void;
+    };
+
+    testHandler.handleMessage(
+      {
+        action: 'updateSeekbarThumbnailPreview',
+        isSeekbarThumbnailPreviewEnabled: true,
+      } as ChromeMessageT,
+      sendResponse
+    );
+
+    expect(updateSetting).toHaveBeenCalledWith(
+      'isSeekbarThumbnailPreviewEnabled',
+      true
+    );
+    expect(updateSeekbarThumbnailPreviewState).toHaveBeenCalledOnce();
+    expect(updateTimelineSeekingState).toHaveBeenCalledOnce();
+    expect(checkForVideos).toHaveBeenCalledOnce();
+    expect(sendResponse).toHaveBeenCalledWith({ success: true });
+  });
+
+  it('rejects malformed seekbar thumbnail preview messages', () => {
+    const updateSetting = vi.fn();
+    const handler = new MessageHandler({
+      checkForVideos: vi.fn(),
+      getDebugColorBackground: () => '',
+      getDebugImageBackground: () => '',
+      overlayCreator: {} as OverlayCreator,
+      settingsManager: {
+        isDebugEnabled: () => false,
+        updateSetting,
+      } as unknown as SettingsManager,
+      videoStateManager: {} as VideoStateManager,
+    });
+    const sendResponse = vi.fn();
+    const testHandler = handler as unknown as {
+      handleMessage: (
+        message: ChromeMessageT,
+        respond: (response: { success: boolean; error?: string }) => void
+      ) => void;
+    };
+
+    testHandler.handleMessage(
+      {
+        action: 'updateSeekbarThumbnailPreview',
+      } as ChromeMessageT,
+      sendResponse
+    );
+
+    expect(updateSetting).not.toHaveBeenCalled();
+    expect(sendResponse).toHaveBeenCalledWith({
+      error: 'Invalid seekbar thumbnail preview setting',
+      success: false,
+    });
+  });
+
   it('applies drag video to seek messages to existing overlays', () => {
     const updateSetting = vi.fn();
     const updateVideoDraggingState = vi.fn();

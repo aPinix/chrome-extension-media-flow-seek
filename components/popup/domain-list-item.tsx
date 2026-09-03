@@ -20,6 +20,18 @@ import { DomainName } from './domain-name';
 
 export const DOMAIN_RULE_DRAG_TYPE = 'site-access-rule';
 
+const createdDateFormatter = new Intl.DateTimeFormat(undefined, {
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+});
+
+const getCreatedDate = (createdAt?: number) => {
+  if (createdAt === undefined || !Number.isFinite(createdAt)) return null;
+  const date = new Date(createdAt);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
 export interface DomainRuleDragItemI {
   domain: string;
   index: number;
@@ -71,6 +83,7 @@ export function DomainListItem({
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(rule.domain);
   const [isEditInvalid, setIsEditInvalid] = useState(false);
+  const createdDate = getCreatedDate(rule.createdAt);
 
   useEffect(() => {
     if (!isEditing) return;
@@ -272,52 +285,66 @@ export function DomainListItem({
         </TooltipProvider>
       </div>
 
-      {isEditing ? (
-        <form
-          className="min-w-0"
-          onSubmit={(event) => {
-            event.preventDefault();
-            commitEditing();
-          }}
-        >
-          <AppInputText
-            aria-invalid={isEditInvalid}
-            aria-label={`Domain name for ${rule.domain}`}
-            className="h-7 bg-transparent px-1 font-medium text-sm dark:bg-transparent"
-            onBlur={() => {
-              if (editValue === rule.domain) cancelEditing();
-              else commitEditing();
+      <div className="flex min-w-0 flex-col justify-center">
+        {isEditing ? (
+          <form
+            className="min-w-0"
+            onSubmit={(event) => {
+              event.preventDefault();
+              commitEditing();
             }}
-            onChange={(event) => {
-              setEditValue(event.target.value);
-              setIsEditInvalid(false);
-            }}
+          >
+            <AppInputText
+              aria-invalid={isEditInvalid}
+              aria-label={`Domain name for ${rule.domain}`}
+              className="h-7 bg-transparent px-1 font-medium text-sm dark:bg-transparent"
+              onBlur={() => {
+                if (editValue === rule.domain) cancelEditing();
+                else commitEditing();
+              }}
+              onChange={(event) => {
+                setEditValue(event.target.value);
+                setIsEditInvalid(false);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  event.preventDefault();
+                  cancelEditing();
+                }
+              }}
+              ref={editInputRef}
+              value={editValue}
+            />
+          </form>
+        ) : (
+          <button
+            aria-label={`Domain ${rule.domain}. Double-click to edit.`}
+            className="min-w-0 cursor-text select-none truncate rounded-sm text-left font-medium text-slate-900 text-sm leading-tight outline-none focus-visible:ring-2 focus-visible:ring-brand/35 dark:text-white"
+            onDoubleClick={startEditing}
             onKeyDown={(event) => {
-              if (event.key === 'Escape') {
-                event.preventDefault();
-                cancelEditing();
-              }
+              if (event.key !== 'Enter' && event.key !== ' ') return;
+              event.preventDefault();
+              startEditing();
             }}
-            ref={editInputRef}
-            value={editValue}
-          />
-        </form>
-      ) : (
-        <button
-          aria-label={`Domain ${rule.domain}. Double-click to edit.`}
-          className="min-w-0 cursor-text select-none truncate rounded-sm text-left font-medium text-slate-900 text-sm outline-none focus-visible:ring-2 focus-visible:ring-brand/35 dark:text-white"
-          onDoubleClick={startEditing}
-          onKeyDown={(event) => {
-            if (event.key !== 'Enter' && event.key !== ' ') return;
-            event.preventDefault();
-            startEditing();
-          }}
-          title={`Double-click to edit ${rule.domain}`}
-          type="button"
-        >
-          <DomainName domain={rule.domain} />
-        </button>
-      )}
+            title={`Double-click to edit ${rule.domain}`}
+            type="button"
+          >
+            <DomainName domain={rule.domain} />
+          </button>
+        )}
+        {createdDate ? (
+          <time
+            className="truncate text-[10px] text-slate-400 leading-tight dark:text-slate-500"
+            dateTime={createdDate.toISOString()}
+          >
+            Created {createdDateFormatter.format(createdDate)}
+          </time>
+        ) : (
+          <span className="truncate text-[10px] text-slate-400 leading-tight dark:text-slate-500">
+            Created previously
+          </span>
+        )}
+      </div>
 
       <DomainModeControl
         globalDefaultOn={globalDefaultOn}

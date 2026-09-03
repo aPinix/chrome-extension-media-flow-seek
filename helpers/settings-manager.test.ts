@@ -47,6 +47,19 @@ describe('SettingsManager seek mode gates', () => {
     expect(settings.getSettings().showTimelineOnHover).toBe(false);
   });
 
+  it('keeps hover thumbnails independent and activates video overlays for them', () => {
+    const settings = new SettingsManager();
+    settings.updateSetting('isScrollSeekingEnabled', false);
+    settings.updateSetting('isTimelineSeekingEnabled', false);
+    settings.updateSetting('showTimelineOnHover', false);
+    settings.updateSetting('isSeekbarThumbnailPreviewEnabled', true);
+
+    expect(settings.isSeekbarThumbnailPreviewEnabled()).toBe(true);
+    expect(settings.shouldShowTimelineOnHover()).toBe(true);
+    expect(settings.getSettings().showTimelineOnHover).toBe(false);
+    expect(settings.hasActiveVideoFeatures()).toBe(true);
+  });
+
   it('gates wheel actions and overlay activation with the Scroll parent', () => {
     const settings = new SettingsManager();
     settings.updateSetting('isScrollSeekingEnabled', false);

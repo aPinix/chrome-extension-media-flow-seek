@@ -26,6 +26,7 @@ const createProps = () => ({
   isDragSeekingEnabled: false,
   isPlayPauseWheelEnabled: true,
   isScrollSeekingEnabled: true,
+  isSeekbarThumbnailPreviewEnabled: false,
   isSeekbarSeekingEnabled: true,
   onActionAreaChange: vi.fn(),
   onActionAreaReset: vi.fn(),
@@ -162,6 +163,37 @@ describe('SeekControlsSettings', () => {
         .getByRole('switch', { name: 'Enable Drag to Seek' })
         .getAttribute('aria-checked')
     ).toBe('false');
+  });
+
+  it('focuses the preview when any seek method card is clicked', async () => {
+    const user = userEvent.setup();
+    const props = createProps();
+    render(<SeekControlsSettings {...props} />);
+
+    const preview = screen.getByTestId('seek-controls-preview');
+    const dragCard = document.querySelector(
+      '[data-method="drag"]'
+    ) as HTMLElement;
+    const seekbarCard = document.querySelector(
+      '[data-method="seekbar"]'
+    ) as HTMLElement;
+    const scrollCard = document.querySelector(
+      '[data-method="scroll"]'
+    ) as HTMLElement;
+
+    expect(scrollCard.className).not.toContain('cursor-pointer');
+
+    await user.click(dragCard);
+    expect(preview.getAttribute('data-focused-method')).toBe('drag');
+    expect(props.onDragSeekingEnabledChange).not.toHaveBeenCalled();
+
+    await user.click(seekbarCard);
+    expect(preview.getAttribute('data-focused-method')).toBe('seekbar');
+    expect(props.onSeekbarSeekingEnabledChange).not.toHaveBeenCalled();
+
+    await user.click(screen.getByText('Inverse Scroll'));
+    expect(preview.getAttribute('data-focused-method')).toBe('scroll');
+    expect(props.onScrollSeekingEnabledChange).not.toHaveBeenCalled();
   });
 
   it('keeps method switches independent and reports the all-off state', async () => {

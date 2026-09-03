@@ -106,6 +106,10 @@ export class MessageHandler {
         this.handleUpdateYouTubeChapteredTimeline(message, sendResponse);
         break;
 
+      case 'updateSeekbarThumbnailPreview':
+        this.handleUpdateSeekbarThumbnailPreview(message, sendResponse);
+        break;
+
       case 'updateTimelinePosition':
         this.handleUpdateTimelinePosition(message, sendResponse);
         break;
@@ -470,6 +474,30 @@ export class MessageHandler {
     sendResponse({ success: true });
   }
 
+  private handleUpdateSeekbarThumbnailPreview(
+    message: ChromeMessageT,
+    sendResponse: SendResponse
+  ): void {
+    const { overlayCreator, settingsManager } = this.dependencies;
+
+    if (typeof message.isSeekbarThumbnailPreviewEnabled !== 'boolean') {
+      sendResponse({
+        success: false,
+        error: 'Invalid seekbar thumbnail preview setting',
+      });
+      return;
+    }
+
+    settingsManager.updateSetting(
+      'isSeekbarThumbnailPreviewEnabled',
+      message.isSeekbarThumbnailPreviewEnabled
+    );
+    overlayCreator.updateSeekbarThumbnailPreviewState();
+    overlayCreator.updateTimelineSeekingState();
+    this.reconcileOverlayPresence();
+    sendResponse({ success: true });
+  }
+
   private handleUpdateTimelinePosition(
     message: ChromeMessageT,
     sendResponse: SendResponse
@@ -761,6 +789,14 @@ export class MessageHandler {
           settings.colorizedTimeline
         );
         this.dependencies.overlayCreator.updateTimelineColorization();
+      }
+      if (typeof settings.isSeekbarThumbnailPreviewEnabled === 'boolean') {
+        settingsManager.updateSetting(
+          'isSeekbarThumbnailPreviewEnabled',
+          settings.isSeekbarThumbnailPreviewEnabled
+        );
+        this.dependencies.overlayCreator.updateSeekbarThumbnailPreviewState();
+        shouldUpdateTimelineSeeking = true;
       }
       if (settings.timelinePosition) {
         settingsManager.updateSetting(

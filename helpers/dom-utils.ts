@@ -79,7 +79,9 @@ export class DOMUtils {
       Array.from(root.querySelectorAll('video'))
     );
 
-    return Array.from(new Set(videos));
+    return Array.from(new Set(videos)).filter(
+      (video) => !video.closest('.mfs-seekbar-thumbnail-preview')
+    );
   }
 
   static isVideoVisible(video: HTMLVideoElement): boolean {

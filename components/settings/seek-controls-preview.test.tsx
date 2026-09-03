@@ -249,9 +249,19 @@ describe('SeekControlsPreview', () => {
     expect(cursor.style.top).toBe('6%');
     expect(cursor.style.bottom).toBe('');
     expect(cursor.className).not.toContain('-translate-x-1/2');
-    expect(cursor.className).toContain('-translate-y-1/2');
+    expect(cursor.className).not.toContain('-translate-y-1/2');
+    expect(cursor.className).toContain('origin-top-left');
+    expect(cursor.className).toContain('overflow-visible');
+    expect(cursor.dataset.registrationPoint).toBe('top-left');
+    expect(cursor.closest('[data-testid="seek-controls-preview"]')).toBeNull();
     expect(cursor.firstElementChild?.getAttribute('class')).toContain(
-      '-translate-x-[3.333px]'
+      'translate-x-[-3.333px]'
+    );
+    expect(cursor.firstElementChild?.getAttribute('class')).toContain(
+      'translate-y-[-3.333px]'
+    );
+    expect(cursor.firstElementChild?.getAttribute('class')).toContain(
+      'overflow-visible'
     );
 
     rerender(

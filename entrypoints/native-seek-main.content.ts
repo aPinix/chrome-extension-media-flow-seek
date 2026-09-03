@@ -1,4 +1,5 @@
 import { installNativePlayerSeekBridge } from '@/helpers/media';
+import { installYouTubeStoryboardBridge } from '@/helpers/youtube-storyboards';
 
 export default defineContentScript({
   matches: ['<all_urls>'],
@@ -9,5 +10,6 @@ export default defineContentScript({
   world: 'MAIN',
   main() {
     installNativePlayerSeekBridge(document);
+    installYouTubeStoryboardBridge(document);
   },
 });

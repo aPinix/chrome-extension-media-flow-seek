@@ -140,6 +140,18 @@ export default defineContentScript({
         overlayCreator.updateYouTubeChapteredTimelineState();
       }
 
+      const isSeekbarThumbnailPreviewEnabled =
+        changes.isSeekbarThumbnailPreviewEnabled?.newValue;
+      if (typeof isSeekbarThumbnailPreviewEnabled === 'boolean') {
+        settingsManager.updateSetting(
+          'isSeekbarThumbnailPreviewEnabled',
+          isSeekbarThumbnailPreviewEnabled
+        );
+        overlayCreator.updateSeekbarThumbnailPreviewState();
+        overlayCreator.updateTimelineSeekingState();
+        shouldReconcileOverlays = true;
+      }
+
       const scrollSpeedFactor = changes.scrollSpeedFactor?.newValue;
       if (typeof scrollSpeedFactor === 'number') {
         settingsManager.updateSetting(
@@ -225,6 +237,10 @@ export default defineContentScript({
         console.log(
           '📜 Loaded YouTube chaptered timeline setting:',
           settings.isYouTubeChapteredTimelineEnabled
+        );
+        console.log(
+          '📜 Loaded seekbar thumbnail preview setting:',
+          settings.isSeekbarThumbnailPreviewEnabled
         );
         console.log(
           '📜 Loaded timeline position setting:',

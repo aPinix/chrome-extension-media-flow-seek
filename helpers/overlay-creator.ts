@@ -22,6 +22,10 @@ import {
   isScrollSpeedHotkeyCode,
 } from '@/helpers/scroll-speed';
 import type { SettingsManager } from '@/helpers/settings-manager';
+import {
+  createSeekbarThumbnailPreviewElement,
+  SeekbarThumbnailPreviewController,
+} from '@/helpers/thumbnail-preview';
 import type { VideoStateManager } from '@/helpers/video-state';
 import {
   getWheelPlaybackAction,
@@ -63,6 +67,7 @@ const EXTENSION_UI_SELECTOR = [
   '.mfs-media-controls',
   '.mfs-seek-speed-label',
   '.mfs-youtube-chapter-tooltip',
+  '.mfs-seekbar-thumbnail-preview',
   '.scrub-debug-indicator',
 ].join(',');
 const SITE_INTERACTIVE_SELECTOR = [
@@ -150,6 +155,10 @@ export class OverlayCreator {
   private actionAreaOriginalBoxShadows = new WeakMap<HTMLDivElement, string>();
   private actionAreaOriginalTransitions = new WeakMap<HTMLDivElement, string>();
   private youtubeChapterModels = new WeakMap<
+    HTMLDivElement,
+    YouTubeChapterT[]
+  >();
+  private youtubePreviewChapterModels = new WeakMap<
     HTMLDivElement,
     YouTubeChapterT[]
   >();
@@ -384,6 +393,9 @@ export class OverlayCreator {
       isYouTubeChapterPage(ownerDocument.location.href)
         ? this.createYouTubeChapterTooltipElement(ownerDocument)
         : undefined;
+    const thumbnailPreview = !DOMUtils.isYouTubeHoverPreview(video)
+      ? createSeekbarThumbnailPreviewElement(ownerDocument)
+      : undefined;
 
     // Add elements to wrapper
     scrubWrapper.appendChild(scrubOverlay);
@@ -391,6 +403,7 @@ export class OverlayCreator {
     scrubWrapper.appendChild(mediaControls);
     scrubWrapper.appendChild(seekSpeedLabel);
     if (youtubeChapterTooltip) scrubWrapper.appendChild(youtubeChapterTooltip);
+    if (thumbnailPreview) scrubWrapper.appendChild(thumbnailPreview);
 
     // Only add debug indicator to DOM if debug is enabled
     if (this.settingsManager.isDebugEnabled()) {
@@ -410,6 +423,7 @@ export class OverlayCreator {
       debugIndicator: debugIndicator,
       mediaControls,
       youtubeChapterTooltip,
+      thumbnailPreview,
       isHovering: false,
       isPointerHovering: false,
       isWheelHovering: false,
@@ -455,6 +469,26 @@ export class OverlayCreator {
 
     this.updateVideoControlsForVideo(video, videoState);
     this.setupDocumentHoverTracking(ownerDocument);
+
+    const thumbnailPreviewController = thumbnailPreview
+      ? new SeekbarThumbnailPreviewController({
+          getTimelinePosition: () => this.settingsManager.getTimelinePosition(),
+          getYouTubeChapters: () =>
+            this.youtubePreviewChapterModels.get(scrubTimeline),
+          isEnabled: () =>
+            this.settingsManager.isSeekbarThumbnailPreviewEnabled?.() ?? false,
+          isScrubbing: () => videoState.isUserScrubbing,
+          preview: thumbnailPreview,
+          timeline: scrubTimeline,
+          video,
+          wrapper: scrubWrapper,
+        })
+      : null;
+    videoState.updateThumbnailPreviewAtPoint = (clientX, clientY) =>
+      thumbnailPreviewController?.updateAtPoint(clientX, clientY);
+    videoState.hideThumbnailPreview = () => thumbnailPreviewController?.hide();
+    videoState.updateThumbnailPreviewMode = () =>
+      thumbnailPreviewController?.updateEnabled();
     this.restoreDocumentHoverAtLastPointer(ownerDocument);
 
     const timelineSeekingController = this.setupTimelineSeeking(
@@ -591,6 +625,7 @@ export class OverlayCreator {
       timelineCleanup();
       timelineSeekingController.cleanup();
       youtubeChapterController.cleanup();
+      thumbnailPreviewController?.cleanup();
       videoDraggingController.cleanup();
       playbackController.cleanup();
       mediaControlsController.cleanup();
@@ -734,6 +769,103 @@ export class OverlayCreator {
 
         .mfs-youtube-chapter-tooltip[data-mfs-visible="true"] {
           opacity: 1;
+        }
+
+        .mfs-seekbar-thumbnail-preview {
+          all: initial;
+          position: absolute;
+          left: 0;
+          z-index: 2147483646 !important;
+          display: block;
+          box-sizing: border-box;
+          width: 220px;
+          max-width: calc(100% - 16px);
+          overflow: hidden;
+          border: 1px solid rgb(255 255 255 / 0.14);
+          border-radius: 8px;
+          background: rgb(15 23 42 / 0.92);
+          color: white;
+          box-shadow: 0 5px 18px rgb(0 0 0 / 0.38);
+          opacity: 0;
+          transform: translateX(-50%) translateY(4px);
+          transition: opacity 100ms ease, transform 100ms ease;
+          pointer-events: none;
+          user-select: none;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+
+        .mfs-seekbar-thumbnail-preview[data-mfs-visible="true"] {
+          opacity: 1;
+          transform: translateX(-50%) translateY(0);
+        }
+
+        .mfs-thumbnail-frame {
+          position: relative;
+          display: none;
+          width: 100%;
+          aspect-ratio: 16 / 9;
+          overflow: hidden;
+          background: black;
+        }
+
+        .mfs-seekbar-thumbnail-preview[data-mfs-image-visible="true"] .mfs-thumbnail-frame {
+          display: block;
+        }
+
+        .mfs-thumbnail-image,
+        .mfs-thumbnail-video {
+          position: absolute;
+          inset: 0;
+          display: block;
+          box-sizing: border-box;
+          width: 100%;
+          height: 100%;
+          border: 0;
+          background-color: black;
+          background-repeat: no-repeat;
+          object-fit: cover;
+        }
+
+        .mfs-thumbnail-image[hidden],
+        .mfs-thumbnail-video[hidden],
+        .mfs-thumbnail-loader {
+          display: none !important;
+        }
+
+        .mfs-thumbnail-copy {
+          display: flex;
+          box-sizing: border-box;
+          min-width: 0;
+          align-items: baseline;
+          gap: 7px;
+          padding: 6px 8px;
+          font-size: 11px;
+          line-height: 14px;
+        }
+
+        .mfs-thumbnail-time {
+          flex: none;
+          font-variant-numeric: tabular-nums;
+          font-weight: 700;
+        }
+
+        .mfs-thumbnail-chapter {
+          min-width: 0;
+          overflow: hidden;
+          color: rgb(226 232 240);
+          font-weight: 500;
+          white-space: nowrap;
+          text-overflow: ellipsis;
+        }
+
+        .mfs-thumbnail-chapter[hidden] {
+          display: none !important;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .mfs-seekbar-thumbnail-preview {
+            transition: none;
+          }
         }
 
         .mfs-media-controls {
@@ -1157,7 +1289,8 @@ export class OverlayCreator {
         html[data-mfs-page-dialog-open="true"] .scrub-timeline[data-mfs-portaled="true"],
         html[data-mfs-page-dialog-open="true"] .mfs-media-controls[data-mfs-portaled="true"],
         html[data-mfs-page-dialog-open="true"] .mfs-seek-speed-label[data-mfs-portaled="true"],
-        html[data-mfs-page-dialog-open="true"] .mfs-youtube-chapter-tooltip {
+        html[data-mfs-page-dialog-open="true"] .mfs-youtube-chapter-tooltip,
+        html[data-mfs-page-dialog-open="true"] .mfs-seekbar-thumbnail-preview {
           visibility: hidden !important;
           pointer-events: none !important;
         }
@@ -2226,6 +2359,17 @@ export class OverlayCreator {
     }
   }
 
+  updateSeekbarThumbnailPreviewState(): void {
+    this.videoStateManager.forEach((state) => {
+      state.updateThumbnailPreviewMode?.();
+      state.updateYouTubeChapterMode?.();
+    });
+
+    if (this.settingsManager.isSeekbarThumbnailPreviewEnabled?.() ?? false) {
+      this.previewTimelines();
+    }
+  }
+
   private setupYouTubeChapterTimeline(
     video: HTMLVideoElement,
     state: VideoStateT
@@ -2238,16 +2382,27 @@ export class OverlayCreator {
 
     const refresh = () => {
       refreshFrame = null;
-      if (
-        !(this.settingsManager.isYouTubeChapteredTimelineEnabled?.() ?? false)
-      ) {
+      const chapteredTimelineEnabled =
+        this.settingsManager.isYouTubeChapteredTimelineEnabled?.() ?? false;
+      const thumbnailPreviewEnabled =
+        this.settingsManager.isSeekbarThumbnailPreviewEnabled?.() ?? false;
+      if (!(chapteredTimelineEnabled || thumbnailPreviewEnabled)) {
+        this.youtubePreviewChapterModels.delete(state.timeline);
         this.renderYouTubeChapterModel(state.timeline, null);
         this.hideYouTubeChapterTooltip(state);
         return;
       }
 
       const model = extractYouTubeChapterModel({ ownerDocument, video });
-      this.renderYouTubeChapterModel(state.timeline, model);
+      if (model) {
+        this.youtubePreviewChapterModels.set(state.timeline, model.chapters);
+      } else {
+        this.youtubePreviewChapterModels.delete(state.timeline);
+      }
+      this.renderYouTubeChapterModel(
+        state.timeline,
+        chapteredTimelineEnabled ? model : null
+      );
       if (!model) this.hideYouTubeChapterTooltip(state);
       const range = getMediaSeekRange(video);
       if (range) {
@@ -2316,13 +2471,17 @@ export class OverlayCreator {
     };
 
     const updateEnabled = () => {
-      if (this.settingsManager.isYouTubeChapteredTimelineEnabled?.() ?? false) {
+      if (
+        (this.settingsManager.isYouTubeChapteredTimelineEnabled?.() ?? false) ||
+        (this.settingsManager.isSeekbarThumbnailPreviewEnabled?.() ?? false)
+      ) {
         start();
         scheduleRefresh();
         return;
       }
 
       stop();
+      this.youtubePreviewChapterModels.delete(state.timeline);
       this.renderYouTubeChapterModel(state.timeline, null);
       this.hideYouTubeChapterTooltip(state);
     };
@@ -2331,6 +2490,7 @@ export class OverlayCreator {
     return {
       cleanup: () => {
         stop();
+        this.youtubePreviewChapterModels.delete(state.timeline);
         this.renderYouTubeChapterModel(state.timeline, null);
         this.hideYouTubeChapterTooltip(state);
       },
@@ -2350,6 +2510,10 @@ export class OverlayCreator {
     clientY: number
   ): void {
     const tooltip = state.youtubeChapterTooltip;
+    if (this.settingsManager.isSeekbarThumbnailPreviewEnabled?.() ?? false) {
+      this.hideYouTubeChapterTooltip(state);
+      return;
+    }
     const chapters = this.youtubeChapterModels.get(state.timeline);
     if (
       !tooltip ||
@@ -4426,6 +4590,7 @@ export class OverlayCreator {
       }
 
       if (isDialogOpen) {
+        state.hideThumbnailPreview?.();
         state.wrapper.style.setProperty('visibility', 'hidden', 'important');
         state.overlay.style.setProperty('pointer-events', 'none', 'important');
         state.timeline.style.setProperty('visibility', 'hidden', 'important');
@@ -4514,6 +4679,7 @@ export class OverlayCreator {
           }
           this.updateTimelineHoverState(video, state, false);
           this.hideYouTubeChapterTooltip(state);
+          state.hideThumbnailPreview?.();
         }
       });
     };
@@ -4701,6 +4867,7 @@ export class OverlayCreator {
       }
       this.updateMediaControlsRevealAtPoint(state, clientX, clientY);
       this.updateTimelineHoverState(video, state, state.isPointerHovering);
+      state.updateThumbnailPreviewAtPoint?.(clientX, clientY);
       this.updateYouTubeChapterTooltipAtPoint(state, clientX, clientY);
     });
   }
@@ -4896,6 +5063,7 @@ export class OverlayCreator {
         state.timeline.style.opacity = '0';
       }
       this.hideYouTubeChapterTooltip(state);
+      state.hideThumbnailPreview?.();
       return;
     }
 

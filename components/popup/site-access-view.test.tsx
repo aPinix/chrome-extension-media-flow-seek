@@ -68,6 +68,39 @@ const readRules = () =>
   ) as DomainConfigT[];
 
 describe('SiteAccessView', () => {
+  it('shows the creation date below every saved domain', () => {
+    const createdAt = Date.UTC(2026, 8, 3, 12);
+    const expectedDate = new Intl.DateTimeFormat(undefined, {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    }).format(createdAt);
+
+    render(
+      <SiteAccessHarness
+        initialRules={[
+          createDomainRule('*', DomainModeE.On),
+          createDomainRule('dated.example', DomainModeE.On, createdAt),
+          createDomainRule('legacy.example', DomainModeE.Off),
+        ]}
+      />
+    );
+
+    const datedRow = document.querySelector('[data-domain="dated.example"]');
+    const legacyRow = document.querySelector('[data-domain="legacy.example"]');
+    const date = within(datedRow as HTMLElement).getByText(
+      `Created ${expectedDate}`
+    );
+
+    expect(date.tagName).toBe('TIME');
+    expect(date.getAttribute('datetime')).toBe(
+      new Date(createdAt).toISOString()
+    );
+    expect(
+      within(legacyRow as HTMLElement).getByText('Created previously')
+    ).toBeTruthy();
+  });
+
   it('lets horizontal swipe gestures reach the parent tab carousel', () => {
     render(<SiteAccessHarness />);
 

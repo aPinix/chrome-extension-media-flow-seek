@@ -23,6 +23,7 @@ interface VideoLayoutSettingsPropsI {
   actionAreaSize: number;
   actionAreaSizeUnit: TimelineUnitT;
   height: number;
+  isSeekbarThumbnailPreviewEnabled: boolean;
   isSeekbarSeekingEnabled: boolean;
   onActionAreaChange: (actionArea: ActionAreaT) => void;
   onActionAreaReset: () => void;
@@ -52,6 +53,7 @@ export function VideoLayoutSettings({
   actionAreaSize,
   actionAreaSizeUnit,
   height,
+  isSeekbarThumbnailPreviewEnabled,
   isSeekbarSeekingEnabled,
   onActionAreaChange,
   onActionAreaReset,
@@ -69,8 +71,10 @@ export function VideoLayoutSettings({
   unit,
 }: VideoLayoutSettingsPropsI) {
   const isFullActionArea = actionArea === ActionAreaE.Full;
+  const isHoverVisibilityLocked =
+    isSeekbarSeekingEnabled || isSeekbarThumbnailPreviewEnabled;
   const effectiveShowTimelineOnHover =
-    showTimelineOnHover || isSeekbarSeekingEnabled;
+    showTimelineOnHover || isHoverVisibilityLocked;
 
   return (
     <div className="flex w-full flex-col gap-4">
@@ -158,7 +162,7 @@ export function VideoLayoutSettings({
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 font-medium text-slate-700 text-sm dark:text-slate-300">
               Show on Hover
-              {isSeekbarSeekingEnabled ? (
+              {isHoverVisibilityLocked ? (
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger
@@ -173,23 +177,28 @@ export function VideoLayoutSettings({
                       }
                     />
                     <TooltipContent>
-                      Click & Drag Seekbar needs the timeline visible so it can
-                      be used.
+                      {isSeekbarSeekingEnabled
+                        ? 'Click & Drag Seekbar needs the timeline visible so it can be used.'
+                        : 'Hover Thumbnails needs the timeline visible so previews can be shown.'}
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
               ) : null}
             </div>
             <p className="mt-0.5 text-slate-500 text-xs leading-snug dark:text-slate-400">
-              {isSeekbarSeekingEnabled
-                ? 'Locked on while Click & Drag Seekbar is enabled'
+              {isHoverVisibilityLocked
+                ? `Locked on while ${
+                    isSeekbarSeekingEnabled
+                      ? 'Click & Drag Seekbar'
+                      : 'Hover Thumbnails'
+                  } is enabled`
                 : 'Reveal progress when the pointer is over a video'}
             </p>
           </div>
           <AppSwitch
             aria-label="Show timeline on hover"
             checked={effectiveShowTimelineOnHover}
-            disabled={isSeekbarSeekingEnabled}
+            disabled={isHoverVisibilityLocked}
             onCheckedChange={onShowTimelineOnHoverChange}
           />
         </div>

@@ -15,6 +15,7 @@ const createSettingsManager = ({
   hideVideoControls = false,
   colorizedTimeline = false,
   isYouTubeChapteredTimelineEnabled = false,
+  isSeekbarThumbnailPreviewEnabled = false,
   invertHorizontalScroll = false,
   showTimelineOnHover = false,
   timelineHeight = 6,
@@ -31,6 +32,7 @@ const createSettingsManager = ({
   hideVideoControls?: boolean;
   colorizedTimeline?: boolean;
   isYouTubeChapteredTimelineEnabled?: boolean;
+  isSeekbarThumbnailPreviewEnabled?: boolean;
   invertHorizontalScroll?: boolean;
   showTimelineOnHover?: boolean;
   timelineHeight?: number;
@@ -52,11 +54,15 @@ const createSettingsManager = ({
     isScrollSeekingEnabled: () => isScrollSeekingEnabled,
     isTimelineSeekingEnabled: () => isTimelineSeekingEnabled,
     isYouTubeChapteredTimelineEnabled: () => isYouTubeChapteredTimelineEnabled,
+    isSeekbarThumbnailPreviewEnabled: () => isSeekbarThumbnailPreviewEnabled,
     shouldDragVideoToSeek: () => dragVideoToSeek,
     shouldHideVideoControls: () => hideVideoControls,
     shouldColorizeTimeline: () => colorizedTimeline,
     shouldInvertHorizontalScroll: () => invertHorizontalScroll,
-    shouldShowTimelineOnHover: () => showTimelineOnHover,
+    shouldShowTimelineOnHover: () =>
+      showTimelineOnHover ||
+      isTimelineSeekingEnabled ||
+      isSeekbarThumbnailPreviewEnabled,
     getFastScrollHotkey: () => 'alt',
     getSlowScrollHotkey: () => 'alt+shift',
     isPlayPauseWheelEnabled: () => isPlayPauseWheelEnabled,
