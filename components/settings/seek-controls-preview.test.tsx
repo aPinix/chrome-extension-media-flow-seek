@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ActionAreaE } from '@/types/content';
 
@@ -75,7 +75,7 @@ describe('SeekControlsPreview', () => {
         />
       );
 
-      expect(screen.getByRole('img').getAttribute('aria-label')).toContain(
+      expect(screen.getByRole('region').getAttribute('aria-label')).toContain(
         `Enabled methods: ${expectedMethods}`
       );
     }
@@ -97,7 +97,7 @@ describe('SeekControlsPreview', () => {
       />
     );
 
-    const preview = screen.getByRole('img');
+    const preview = screen.getByRole('region');
     expect(preview.className).toContain('aspect-video');
     expect(preview.className).not.toContain('border');
     expect(preview.className).not.toContain('shadow-inner');
@@ -120,7 +120,7 @@ describe('SeekControlsPreview', () => {
       'bg-white/20'
     );
     expect(screen.getByTestId('timeline-overlay').className).toContain(
-      'backdrop-blur-[8px]'
+      'backdrop-blur-sm'
     );
     expect(screen.getByTestId('timeline-progress').className).toContain(
       'bg-brand-400/80'
@@ -303,7 +303,7 @@ describe('SeekControlsPreview', () => {
     const overlay = screen.getByTestId('action-area-overlay');
     expect(overlay.style.height).toBe('48px');
     expect(overlay.style.top).toBe('calc(0.5 * (100% - 48px))');
-    expect(screen.getByRole('img').getAttribute('aria-label')).toContain(
+    expect(screen.getByRole('region').getAttribute('aria-label')).toContain(
       'middle active video area at 48px'
     );
   });
@@ -324,8 +324,189 @@ describe('SeekControlsPreview', () => {
       />
     );
 
-    expect(screen.getByRole('img').getAttribute('aria-label')).toContain(
+    expect(screen.getByRole('region').getAttribute('aria-label')).toContain(
       'Enabled methods: none'
+    );
+  });
+
+  it('uses horizontal wheel input as a local Scroll to Seek test', () => {
+    const parentWheel = vi.fn();
+    render(
+      <div onWheel={parentWheel}>
+        <SeekControlsPreview
+          actionArea={ActionAreaE.Full}
+          actionAreaSize={30}
+          colorizedTimeline={false}
+          focusedMethod="scroll"
+          isDragSeekingEnabled={false}
+          isScrollSeekingEnabled={true}
+          isSeekbarSeekingEnabled={false}
+          timelineHeight={6}
+          timelinePosition="bottom"
+          timelineUnit="px"
+        />
+      </div>
+    );
+
+    const preview = screen.getByTestId('seek-controls-preview');
+    Object.defineProperty(preview, 'clientWidth', {
+      configurable: true,
+      value: 200,
+    });
+    const wheelEvent = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      deltaX: 20,
+      deltaY: 0,
+    });
+    fireEvent(preview, wheelEvent);
+
+    expect(wheelEvent.defaultPrevented).toBe(true);
+    expect(preview.dataset.isTesting).toBe('true');
+    expect(parentWheel).not.toHaveBeenCalled();
+    expect(
+      Number.parseFloat(screen.getByTestId('timeline-progress').style.width)
+    ).toBeCloseTo(43);
+    expect(screen.getByTestId('test-area-hint').textContent).toBe(
+      'Try scrolling'
+    );
+
+    fireEvent.pointerLeave(preview.parentElement as HTMLElement);
+    expect(preview.dataset.isTesting).toBe('false');
+    expect(
+      Number.parseFloat(screen.getByTestId('timeline-progress').style.width)
+    ).toBeCloseTo(43);
+  });
+
+  it('seeks the local preview by dragging across the video', () => {
+    render(
+      <SeekControlsPreview
+        actionArea={ActionAreaE.Full}
+        actionAreaSize={30}
+        colorizedTimeline={false}
+        focusedMethod="drag"
+        isDragSeekingEnabled={true}
+        isScrollSeekingEnabled={false}
+        isSeekbarSeekingEnabled={false}
+        timelineHeight={6}
+        timelinePosition="bottom"
+        timelineUnit="px"
+      />
+    );
+
+    const preview = screen.getByTestId('seek-controls-preview');
+    preview.getBoundingClientRect = () => ({ left: 0, width: 200 }) as DOMRect;
+    fireEvent.pointerDown(preview, { clientX: 150, pointerId: 1 });
+
+    expect(screen.getByTestId('timeline-progress').style.width).toBe('75%');
+    expect(screen.getByTestId('drag-gesture-cue').style.left).toBe('75%');
+    expect(screen.getByTestId('test-area-hint').textContent).toBe(
+      'Try dragging'
+    );
+  });
+
+  it('seeks from a hit area that grows with the displayed timeline', () => {
+    const { rerender } = render(
+      <SeekControlsPreview
+        actionArea={ActionAreaE.Full}
+        actionAreaSize={30}
+        colorizedTimeline={false}
+        focusedMethod="seekbar"
+        isDragSeekingEnabled={false}
+        isScrollSeekingEnabled={false}
+        isSeekbarSeekingEnabled={true}
+        timelineHeight={12}
+        timelinePosition="bottom"
+        timelineUnit="px"
+      />
+    );
+
+    const preview = screen.getByTestId('seek-controls-preview');
+    preview.getBoundingClientRect = () => ({ left: 0, width: 200 }) as DOMRect;
+    const hitArea = screen.getByTestId('seekbar-test-hit-area');
+    expect(hitArea.style.height).toBe('max(2rem, 12px)');
+    expect(hitArea.className).toContain('bottom-0');
+    expect(hitArea.className).toContain('cursor-ew-resize');
+    expect(screen.getByTestId('timeline-overlay').style.height).toBe('12px');
+
+    fireEvent.pointerDown(hitArea, {
+      clientX: 50,
+      pointerId: 2,
+    });
+
+    expect(screen.getByTestId('timeline-progress').style.width).toBe('25%');
+    expect(screen.getByTestId('seekbar-gesture-cue').style.left).toBe('25%');
+    expect(screen.getByTestId('test-area-hint').textContent).toBe(
+      'Try the timeline'
+    );
+
+    fireEvent.pointerMove(hitArea, {
+      clientX: 160,
+      pointerId: 2,
+    });
+
+    expect(screen.getByTestId('timeline-progress').style.width).toBe('80%');
+    expect(screen.getByTestId('seekbar-gesture-cue').style.left).toBe('80%');
+
+    rerender(
+      <SeekControlsPreview
+        actionArea={ActionAreaE.Full}
+        actionAreaSize={30}
+        colorizedTimeline={false}
+        focusedMethod="seekbar"
+        isDragSeekingEnabled={false}
+        isScrollSeekingEnabled={false}
+        isSeekbarSeekingEnabled={true}
+        timelineHeight={100}
+        timelinePosition="bottom"
+        timelineUnit="%"
+      />
+    );
+
+    expect(screen.getByTestId('seekbar-test-hit-area').style.height).toBe(
+      'max(2rem, 100%)'
+    );
+  });
+
+  it('crossfades methods from the position left by the user', () => {
+    const previewProps = {
+      actionArea: ActionAreaE.Full,
+      actionAreaSize: 30,
+      colorizedTimeline: false,
+      isDragSeekingEnabled: true,
+      isScrollSeekingEnabled: true,
+      isSeekbarSeekingEnabled: true,
+      timelineHeight: 6,
+      timelinePosition: 'bottom' as const,
+      timelineUnit: 'px' as const,
+    };
+    const { rerender } = render(
+      <SeekControlsPreview {...previewProps} focusedMethod="drag" />
+    );
+
+    const preview = screen.getByTestId('seek-controls-preview');
+    preview.getBoundingClientRect = () => ({ left: 0, width: 200 }) as DOMRect;
+    fireEvent.pointerDown(preview, { clientX: 150, pointerId: 3 });
+    expect(screen.getByTestId('timeline-progress').style.width).toBe('75%');
+
+    rerender(<SeekControlsPreview {...previewProps} focusedMethod="seekbar" />);
+
+    expect(screen.getByTestId('timeline-progress').style.width).toBe('75%');
+    expect(screen.getByTestId('drag-gesture-transition').className).toContain(
+      'opacity-0'
+    );
+    expect(screen.getByTestId('seekbar-gesture-cue').className).toContain(
+      'opacity-100'
+    );
+
+    rerender(<SeekControlsPreview {...previewProps} focusedMethod="scroll" />);
+
+    expect(screen.getByTestId('timeline-progress').style.width).toBe('75%');
+    expect(screen.getByTestId('scroll-gesture-transition').className).toContain(
+      'opacity-100'
+    );
+    expect(screen.getByTestId('seekbar-gesture-cue').className).toContain(
+      'opacity-0'
     );
   });
 });

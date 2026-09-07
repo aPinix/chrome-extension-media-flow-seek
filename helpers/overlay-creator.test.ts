@@ -168,12 +168,292 @@ afterEach(() => {
     scrollY: { configurable: true, value: 0 },
   });
   document.documentElement.removeAttribute('data-mfs-page-dialog-open');
+  document.documentElement.removeAttribute('data-mfs-minimal-player-bypass');
   document.documentElement.classList.remove('mfs-disabled');
   document.getElementById('mfs-fast-hide')?.remove();
   vi.useRealTimers();
 });
 
 describe('OverlayCreator keyboard handling', () => {
+  it('hides the extension seekbar with Shift even when Minimal Player is off', () => {
+    const videoStateManager = new VideoStateManager();
+    const overlayCreator = new OverlayCreator(
+      createSettingsManager({
+        hideVideoControls: false,
+        isTimelineSeekingEnabled: true,
+      }),
+      videoStateManager,
+      () => {}
+    );
+    const { video, state } = createVideoState();
+    state.timeline.className = 'scrub-timeline';
+    state.wrapper.className = 'scrub-wrapper';
+    document.body.append(video, state.wrapper);
+    videoStateManager.set(video, state);
+    const methods = overlayCreator as unknown as {
+      handleKeyDown: (event: KeyboardEvent) => void;
+      handleKeyUp: (event: KeyboardEvent) => void;
+    };
+
+    methods.handleKeyDown(
+      new KeyboardEvent('keydown', { code: 'ShiftLeft', key: 'Shift' })
+    );
+
+    expect(document.documentElement.dataset.mfsMinimalPlayerBypass).toBe(
+      'true'
+    );
+    expect(state.timeline.style.display).toBe('none');
+    expect(state.timeline.style.getPropertyPriority('display')).toBe(
+      'important'
+    );
+    expect(state.overlay.style.pointerEvents).toBe('none');
+
+    methods.handleKeyUp(
+      new KeyboardEvent('keyup', { code: 'ShiftLeft', key: 'Shift' })
+    );
+
+    expect(
+      document.documentElement.dataset.mfsMinimalPlayerBypass
+    ).toBeUndefined();
+    expect(state.timeline.style.display).toBe('');
+  });
+
+  it('restores every original player while Shift is held and reapplies Minimal Player on release', () => {
+    const settingsManager = createSettingsManager({
+      hideVideoControls: true,
+      isTimelineSeekingEnabled: true,
+    });
+    const videoStateManager = new VideoStateManager();
+    const overlayCreator = new OverlayCreator(
+      settingsManager,
+      videoStateManager,
+      () => {}
+    );
+    const createMinimalPlayer = () => {
+      const { video, state } = createVideoState();
+      const player = document.createElement('div');
+      const originalPlayButton = document.createElement('button');
+      const mediaControls = document.createElement('div');
+
+      player.className = 'html5-video-player';
+      originalPlayButton.className = 'ytp-large-play-button';
+      mediaControls.className = 'mfs-media-controls';
+      state.wrapper.className = 'scrub-wrapper';
+      state.overlay.className = 'scrub-overlay';
+      state.timeline.className = 'scrub-timeline';
+      state.mediaControls = mediaControls;
+      state.cancelTimelineSeeking = vi.fn();
+      state.cancelVideoDragging = vi.fn();
+      state.hideThumbnailPreview = vi.fn();
+      state.wrapper.appendChild(mediaControls);
+      player.append(video, state.wrapper, originalPlayButton);
+      document.body.appendChild(player);
+      video.controls = true;
+      videoStateManager.set(video, state);
+
+      return { originalPlayButton, player, state, video };
+    };
+    const first = createMinimalPlayer();
+    const second = createMinimalPlayer();
+    const methods = overlayCreator as unknown as {
+      createOverlayElement: (ownerDocument: Document) => HTMLDivElement;
+      handleKeyDown: (event: KeyboardEvent) => void;
+      handleKeyUp: (event: KeyboardEvent) => void;
+    };
+    methods.createOverlayElement(document);
+    overlayCreator.updateVideoControlsVisibility();
+
+    expect(first.video.controls).toBe(false);
+    expect(second.video.controls).toBe(false);
+    expect(first.player.dataset.mfsHideControlsContainer).toBe('true');
+
+    methods.handleKeyDown(
+      new KeyboardEvent('keydown', { code: 'ShiftLeft', key: 'Shift' })
+    );
+
+    expect(document.documentElement.dataset.mfsMinimalPlayerBypass).toBe(
+      'true'
+    );
+    expect(first.video.controls).toBe(true);
+    expect(second.video.controls).toBe(true);
+    expect(first.video.dataset.mfsHideControls).toBeUndefined();
+    expect(first.player.dataset.mfsHideControlsContainer).toBeUndefined();
+    expect(first.state.mediaControls?.hidden).toBe(true);
+    expect(first.state.overlay.style.pointerEvents).toBe('none');
+    expect(first.state.overlay.style.overflowX).toBe('hidden');
+    expect(first.state.timeline.style.pointerEvents).toBe('none');
+    expect(first.state.timeline.style.display).toBe('none');
+    expect(first.state.timeline.style.getPropertyPriority('display')).toBe(
+      'important'
+    );
+    expect(getComputedStyle(first.state.wrapper).display).toBe('none');
+    expect(getComputedStyle(first.originalPlayButton).display).not.toBe('none');
+    expect(first.state.cancelTimelineSeeking).toHaveBeenCalled();
+    expect(first.state.cancelVideoDragging).toHaveBeenCalled();
+    expect(first.state.hideThumbnailPreview).toHaveBeenCalled();
+
+    methods.handleKeyUp(
+      new KeyboardEvent('keyup', { code: 'ShiftLeft', key: 'Shift' })
+    );
+
+    expect(
+      document.documentElement.dataset.mfsMinimalPlayerBypass
+    ).toBeUndefined();
+    expect(first.video.controls).toBe(false);
+    expect(second.video.controls).toBe(false);
+    expect(first.video.dataset.mfsHideControls).toBe('true');
+    expect(first.player.dataset.mfsHideControlsContainer).toBe('true');
+    expect(first.state.mediaControls?.hidden).toBe(false);
+    expect(first.state.overlay.style.pointerEvents).toBe('auto');
+    expect(first.state.overlay.style.overflowX).toBe('scroll');
+    expect(first.state.timeline.style.pointerEvents).toBe('auto');
+    expect(first.state.timeline.style.display).toBe('');
+    expect(getComputedStyle(first.state.wrapper).display).not.toBe('none');
+  });
+
+  it('gives modifier chords priority over the Shift-only bypass in either key order', () => {
+    const overlayCreator = new OverlayCreator(
+      createSettingsManager({ hideVideoControls: true }),
+      new VideoStateManager(),
+      () => {}
+    );
+    const methods = overlayCreator as unknown as {
+      clearAllPressedKeys: () => void;
+      handleKeyDown: (event: KeyboardEvent) => void;
+      handleKeyUp: (event: KeyboardEvent) => void;
+    };
+    const keyEvent = (
+      type: 'keydown' | 'keyup',
+      code: string,
+      key: string,
+      init: KeyboardEventInit = {}
+    ) => new KeyboardEvent(type, { code, key, ...init });
+
+    methods.handleKeyDown(keyEvent('keydown', 'ShiftLeft', 'Shift'));
+    expect(document.documentElement.dataset.mfsMinimalPlayerBypass).toBe(
+      'true'
+    );
+
+    methods.handleKeyDown(
+      keyEvent('keydown', 'AltLeft', 'Alt', { altKey: true, shiftKey: true })
+    );
+    expect(
+      document.documentElement.dataset.mfsMinimalPlayerBypass
+    ).toBeUndefined();
+    expect(document.documentElement.classList.contains('mfs-disabled')).toBe(
+      false
+    );
+
+    methods.handleKeyUp(
+      keyEvent('keyup', 'AltLeft', 'Alt', { shiftKey: true })
+    );
+    expect(document.documentElement.dataset.mfsMinimalPlayerBypass).toBe(
+      'true'
+    );
+
+    methods.handleKeyDown(keyEvent('keydown', 'ShiftRight', 'Shift'));
+    methods.handleKeyUp(keyEvent('keyup', 'ShiftLeft', 'Shift'));
+    expect(document.documentElement.dataset.mfsMinimalPlayerBypass).toBe(
+      'true'
+    );
+    methods.handleKeyUp(keyEvent('keyup', 'ShiftRight', 'Shift'));
+    expect(
+      document.documentElement.dataset.mfsMinimalPlayerBypass
+    ).toBeUndefined();
+
+    methods.handleKeyDown(
+      keyEvent('keydown', 'AltLeft', 'Alt', { altKey: true })
+    );
+    methods.handleKeyDown(
+      keyEvent('keydown', 'ShiftLeft', 'Shift', {
+        altKey: true,
+        shiftKey: true,
+      })
+    );
+    expect(
+      document.documentElement.dataset.mfsMinimalPlayerBypass
+    ).toBeUndefined();
+    methods.clearAllPressedKeys();
+
+    methods.handleKeyDown(keyEvent('keydown', 'ShiftLeft', 'Shift'));
+    methods.handleKeyDown(
+      keyEvent('keydown', 'ControlLeft', 'Control', {
+        ctrlKey: true,
+        shiftKey: true,
+      })
+    );
+    expect(
+      document.documentElement.dataset.mfsMinimalPlayerBypass
+    ).toBeUndefined();
+    methods.clearAllPressedKeys();
+
+    methods.handleKeyDown(keyEvent('keydown', 'ShiftLeft', 'Shift'));
+    methods.handleKeyDown(
+      keyEvent('keydown', 'MetaLeft', 'Meta', {
+        metaKey: true,
+        shiftKey: true,
+      })
+    );
+    expect(
+      document.documentElement.dataset.mfsMinimalPlayerBypass
+    ).toBeUndefined();
+    methods.clearAllPressedKeys();
+  });
+
+  it('ignores repeated Shift events and clears a held bypass after focus loss', () => {
+    const videoStateManager = new VideoStateManager();
+    const overlayCreator = new OverlayCreator(
+      createSettingsManager({ hideVideoControls: true }),
+      videoStateManager,
+      () => {}
+    );
+    const { video, state } = createVideoState();
+    state.hideThumbnailPreview = vi.fn();
+    videoStateManager.set(video, state);
+    const methods = overlayCreator as unknown as {
+      handleKeyDown: (event: KeyboardEvent) => void;
+    };
+
+    methods.handleKeyDown(
+      new KeyboardEvent('keydown', { code: 'ShiftLeft', key: 'Shift' })
+    );
+    const callsAfterInitialPress = vi.mocked(state.hideThumbnailPreview).mock
+      .calls.length;
+    expect(callsAfterInitialPress).toBeGreaterThan(0);
+
+    methods.handleKeyDown(
+      new KeyboardEvent('keydown', {
+        code: 'ShiftLeft',
+        key: 'Shift',
+        repeat: true,
+      })
+    );
+    expect(state.hideThumbnailPreview).toHaveBeenCalledTimes(
+      callsAfterInitialPress
+    );
+
+    window.dispatchEvent(new Event('blur'));
+    expect(
+      document.documentElement.dataset.mfsMinimalPlayerBypass
+    ).toBeUndefined();
+
+    methods.handleKeyDown(
+      new KeyboardEvent('keydown', { code: 'ShiftRight', key: 'Shift' })
+    );
+    Object.defineProperty(document, 'hidden', {
+      configurable: true,
+      value: true,
+    });
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(
+      document.documentElement.dataset.mfsMinimalPlayerBypass
+    ).toBeUndefined();
+    Object.defineProperty(document, 'hidden', {
+      configurable: true,
+      value: false,
+    });
+  });
+
   it('suspends without clearing overlays or rewriting the enabled setting', () => {
     vi.useFakeTimers();
     const updateSetting = vi.fn();
@@ -665,9 +945,11 @@ describe('OverlayCreator seek speed label', () => {
 describe('OverlayCreator scroll gesture seeking', () => {
   const setupScrollSeeking = (
     getIsSettingInitialScroll = () => false,
-    isScrollSeekingEnabled = true
+    isScrollSeekingEnabled = true,
+    hideVideoControls = false
   ) => {
     const settingsManager = createSettingsManager({
+      hideVideoControls,
       isScrollSeekingEnabled,
     });
     const videoStateManager = new VideoStateManager();
@@ -830,6 +1112,78 @@ describe('OverlayCreator scroll gesture seeking', () => {
 
     expect(wheel.defaultPrevented).toBe(false);
     expect(overlay.scrollLeft).toBe(0);
+    cleanup();
+  });
+
+  it('passes wheel input through during Shift bypass and preserves Alt+Shift slow seeking', () => {
+    vi.useFakeTimers();
+    const { cleanup, overlay, overlayCreator } = setupScrollSeeking(
+      () => false,
+      true,
+      true
+    );
+    const keyboardMethods = overlayCreator as unknown as {
+      handleKeyDown: (event: KeyboardEvent) => void;
+      handleKeyUp: (event: KeyboardEvent) => void;
+    };
+
+    keyboardMethods.handleKeyDown(
+      new KeyboardEvent('keydown', { code: 'ShiftLeft', key: 'Shift' })
+    );
+    const bypassWheel = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      deltaX: 20,
+      shiftKey: true,
+    });
+    overlay.dispatchEvent(bypassWheel);
+
+    expect(bypassWheel.defaultPrevented).toBe(false);
+    expect(overlay.scrollLeft).toBe(0);
+
+    keyboardMethods.handleKeyDown(
+      new KeyboardEvent('keydown', {
+        altKey: true,
+        code: 'AltLeft',
+        key: 'Alt',
+        shiftKey: true,
+      })
+    );
+    const slowWheel = new WheelEvent('wheel', {
+      altKey: true,
+      bubbles: true,
+      cancelable: true,
+      deltaX: 20,
+      shiftKey: true,
+    });
+    overlay.dispatchEvent(slowWheel);
+
+    expect(slowWheel.defaultPrevented).toBe(true);
+    expect(overlay.scrollLeft).toBe(5);
+
+    keyboardMethods.handleKeyUp(
+      new KeyboardEvent('keyup', {
+        code: 'AltLeft',
+        key: 'Alt',
+        shiftKey: true,
+      })
+    );
+    expect(document.documentElement.dataset.mfsMinimalPlayerBypass).toBe(
+      'true'
+    );
+
+    keyboardMethods.handleKeyUp(
+      new KeyboardEvent('keyup', { code: 'ShiftLeft', key: 'Shift' })
+    );
+    const resumedWheel = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      deltaX: 20,
+    });
+    overlay.dispatchEvent(resumedWheel);
+
+    expect(resumedWheel.defaultPrevented).toBe(true);
+    expect(overlay.scrollLeft).toBe(25);
     cleanup();
   });
 
@@ -1958,6 +2312,10 @@ describe('OverlayCreator timeline seeking', () => {
     video.style.borderTopRightRadius = '14px';
     video.style.borderBottomRightRadius = '16px';
     video.style.borderBottomLeftRadius = '18px';
+    state.thumbnailPreview = document.createElement('div');
+    state.thumbnailPreview.className = 'mfs-seekbar-thumbnail-preview';
+    state.repositionThumbnailPreview = vi.fn();
+    state.wrapper.appendChild(state.thumbnailPreview);
     state.cancelTimelineSeeking = vi.fn();
     videoStateManager.set(video, state);
 
@@ -1966,6 +2324,11 @@ describe('OverlayCreator timeline seeking', () => {
     expect(state.timeline.style.zIndex).toBe('2147483645');
     expect(state.timeline.parentElement).toBe(document.documentElement);
     expect(state.timeline.dataset.mfsPortaled).toBe('true');
+    expect(state.thumbnailPreview.parentElement).toBe(document.documentElement);
+    expect(state.thumbnailPreview.dataset.mfsPortaled).toBe('true');
+    expect(Number(state.thumbnailPreview.style.zIndex)).toBeGreaterThan(
+      Number(state.timeline.style.zIndex)
+    );
     expect(state.timeline.style.position).toBe('absolute');
     expect(state.timeline.style.left).toBe('10px');
     expect(state.timeline.style.height).toBe('10px');
@@ -1983,9 +2346,48 @@ describe('OverlayCreator timeline seeking', () => {
     expect(state.timeline.style.zIndex).toBe('');
     expect(state.timeline.parentElement).toBe(state.wrapper);
     expect(state.timeline.dataset.mfsPortaled).toBeUndefined();
+    expect(state.thumbnailPreview.parentElement).toBe(state.wrapper);
+    expect(state.thumbnailPreview.dataset.mfsPortaled).toBeUndefined();
+    expect(state.thumbnailPreview.style.zIndex).toBe('');
     expect(state.timeline.style.position).toBe('absolute');
     expect(state.timeline.style.top).toBe('calc(100% - 6px)');
     expect(state.cancelTimelineSeeking).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the seekbar visible above the player when only hover thumbnails need it', () => {
+    const settingsManager = createSettingsManager({
+      isSeekbarThumbnailPreviewEnabled: true,
+      isTimelineSeekingEnabled: false,
+    });
+    const videoStateManager = new VideoStateManager();
+    const overlayCreator = new OverlayCreator(
+      settingsManager,
+      videoStateManager,
+      () => {}
+    );
+    const { video, state } = createVideoState();
+    state.thumbnailPreview = document.createElement('div');
+    state.wrapper.appendChild(state.thumbnailPreview);
+    videoStateManager.set(video, state);
+
+    overlayCreator.updateTimelineSeekingState();
+
+    expect(state.timeline.style.pointerEvents).toBe('none');
+    expect(state.timeline.parentElement).toBe(document.documentElement);
+    expect(state.timeline.dataset.mfsPortaled).toBe('true');
+    expect(state.timeline.style.zIndex).toBe('2147483645');
+    expect(state.thumbnailPreview.parentElement).toBe(document.documentElement);
+    expect(state.thumbnailPreview.dataset.mfsPortaled).toBe('true');
+
+    const hoverMethods = overlayCreator as unknown as {
+      updateTimelineHoverState: (
+        media: HTMLVideoElement,
+        videoState: VideoStateT,
+        isHovering: boolean
+      ) => void;
+    };
+    hoverMethods.updateTimelineHoverState(video, state, true);
+    expect(state.timeline.style.opacity).toBe('1');
   });
 
   it('temporarily animates timeline position and height setting updates', () => {
@@ -2098,6 +2500,8 @@ describe('OverlayCreator timeline seeking', () => {
       () => {}
     );
     const { video, state } = createVideoState();
+    state.thumbnailPreview = document.createElement('div');
+    state.wrapper.appendChild(state.thumbnailPreview);
     video.style.borderTopLeftRadius = '12px';
     video.style.borderTopRightRadius = '14px';
     video.style.borderBottomRightRadius = '16px';
@@ -2114,6 +2518,8 @@ describe('OverlayCreator timeline seeking', () => {
     overlayCreator.updateTimelineSeekingState();
 
     expect(state.timeline.parentElement).toBe(fullscreenPlayer);
+    expect(state.thumbnailPreview.parentElement).toBe(fullscreenPlayer);
+    expect(state.thumbnailPreview.dataset.mfsPortaled).toBe('true');
     expect(state.timeline.style.height).toBe('10px');
     expect(state.timeline.style.top).toBe('20px');
     expect(state.timeline.style.borderTopLeftRadius).toBe('12px');
@@ -2265,13 +2671,18 @@ describe('OverlayCreator timeline seeking', () => {
       () => {}
     );
     const { video, state } = createVideoState();
+    const thumbnailPreview = document.createElement('div');
+    state.thumbnailPreview = thumbnailPreview;
+    state.wrapper.appendChild(thumbnailPreview);
     videoStateManager.set(video, state);
     overlayCreator.updateTimelineSeekingState();
 
     expect(state.timeline.parentElement).toBe(document.documentElement);
+    expect(thumbnailPreview.parentElement).toBe(document.documentElement);
     videoStateManager.delete(video);
 
     expect(state.timeline.isConnected).toBe(false);
+    expect(thumbnailPreview.isConnected).toBe(false);
     expect(state.wrapper.isConnected).toBe(false);
   });
 
@@ -3119,12 +3530,13 @@ describe('OverlayCreator timeline seeking', () => {
     volume?.click();
     expect(video.muted).toBe(true);
     expect(volume?.getAttribute('aria-label')).toBe('Unmute');
-    expect(volume?.style.getPropertyValue('--mfs-volume')).toBe('80%');
+    expect(volume?.style.getPropertyValue('--mfs-volume')).toBe('0%');
     expect(volume?.getAttribute('aria-valuenow')).toBe('80');
     expect(volume?.dataset.mfsMuted).toBe('true');
     expect(volume?.dataset.mfsVolumeLevel).toBe('muted');
     volume?.click();
     expect(video.muted).toBe(false);
+    expect(volume?.style.getPropertyValue('--mfs-volume')).toBe('80%');
     expect(volume?.dataset.mfsMuted).toBe('false');
     expect(volume?.dataset.mfsVolumeLevel).toBe('high');
 
@@ -3402,7 +3814,7 @@ describe('OverlayCreator timeline seeking', () => {
       controls
         .querySelector<HTMLButtonElement>('[data-mfs-action="volume"]')
         ?.style.getPropertyValue('--mfs-volume')
-    ).toBe('100%');
+    ).toBe('0%');
 
     video.volume = 0.1;
     video.muted = true;
@@ -3413,7 +3825,7 @@ describe('OverlayCreator timeline seeking', () => {
       controls
         .querySelector<HTMLButtonElement>('[data-mfs-action="volume"]')
         ?.style.getPropertyValue('--mfs-volume')
-    ).toBe('10%');
+    ).toBe('0%');
 
     video.volume = 0.2;
     video.muted = true;

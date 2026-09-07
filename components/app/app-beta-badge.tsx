@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+
 import {
   Tooltip,
   TooltipContent,
@@ -7,7 +9,7 @@ import {
 
 interface AppBetaBadgePropsI {
   featureName: string;
-  tooltip: string;
+  tooltip: ReactNode;
 }
 
 export function AppBetaBadge({ featureName, tooltip }: AppBetaBadgePropsI) {

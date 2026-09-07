@@ -3,6 +3,11 @@ import {
   getMediaSeekTarget,
   type MediaSeekRangeT,
 } from '@/helpers/media';
+import {
+  THUMBNAIL_PREVIEW_TIME_CLEANUP_EVENT,
+  THUMBNAIL_PREVIEW_TIME_MOUNTED_ATTRIBUTE,
+  THUMBNAIL_PREVIEW_TIME_UPDATE_EVENT,
+} from '@/helpers/thumbnail-preview-time-events';
 import type { YouTubeChapterT } from '@/helpers/youtube-chapters';
 import {
   getYouTubeStoryboardFrame,
@@ -357,7 +362,11 @@ export const createSeekbarThumbnailPreviewElement = (
     </div>
     <div class="mfs-thumbnail-copy">
       <span class="mfs-thumbnail-time"></span>
-      <span class="mfs-thumbnail-chapter"></span>
+      <span class="mfs-thumbnail-chapter-stage" hidden>
+        <span class="mfs-thumbnail-chapter" data-mfs-state="entering"></span>
+        <span class="mfs-thumbnail-chapter-outgoing" data-mfs-state="idle" aria-hidden="true"></span>
+        <span class="mfs-thumbnail-chapter-measure" aria-hidden="true"></span>
+      </span>
     </div>
   `;
   return preview;
@@ -375,6 +384,7 @@ type SeekbarThumbnailPreviewControllerOptionsT = {
 };
 
 export class SeekbarThumbnailPreviewController {
+  private currentChapterTitle: string | null = null;
   private currentImageRequest = '';
   private genericSource: LazyVideoThumbnailSource;
   private restoreTextTracks: (() => void) | null = null;
@@ -383,10 +393,16 @@ export class SeekbarThumbnailPreviewController {
   private storyboardMetadata: YouTubeStoryboardMetadataT | null = null;
   private lastClientX: number | null = null;
   private readonly chapterElement: HTMLElement;
+  private readonly chapterMeasureElement: HTMLElement;
+  private readonly chapterOutgoingElement: HTMLElement;
+  private readonly chapterStageElement: HTMLElement;
+  private chapterTransitionFrame: number | null = null;
+  private chapterTransitionTimeout: number | null = null;
   private readonly frameElement: HTMLElement;
   private readonly imageElement: HTMLElement;
   private readonly imageLoader: HTMLImageElement;
   private readonly previewVideo: HTMLVideoElement;
+  private currentTimeLabel = '';
   private readonly timeElement: HTMLElement;
 
   constructor(
@@ -399,6 +415,15 @@ export class SeekbarThumbnailPreviewController {
     };
 
     this.chapterElement = getRequiredElement('.mfs-thumbnail-chapter');
+    this.chapterMeasureElement = getRequiredElement(
+      '.mfs-thumbnail-chapter-measure'
+    );
+    this.chapterOutgoingElement = getRequiredElement(
+      '.mfs-thumbnail-chapter-outgoing'
+    );
+    this.chapterStageElement = getRequiredElement(
+      '.mfs-thumbnail-chapter-stage'
+    );
     this.frameElement = getRequiredElement('.mfs-thumbnail-frame');
     this.imageElement = getRequiredElement('.mfs-thumbnail-image');
     this.imageLoader = getRequiredElement('.mfs-thumbnail-loader');
@@ -461,15 +486,11 @@ export class SeekbarThumbnailPreviewController {
       this.restoreTextTracks = prepareThumbnailTextTracks(video);
     }
 
-    this.timeElement.textContent = formatThumbnailPreviewTime(
-      target.time,
-      range
-    );
+    this.updateTimeLabel(formatThumbnailPreviewTime(target.time, range));
     const chapterTitle =
-      this.getYouTubeChapterTitle(target.time) ??
+      this.getYouTubeChapterTitleAtPoint(clientX, target.time, timelineRect) ??
       getTextTrackChapterTitle(video, target.time);
-    this.chapterElement.textContent = chapterTitle ?? '';
-    this.chapterElement.hidden = !chapterTitle;
+    this.updateChapterTitle(chapterTitle);
     this.options.preview.dataset.mfsVisible = 'true';
     this.lastClientX = clientX;
     this.position(clientX, timelineRect, wrapper.getBoundingClientRect());
@@ -492,6 +513,9 @@ export class SeekbarThumbnailPreviewController {
   cleanup(): void {
     this.resetSources();
     this.genericSource.cleanup();
+    this.timeElement.dispatchEvent(
+      new CustomEvent(THUMBNAIL_PREVIEW_TIME_CLEANUP_EVENT, { bubbles: true })
+    );
   }
 
   private updateFrame(time: number): void {
@@ -672,12 +696,13 @@ export class SeekbarThumbnailPreviewController {
     timelineRect: DOMRect,
     wrapperRect: DOMRect
   ): void {
+    this.options.preview.style.maxWidth = `${Math.max(0, wrapperRect.width - 16)}px`;
     const previewWidth =
       this.options.preview.offsetWidth ||
       Math.min(220, Math.max(0, wrapperRect.width - 16));
     const previewHeight =
       this.options.preview.offsetHeight ||
-      (this.options.preview.dataset.mfsImageVisible === 'true' ? 154 : 32);
+      (this.options.preview.dataset.mfsImageVisible === 'true' ? 158 : 32);
     const halfWidth = previewWidth / 2;
     const relativeX = clientX - wrapperRect.left;
     const left = Math.min(
@@ -690,18 +715,188 @@ export class SeekbarThumbnailPreviewController {
         : timelineRect.top - wrapperRect.top - previewHeight - 8;
     const maxTop = Math.max(8, wrapperRect.height - previewHeight - 8);
 
+    const top = Math.min(Math.max(8, desiredTop), maxTop);
+    const portalHost = this.options.preview.parentElement;
+    if (this.options.preview.dataset.mfsPortaled === 'true' && portalHost) {
+      const ownerWindow =
+        this.options.video.ownerDocument.defaultView ?? window;
+      let portalLeft = wrapperRect.left + left + ownerWindow.scrollX;
+      let portalTop = wrapperRect.top + top + ownerWindow.scrollY;
+
+      if (portalHost !== this.options.video.ownerDocument.documentElement) {
+        const portalRect = portalHost.getBoundingClientRect();
+        portalLeft =
+          wrapperRect.left -
+          portalRect.left +
+          portalHost.scrollLeft -
+          portalHost.clientLeft +
+          left;
+        portalTop =
+          wrapperRect.top -
+          portalRect.top +
+          portalHost.scrollTop -
+          portalHost.clientTop +
+          top;
+      }
+
+      this.options.preview.style.left = `${portalLeft}px`;
+      this.options.preview.style.top = `${portalTop}px`;
+      return;
+    }
+
     this.options.preview.style.left = `${left}px`;
-    this.options.preview.style.top = `${Math.min(Math.max(8, desiredTop), maxTop)}px`;
+    this.options.preview.style.top = `${top}px`;
   }
 
-  private getYouTubeChapterTitle(time: number): string | null {
-    const chapter = this.options
-      .getYouTubeChapters()
-      ?.find(({ end, start }) => time >= start && time < end);
+  private updateTimeLabel(label: string): void {
+    if (label === this.currentTimeLabel) return;
+    this.currentTimeLabel = label;
+    this.timeElement.dataset.mfsTime = label;
+    if (
+      this.timeElement.getAttribute(
+        THUMBNAIL_PREVIEW_TIME_MOUNTED_ATTRIBUTE
+      ) !== 'true'
+    ) {
+      this.timeElement.textContent = label;
+    }
+    this.timeElement.dispatchEvent(
+      new CustomEvent(THUMBNAIL_PREVIEW_TIME_UPDATE_EVENT, {
+        bubbles: true,
+        detail: { value: label },
+      })
+    );
+  }
+
+  private updateChapterTitle(title: string | null): void {
+    const nextTitle = title?.trim() || null;
+    if (nextTitle === this.currentChapterTitle) return;
+
+    const previousTitle = this.currentChapterTitle;
+    const ownerWindow = this.options.video.ownerDocument.defaultView;
+    const currentWidth = this.chapterStageElement.getBoundingClientRect().width;
+    this.clearChapterTransition();
+    this.currentChapterTitle = nextTitle;
+    this.chapterStageElement.hidden = false;
+    this.chapterStageElement.style.width = `${currentWidth}px`;
+    this.chapterOutgoingElement.textContent = previousTitle ?? '';
+    this.chapterOutgoingElement.dataset.mfsState = previousTitle
+      ? 'visible'
+      : 'idle';
+    this.chapterElement.textContent = nextTitle ?? '';
+    this.chapterElement.dataset.mfsState = 'entering';
+
+    let targetWidth = 0;
+    if (nextTitle) {
+      this.chapterMeasureElement.textContent = nextTitle;
+      targetWidth = Math.ceil(
+        Math.max(
+          this.chapterMeasureElement.getBoundingClientRect().width,
+          this.chapterMeasureElement.scrollWidth
+        )
+      );
+      this.chapterMeasureElement.textContent = '';
+    }
+
+    // Commit the starting width and blur states before morphing to the next
+    // title. The stage width drives the pill's intrinsic fit-content width.
+    void this.chapterStageElement.offsetWidth;
+    const startTransition = () => {
+      this.chapterTransitionFrame = null;
+      this.chapterOutgoingElement.dataset.mfsState = 'leaving';
+      this.chapterElement.dataset.mfsState = nextTitle ? 'visible' : 'entering';
+      this.chapterStageElement.style.width = `${targetWidth}px`;
+
+      const finishTransition = () => {
+        this.chapterTransitionTimeout = null;
+        this.chapterOutgoingElement.textContent = '';
+        this.chapterOutgoingElement.dataset.mfsState = 'idle';
+        if (nextTitle) {
+          this.chapterElement.dataset.mfsState = 'visible';
+          return;
+        }
+
+        this.chapterElement.textContent = '';
+        this.chapterStageElement.hidden = true;
+      };
+
+      if (!ownerWindow) {
+        finishTransition();
+        return;
+      }
+      this.chapterTransitionTimeout = ownerWindow.setTimeout(
+        finishTransition,
+        220
+      );
+    };
+
+    if (!ownerWindow) {
+      startTransition();
+      return;
+    }
+    this.chapterTransitionFrame =
+      ownerWindow.requestAnimationFrame(startTransition);
+  }
+
+  private clearChapterTransition(): void {
+    const ownerWindow = this.options.video.ownerDocument.defaultView;
+    if (this.chapterTransitionFrame !== null && ownerWindow) {
+      ownerWindow.cancelAnimationFrame(this.chapterTransitionFrame);
+    }
+    if (this.chapterTransitionTimeout !== null && ownerWindow) {
+      ownerWindow.clearTimeout(this.chapterTransitionTimeout);
+    }
+    this.chapterTransitionFrame = null;
+    this.chapterTransitionTimeout = null;
+    this.chapterOutgoingElement.textContent = '';
+    this.chapterOutgoingElement.dataset.mfsState = 'idle';
+  }
+
+  private getYouTubeChapterTitleAtPoint(
+    clientX: number,
+    time: number,
+    timelineRect: DOMRect
+  ): string | null {
+    const chapters = this.options.getYouTubeChapters();
+    if (!chapters) return null;
+
+    const segmentRects = Array.from(
+      this.options.timeline.querySelectorAll<HTMLElement>(
+        '.mfs-youtube-chapter-segment'
+      ),
+      (segment) => segment.getBoundingClientRect()
+    );
+    const hasRenderedChapterGeometry =
+      segmentRects.length === chapters.length &&
+      segmentRects.every(({ width }) => width > 0);
+    if (hasRenderedChapterGeometry) {
+      const renderedChapterIndex = segmentRects.findIndex((rect, index) => {
+        const previousRect = segmentRects[index - 1];
+        const nextRect = segmentRects[index + 1];
+        const leftBoundary = previousRect
+          ? (previousRect.right + rect.left) / 2
+          : timelineRect.left;
+        const rightBoundary = nextRect
+          ? (rect.right + nextRect.left) / 2
+          : timelineRect.right;
+        return (
+          clientX >= leftBoundary &&
+          (index === segmentRects.length - 1
+            ? clientX <= rightBoundary
+            : clientX < rightBoundary)
+        );
+      });
+      if (renderedChapterIndex >= 0) {
+        return chapters[renderedChapterIndex]?.title?.trim() || null;
+      }
+    }
+
+    const chapter = chapters.find(
+      ({ end, start }) => time >= start && time < end
+    );
     return chapter?.title?.trim() || null;
   }
 
-  private reposition(): void {
+  reposition(): void {
     if (this.lastClientX === null) return;
     this.position(
       this.lastClientX,
@@ -711,6 +906,12 @@ export class SeekbarThumbnailPreviewController {
   }
 
   private resetSources(): void {
+    this.clearChapterTransition();
+    this.currentChapterTitle = null;
+    this.chapterElement.textContent = '';
+    this.chapterElement.dataset.mfsState = 'entering';
+    this.chapterStageElement.hidden = true;
+    this.chapterStageElement.style.width = '0px';
     this.genericSource.releaseNow();
     this.hideImage();
     this.storyboardAttemptAt = 0;

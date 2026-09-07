@@ -26,7 +26,6 @@ const createProps = () => ({
   isDragSeekingEnabled: false,
   isPlayPauseWheelEnabled: true,
   isScrollSeekingEnabled: true,
-  isSeekbarThumbnailPreviewEnabled: false,
   isSeekbarSeekingEnabled: true,
   onActionAreaChange: vi.fn(),
   onActionAreaReset: vi.fn(),
@@ -44,12 +43,10 @@ const createProps = () => ({
   onScrollSeekingEnabledChange: vi.fn(),
   onScrollSpeedFactorChange: vi.fn(),
   onSeekbarSeekingEnabledChange: vi.fn(),
-  onShowTimelineOnHoverChange: vi.fn(),
   onSlowScrollHotkeyChange: vi.fn(),
   onUnitChange: vi.fn(),
   scrollInverted: false,
   scrollSpeedFactor: 1,
-  showTimelineOnHover: false,
   slowScrollHotkey: ScrollHotkeyE.AltShift,
   timelineHeight: 6,
   timelinePosition: 'bottom' as const,
@@ -94,9 +91,11 @@ describe('SeekControlsSettings', () => {
     expect(screen.getByText('Inverse Scroll')).toBeTruthy();
     expect(screen.queryByText(/Begin with a horizontal movement/)).toBeNull();
     expect(screen.queryByText(/The timeline stays visible/)).toBeNull();
-    const primaryModifierKey = screen.getByLabelText(/Command|Ctrl/);
+    const primaryModifierKey = screen.getAllByLabelText(/Command|Ctrl/)[0];
+    expect(primaryModifierKey).toBeTruthy();
+    if (!primaryModifierKey) throw new Error('Expected a modifier keycap');
     expect(primaryModifierKey.tagName).toBe('KBD');
-    expect(primaryModifierKey.className).toContain('rounded-[4px]');
+    expect(primaryModifierKey.className).toContain('rounded-[5px]');
     expect(primaryModifierKey.textContent).toMatch(/⌘|Ctrl/);
     expect(screen.getByTestId('sticky-seek-preview').className).toContain(
       'sticky'
@@ -240,10 +239,5 @@ describe('SeekControlsSettings', () => {
         .getByTestId('seek-controls-preview')
         .getAttribute('data-scroll-speed-factor')
     ).toBe('2');
-    expect(
-      screen
-        .getByTestId('seek-controls-preview')
-        .style.getPropertyValue('--seek-scroll-cycle-duration')
-    ).toBe('9.6s');
   });
 });

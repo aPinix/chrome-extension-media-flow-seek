@@ -1,16 +1,7 @@
-import { LockKeyholeIcon } from 'lucide-react';
-
 import { ActionAreaSizeControl } from '@/components/action-area-size-control';
 import { AppSegment } from '@/components/app/app-segment';
-import { AppSwitch } from '@/components/app/app-switch';
 import { SliderResetButton } from '@/components/app/slider-reset-button';
 import { TimelineHeightControl } from '@/components/timeline-height-control';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
 import { DEFAULT_SETTINGS } from '@/helpers/popup-storage';
 import { cn } from '@/lib/utils';
 import { ActionAreaE, type ActionAreaT } from '@/types/content';
@@ -23,8 +14,6 @@ interface VideoLayoutSettingsPropsI {
   actionAreaSize: number;
   actionAreaSizeUnit: TimelineUnitT;
   height: number;
-  isSeekbarThumbnailPreviewEnabled: boolean;
-  isSeekbarSeekingEnabled: boolean;
   onActionAreaChange: (actionArea: ActionAreaT) => void;
   onActionAreaReset: () => void;
   onActionAreaSizeChange: (size: number) => void;
@@ -34,10 +23,8 @@ interface VideoLayoutSettingsPropsI {
   onHeightReset: () => void;
   onPositionChange: (position: TimelinePositionT) => void;
   onPositionReset: () => void;
-  onShowTimelineOnHoverChange: (enabled: boolean) => void;
   onUnitChange: (unit: TimelineUnitT) => void;
   position: TimelinePositionT;
-  showTimelineOnHover: boolean;
   unit: TimelineUnitT;
 }
 
@@ -53,8 +40,6 @@ export function VideoLayoutSettings({
   actionAreaSize,
   actionAreaSizeUnit,
   height,
-  isSeekbarThumbnailPreviewEnabled,
-  isSeekbarSeekingEnabled,
   onActionAreaChange,
   onActionAreaReset,
   onActionAreaSizeChange,
@@ -64,17 +49,11 @@ export function VideoLayoutSettings({
   onHeightReset,
   onPositionChange,
   onPositionReset,
-  onShowTimelineOnHoverChange,
   onUnitChange,
   position,
-  showTimelineOnHover,
   unit,
 }: VideoLayoutSettingsPropsI) {
   const isFullActionArea = actionArea === ActionAreaE.Full;
-  const isHoverVisibilityLocked =
-    isSeekbarSeekingEnabled || isSeekbarThumbnailPreviewEnabled;
-  const effectiveShowTimelineOnHover =
-    showTimelineOnHover || isHoverVisibilityLocked;
 
   return (
     <div className="flex w-full flex-col gap-4">
@@ -157,51 +136,6 @@ export function VideoLayoutSettings({
         >
           Timeline Appearance
         </h4>
-
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5 font-medium text-slate-700 text-sm dark:text-slate-300">
-              Show on Hover
-              {isHoverVisibilityLocked ? (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <button
-                          aria-label="Why Show on Hover is locked"
-                          className="cursor-help rounded-sm text-amber-500 outline-none focus-visible:ring-2 focus-visible:ring-amber-500/40 dark:text-amber-400"
-                          type="button"
-                        >
-                          <LockKeyholeIcon className="size-3.5" />
-                        </button>
-                      }
-                    />
-                    <TooltipContent>
-                      {isSeekbarSeekingEnabled
-                        ? 'Click & Drag Seekbar needs the timeline visible so it can be used.'
-                        : 'Hover Thumbnails needs the timeline visible so previews can be shown.'}
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              ) : null}
-            </div>
-            <p className="mt-0.5 text-slate-500 text-xs leading-snug dark:text-slate-400">
-              {isHoverVisibilityLocked
-                ? `Locked on while ${
-                    isSeekbarSeekingEnabled
-                      ? 'Click & Drag Seekbar'
-                      : 'Hover Thumbnails'
-                  } is enabled`
-                : 'Reveal progress when the pointer is over a video'}
-            </p>
-          </div>
-          <AppSwitch
-            aria-label="Show timeline on hover"
-            checked={effectiveShowTimelineOnHover}
-            disabled={isHoverVisibilityLocked}
-            onCheckedChange={onShowTimelineOnHoverChange}
-          />
-        </div>
 
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">

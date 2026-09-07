@@ -1,4 +1,4 @@
-import { GripVerticalIcon, PencilIcon, Trash2Icon } from 'lucide-react';
+import { GripVerticalIcon, Settings2Icon, Trash2Icon } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
 
@@ -272,11 +272,11 @@ export function DomainListItem({
               render={
                 <button
                   aria-label={`Edit ${rule.domain}`}
-                  className="absolute inset-0 z-10 flex size-6 cursor-pointer items-center justify-center rounded-md bg-brand-50 text-brand opacity-0 outline-none transition-[color,background-color,opacity] duration-150 hover:bg-brand-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-brand/35 group-hover/domain-edit:opacity-100 dark:bg-brand-900/60 dark:text-brand-200 dark:hover:bg-brand-800/70"
+                  className="absolute inset-0 z-10 flex size-6 cursor-pointer items-center justify-center rounded-full bg-sky-500/15 text-sky-500 opacity-0 outline-none transition-[color,background-color,transform,opacity] duration-150 hover:scale-105 hover:bg-sky-500/25 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-sky-500/35 group-hover/domain-edit:opacity-100 dark:bg-sky-500/15 dark:hover:bg-sky-500/25"
                   onClick={startEditing}
                   type="button"
                 >
-                  <PencilIcon className="size-3.5" />
+                  <Settings2Icon className="size-3.5" />
                 </button>
               }
             />

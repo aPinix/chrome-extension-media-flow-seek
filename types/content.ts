@@ -26,6 +26,7 @@ export type VideoStateT = {
   youtubeChapterTooltip?: HTMLDivElement;
   thumbnailPreview?: HTMLDivElement;
   updateThumbnailPreviewAtPoint?: (clientX: number, clientY: number) => void;
+  repositionThumbnailPreview?: () => void;
   hideThumbnailPreview?: () => void;
   updateThumbnailPreviewMode?: () => void;
   syncCleanup?: () => void;

@@ -38,7 +38,12 @@ export function YouTubeSettings({
             Chaptered Timeline
             <AppBetaBadge
               featureName="Chaptered Timeline"
-              tooltip="Chaptered Timeline is in beta and may need adjustments as YouTube updates its players."
+              tooltip={
+                <>
+                  <strong>Chaptered Timeline</strong> is in beta and may need
+                  adjustments as YouTube updates its players.
+                </>
+              }
             />
           </span>
         }

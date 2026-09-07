@@ -151,7 +151,6 @@ interface SeekControlsSettingsPropsI {
   isDragSeekingEnabled: boolean;
   isPlayPauseWheelEnabled: boolean;
   isScrollSeekingEnabled: boolean;
-  isSeekbarThumbnailPreviewEnabled: boolean;
   isSeekbarSeekingEnabled: boolean;
   onActionAreaChange: (actionArea: ActionAreaT) => void;
   onActionAreaReset: () => void;
@@ -169,12 +168,10 @@ interface SeekControlsSettingsPropsI {
   onScrollSeekingEnabledChange: (enabled: boolean) => void;
   onScrollSpeedFactorChange: (factor: number) => void;
   onSeekbarSeekingEnabledChange: (enabled: boolean) => void;
-  onShowTimelineOnHoverChange: (enabled: boolean) => void;
   onSlowScrollHotkeyChange: (hotkey: ScrollHotkeyT) => void;
   onUnitChange: (unit: 'px' | '%') => void;
   scrollInverted: boolean;
   scrollSpeedFactor: number;
-  showTimelineOnHover: boolean;
   slowScrollHotkey: ScrollHotkeyT;
   timelineHeight: number;
   timelinePosition: 'top' | 'bottom';
@@ -190,7 +187,6 @@ export function SeekControlsSettings({
   isDragSeekingEnabled,
   isPlayPauseWheelEnabled,
   isScrollSeekingEnabled,
-  isSeekbarThumbnailPreviewEnabled,
   isSeekbarSeekingEnabled,
   onActionAreaChange,
   onActionAreaReset,
@@ -208,12 +204,10 @@ export function SeekControlsSettings({
   onScrollSeekingEnabledChange,
   onScrollSpeedFactorChange,
   onSeekbarSeekingEnabledChange,
-  onShowTimelineOnHoverChange,
   onSlowScrollHotkeyChange,
   onUnitChange,
   scrollInverted,
   scrollSpeedFactor,
-  showTimelineOnHover,
   slowScrollHotkey,
   timelineHeight,
   timelinePosition,
@@ -235,12 +229,14 @@ export function SeekControlsSettings({
           actionAreaSize={actionAreaSize}
           actionAreaSizeUnit={actionAreaSizeUnit}
           colorizedTimeline={colorizedTimeline}
+          fastScrollHotkey={fastScrollHotkey}
           focusedMethod={focusedMethod}
           isDragSeekingEnabled={isDragSeekingEnabled}
           isScrollSeekingEnabled={isScrollSeekingEnabled}
           isSeekbarSeekingEnabled={isSeekbarSeekingEnabled}
           scrollInverted={scrollInverted}
           scrollSpeedFactor={scrollSpeedFactor}
+          slowScrollHotkey={slowScrollHotkey}
           timelineHeight={timelineHeight}
           timelinePosition={timelinePosition}
           timelineUnit={timelineUnit}
@@ -375,7 +371,12 @@ export function SeekControlsSettings({
               Drag to Seek
               <AppBetaBadge
                 featureName="Drag to Seek"
-                tooltip="Drag to Seek is still being refined and may behave differently on some video players."
+                tooltip={
+                  <>
+                    <strong>Drag to Seek</strong> is still being refined and may
+                    behave differently on some video players.
+                  </>
+                }
               />
             </>
           }
@@ -416,8 +417,6 @@ export function SeekControlsSettings({
           actionAreaSize={actionAreaSize}
           actionAreaSizeUnit={actionAreaSizeUnit}
           height={timelineHeight}
-          isSeekbarSeekingEnabled={isSeekbarSeekingEnabled}
-          isSeekbarThumbnailPreviewEnabled={isSeekbarThumbnailPreviewEnabled}
           onActionAreaChange={onActionAreaChange}
           onActionAreaReset={onActionAreaReset}
           onActionAreaSizeChange={onActionAreaSizeChange}
@@ -427,10 +426,8 @@ export function SeekControlsSettings({
           onHeightReset={onHeightReset}
           onPositionChange={onPositionChange}
           onPositionReset={onPositionReset}
-          onShowTimelineOnHoverChange={onShowTimelineOnHoverChange}
           onUnitChange={onUnitChange}
           position={timelinePosition}
-          showTimelineOnHover={showTimelineOnHover}
           unit={timelineUnit}
         />
       </div>

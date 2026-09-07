@@ -47,6 +47,8 @@ import {
 } from '@/types/content';
 
 const MIN_INTERACTIVE_TIMELINE_HEIGHT_PX = 10;
+const INTERACTIVE_TIMELINE_Z_INDEX = '2147483645';
+const THUMBNAIL_PREVIEW_Z_INDEX = '2147483646';
 const VIDEO_DRAG_START_THRESHOLD_PX = 5;
 const VOLUME_DRAG_START_THRESHOLD_PX = 3;
 const VOLUME_CONTROL_WIDTH_PX = 20;
@@ -112,6 +114,15 @@ const isPlaybackToggleHotkey = (event: KeyboardEvent): boolean =>
   event.key.toLowerCase() === 'k' ||
   event.code === 'MediaPlayPause' ||
   event.key === 'MediaPlayPause';
+const SHIFT_KEY_CODES = new Set(['ShiftLeft', 'ShiftRight']);
+const MINIMAL_PLAYER_BYPASS_BLOCKING_KEY_CODES = new Set([
+  'AltLeft',
+  'AltRight',
+  'ControlLeft',
+  'ControlRight',
+  'MetaLeft',
+  'MetaRight',
+]);
 const PLAYBACK_PLAY_ICON_MASK = `url("data:image/svg+xml,${encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M8.4 4.6C7.35 3.93 6 4.68 6 5.93v12.14c0 1.25 1.35 2 2.4 1.33l9.54-6.07a1.58 1.58 0 0 0 0-2.66L8.4 4.6Z" fill="white"/></svg>'
 )}")`;
@@ -139,6 +150,7 @@ export class OverlayCreator {
   private keyboardEventListenerAdded = false;
   private pressedKeys = new Set<string>();
   private isKeyboardSuspended = false;
+  private isMinimalPlayerBypassActive = false;
   private checkForVideos: () => void;
   private isFastHideStyleInjected = false;
   private styledDocuments = new WeakSet<Document>();
@@ -207,20 +219,18 @@ export class OverlayCreator {
     // halfway through the event and make one press toggle playback repeatedly.
     if (isPlaybackToggleHotkey(event)) return;
 
+    // Ignore auto-repeat keydown events to prevent repeated work.
+    if (event.repeat) return;
+
+    this.pressedKeys.add(event.code);
+    this.updateMinimalPlayerBypassState();
+
     // Keep configured wheel modifiers available so their gesture reaches the
     // existing overlay instead of suspending it first. Track them so a real
     // multi-key shortcut still remains suspended until every key is released.
     if (this.isWheelActionModifierCode(event.code)) {
-      this.pressedKeys.add(event.code);
       return;
     }
-
-    // Ignore auto-repeat keydown events to prevent repeated work
-    if (event.repeat) return;
-
-    // Track pressed keys. Reserved modifiers may already be present without
-    // having suspended the overlay.
-    this.pressedKeys.add(event.code);
 
     if (this.isKeyboardSuspended) return;
 
@@ -259,6 +269,7 @@ export class OverlayCreator {
 
     // Remove the released key from pressed keys
     this.pressedKeys.delete(event.code);
+    this.updateMinimalPlayerBypassState();
 
     if (this.settingsManager.isDebugEnabled()) {
       console.log('🎯 PRESSED KEYS:', this.pressedKeys.size);
@@ -284,6 +295,61 @@ export class OverlayCreator {
     );
   }
 
+  private updateMinimalPlayerBypassState(): void {
+    const hasShift = Array.from(SHIFT_KEY_CODES).some((code) =>
+      this.pressedKeys.has(code)
+    );
+    const hasBlockingModifier = Array.from(
+      MINIMAL_PLAYER_BYPASS_BLOCKING_KEY_CODES
+    ).some((code) => this.pressedKeys.has(code));
+    const shouldBypass = hasShift && !hasBlockingModifier;
+
+    this.setMinimalPlayerBypassActive(shouldBypass);
+  }
+
+  private setMinimalPlayerBypassActive(isActive: boolean): void {
+    if (this.isMinimalPlayerBypassActive === isActive) return;
+    this.isMinimalPlayerBypassActive = isActive;
+    const affectedDocuments = new Set<Document>([document]);
+
+    this.videoStateManager.forEach((state, video) => {
+      affectedDocuments.add(video.ownerDocument);
+      state.cancelTimelineSeeking?.();
+      state.cancelVideoDragging?.();
+      state.hideThumbnailPreview?.();
+      if (isActive) {
+        state.timeline.style.setProperty('display', 'none', 'important');
+      } else {
+        state.timeline.style.removeProperty('display');
+      }
+    });
+    affectedDocuments.forEach((ownerDocument) => {
+      if (isActive) {
+        ownerDocument.documentElement.setAttribute(
+          'data-mfs-minimal-player-bypass',
+          'true'
+        );
+      } else {
+        ownerDocument.documentElement.removeAttribute(
+          'data-mfs-minimal-player-bypass'
+        );
+      }
+    });
+    this.updateVideoControlsVisibility();
+    this.updateScrollSeekingState();
+    this.updateTimelineSeekingState();
+
+    if (!isActive) this.restoreDocumentHoverAtLastPointer(document);
+
+    if (this.settingsManager.isDebugEnabled()) {
+      console.log(
+        isActive
+          ? '⇧ Extension player layers hidden while Shift is held'
+          : '⇧ Extension player layers restored'
+      );
+    }
+  }
+
   private clearAllPressedKeys(): void {
     if (this.settingsManager.isDebugEnabled()) {
       console.log(
@@ -293,6 +359,7 @@ export class OverlayCreator {
       );
     }
     this.pressedKeys.clear();
+    this.updateMinimalPlayerBypassState();
     this.resumeKeyboardSuspension();
   }
 
@@ -327,7 +394,8 @@ export class OverlayCreator {
         .scrub-wrapper,
         .scrub-timeline[data-mfs-portaled="true"],
         .mfs-media-controls[data-mfs-portaled="true"],
-        .mfs-seek-speed-label[data-mfs-portaled="true"] {
+        .mfs-seek-speed-label[data-mfs-portaled="true"],
+        .mfs-seekbar-thumbnail-preview[data-mfs-portaled="true"] {
           display: none !important;
           visibility: hidden !important;
         }
@@ -366,6 +434,12 @@ export class OverlayCreator {
 
     const ownerDocument = video.ownerDocument;
     const ownerWindow = ownerDocument.defaultView ?? window;
+    if (this.isMinimalPlayerBypassActive) {
+      ownerDocument.documentElement.setAttribute(
+        'data-mfs-minimal-player-bypass',
+        'true'
+      );
+    }
 
     // Create overlay div
     const scrubOverlay = this.createOverlayElement(ownerDocument);
@@ -486,6 +560,8 @@ export class OverlayCreator {
       : null;
     videoState.updateThumbnailPreviewAtPoint = (clientX, clientY) =>
       thumbnailPreviewController?.updateAtPoint(clientX, clientY);
+    videoState.repositionThumbnailPreview = () =>
+      thumbnailPreviewController?.reposition();
     videoState.hideThumbnailPreview = () => thumbnailPreviewController?.hide();
     videoState.updateThumbnailPreviewMode = () =>
       thumbnailPreviewController?.updateEnabled();
@@ -780,12 +856,10 @@ export class OverlayCreator {
           box-sizing: border-box;
           width: 220px;
           max-width: calc(100% - 16px);
-          overflow: hidden;
-          border: 1px solid rgb(255 255 255 / 0.14);
-          border-radius: 8px;
-          background: rgb(15 23 42 / 0.92);
+          overflow: visible;
+          border: 0;
+          background: transparent;
           color: white;
-          box-shadow: 0 5px 18px rgb(0 0 0 / 0.38);
           opacity: 0;
           transform: translateX(-50%) translateY(4px);
           transition: opacity 100ms ease, transform 100ms ease;
@@ -805,7 +879,11 @@ export class OverlayCreator {
           width: 100%;
           aspect-ratio: 16 / 9;
           overflow: hidden;
+          box-sizing: border-box;
+          border: 1px solid rgb(255 255 255 / 0.14);
+          border-radius: 8px;
           background: black;
+          box-shadow: 0 5px 18px rgb(0 0 0 / 0.38);
         }
 
         .mfs-seekbar-thumbnail-preview[data-mfs-image-visible="true"] .mfs-thumbnail-frame {
@@ -835,35 +913,109 @@ export class OverlayCreator {
         .mfs-thumbnail-copy {
           display: flex;
           box-sizing: border-box;
+          width: fit-content;
+          max-width: 100%;
           min-width: 0;
-          align-items: baseline;
-          gap: 7px;
-          padding: 6px 8px;
+          align-items: center;
+          gap: 8px;
+          margin: 0 auto;
+          padding: 6px 12px;
+          overflow: hidden;
+          border-radius: 9999px;
+          background: rgb(15 23 42 / 0.68);
+          box-shadow: 0 3px 12px rgb(0 0 0 / 0.28);
+          backdrop-filter: blur(10px) saturate(1.2);
+          -webkit-backdrop-filter: blur(10px) saturate(1.2);
           font-size: 11px;
           line-height: 14px;
         }
 
-        .mfs-thumbnail-time {
-          flex: none;
-          font-variant-numeric: tabular-nums;
-          font-weight: 700;
+        .mfs-seekbar-thumbnail-preview[data-mfs-image-visible="true"] .mfs-thumbnail-copy {
+          margin-top: 7px;
         }
 
-        .mfs-thumbnail-chapter {
+        .mfs-thumbnail-time {
+          display: inline-flex;
+          flex: none;
+          align-items: center;
+          color: rgb(255 255 255 / 0.78);
+          font-variant-numeric: tabular-nums;
+          font-weight: 400;
+        }
+
+        .mfs-thumbnail-time-number {
+          display: inline-block;
+          --number-flow-mask-height: 0.15em;
+          --number-flow-mask-width: 0.25em;
+          line-height: 1;
+        }
+
+        .mfs-thumbnail-time-symbol {
+          display: inline-block;
+        }
+
+        .mfs-thumbnail-chapter-stage {
+          position: relative;
+          display: block;
+          flex: 0 1 auto;
+          width: 0;
+          min-width: 0;
+          height: 14px;
+          overflow: hidden;
+          transition: width 180ms cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .mfs-thumbnail-chapter-stage[hidden] {
+          display: none !important;
+        }
+
+        .mfs-thumbnail-chapter,
+        .mfs-thumbnail-chapter-outgoing {
+          position: absolute;
+          inset: 0;
+          display: block;
           min-width: 0;
           overflow: hidden;
-          color: rgb(226 232 240);
+          color: white;
           font-weight: 500;
           white-space: nowrap;
           text-overflow: ellipsis;
+          transform-origin: left center;
+          transition: opacity 160ms ease, filter 180ms ease,
+            transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
         }
 
-        .mfs-thumbnail-chapter[hidden] {
-          display: none !important;
+        .mfs-thumbnail-chapter[data-mfs-state="entering"],
+        .mfs-thumbnail-chapter-outgoing[data-mfs-state="idle"],
+        .mfs-thumbnail-chapter-outgoing[data-mfs-state="leaving"] {
+          opacity: 0;
+          filter: blur(5px);
+          transform: scale(0.96);
+        }
+
+        .mfs-thumbnail-chapter[data-mfs-state="visible"],
+        .mfs-thumbnail-chapter-outgoing[data-mfs-state="visible"] {
+          opacity: 1;
+          filter: blur(0);
+          transform: scale(1);
+        }
+
+        .mfs-thumbnail-chapter-measure {
+          position: absolute;
+          width: max-content;
+          visibility: hidden;
+          font-weight: 500;
+          white-space: nowrap;
         }
 
         @media (prefers-reduced-motion: reduce) {
           .mfs-seekbar-thumbnail-preview {
+            transition: none;
+          }
+
+          .mfs-thumbnail-chapter-stage,
+          .mfs-thumbnail-chapter,
+          .mfs-thumbnail-chapter-outgoing {
             transition: none;
           }
         }
@@ -1285,6 +1437,17 @@ export class OverlayCreator {
           pointer-events: none !important;
         }
 
+        html[data-mfs-minimal-player-bypass="true"] .scrub-wrapper,
+        html[data-mfs-minimal-player-bypass="true"] .scrub-timeline[data-mfs-portaled="true"],
+        html[data-mfs-minimal-player-bypass="true"] .mfs-media-controls[data-mfs-portaled="true"],
+        html[data-mfs-minimal-player-bypass="true"] .mfs-seek-speed-label[data-mfs-portaled="true"],
+        html[data-mfs-minimal-player-bypass="true"] .mfs-youtube-chapter-tooltip,
+        html[data-mfs-minimal-player-bypass="true"] .mfs-seekbar-thumbnail-preview {
+          display: none !important;
+          visibility: hidden !important;
+          pointer-events: none !important;
+        }
+
         html[data-mfs-page-dialog-open="true"] .scrub-wrapper,
         html[data-mfs-page-dialog-open="true"] .scrub-timeline[data-mfs-portaled="true"],
         html[data-mfs-page-dialog-open="true"] .mfs-media-controls[data-mfs-portaled="true"],
@@ -1368,14 +1531,27 @@ export class OverlayCreator {
     video: HTMLVideoElement,
     timeline: HTMLDivElement
   ): boolean {
+    const hasSeekRange = getMediaSeekRange(video) !== null;
     const isInteractive =
+      !this.isMinimalPlayerBypassActive &&
       !DOMUtils.isYouTubeHoverPreview(video) &&
       this.settingsManager.isTimelineSeekingEnabled() &&
-      getMediaSeekRange(video) !== null;
+      hasSeekRange;
+    const shouldPortalTimeline =
+      !this.isMinimalPlayerBypassActive &&
+      !DOMUtils.isYouTubeHoverPreview(video) &&
+      hasSeekRange &&
+      (isInteractive ||
+        (this.settingsManager.shouldShowTimelineOnHover?.() ?? false));
 
     const state = this.videoStateManager.get(video);
     if (state?.timeline === timeline) {
-      this.updateTimelinePlacement(video, state, isInteractive);
+      this.updateTimelinePlacement(
+        video,
+        state,
+        isInteractive,
+        shouldPortalTimeline
+      );
     }
 
     const isPageDialogOpen =
@@ -1385,7 +1561,9 @@ export class OverlayCreator {
     timeline.style.cursor = isInteractive ? 'pointer' : '';
     timeline.style.touchAction = isInteractive ? 'none' : '';
     timeline.style.userSelect = isInteractive ? 'none' : '';
-    timeline.style.zIndex = isInteractive ? '2147483645' : '';
+    timeline.style.zIndex = shouldPortalTimeline
+      ? INTERACTIVE_TIMELINE_Z_INDEX
+      : '';
     timeline.dataset.mfsInteractive = String(isInteractive);
     timeline
       .querySelectorAll<HTMLElement>(
@@ -1401,9 +1579,10 @@ export class OverlayCreator {
   private updateTimelinePlacement(
     video: HTMLVideoElement,
     state: VideoStateT,
-    isInteractive: boolean
+    isInteractive: boolean,
+    shouldPortalTimeline: boolean
   ): void {
-    const { timeline, wrapper } = state;
+    const { thumbnailPreview, timeline, wrapper } = state;
     const height = this.settingsManager.getTimelineHeight();
     const unit = this.settingsManager.getTimelineHeightUnit();
     const position = this.settingsManager.getTimelinePosition();
@@ -1423,8 +1602,11 @@ export class OverlayCreator {
       heightInPixels >= wrapperRect.height
     );
 
-    if (!isInteractive) {
+    if (!shouldPortalTimeline) {
       if (timeline.parentElement !== wrapper) wrapper.appendChild(timeline);
+      if (thumbnailPreview && thumbnailPreview.parentElement !== wrapper) {
+        wrapper.appendChild(thumbnailPreview);
+      }
 
       const heightValue = unit === '%' ? `${height}%` : `${height}px`;
       timeline.style.position = 'absolute';
@@ -1434,6 +1616,11 @@ export class OverlayCreator {
       timeline.style.top =
         position === 'top' ? '0px' : `calc(100% - ${heightValue})`;
       delete timeline.dataset.mfsPortaled;
+      if (thumbnailPreview) {
+        thumbnailPreview.style.removeProperty('z-index');
+        delete thumbnailPreview.dataset.mfsPortaled;
+      }
+      state.repositionThumbnailPreview?.();
       return;
     }
 
@@ -1446,6 +1633,9 @@ export class OverlayCreator {
         : ownerDocument.documentElement;
 
     if (timeline.parentElement !== portalHost) portalHost.appendChild(timeline);
+    if (thumbnailPreview && thumbnailPreview.parentElement !== portalHost) {
+      portalHost.appendChild(thumbnailPreview);
+    }
 
     const targetTop =
       position === 'top'
@@ -1477,6 +1667,11 @@ export class OverlayCreator {
     timeline.style.height = `${heightInPixels}px`;
     timeline.style.top = `${portalTop}px`;
     timeline.dataset.mfsPortaled = 'true';
+    if (thumbnailPreview) {
+      thumbnailPreview.style.zIndex = THUMBNAIL_PREVIEW_Z_INDEX;
+      thumbnailPreview.dataset.mfsPortaled = 'true';
+    }
+    state.repositionThumbnailPreview?.();
   }
 
   private updateTimelineCornerClipping(
@@ -2729,6 +2924,7 @@ export class OverlayCreator {
     const syncVolume = (): void => {
       const volumePercent = Math.round(video.volume * 100);
       const isMuted = video.muted || video.volume === 0;
+      const displayedVolumePercent = isMuted ? 0 : volumePercent;
       const volumeLevel = isMuted
         ? 'muted'
         : volumePercent <= 33
@@ -2738,7 +2934,10 @@ export class OverlayCreator {
             : 'high';
 
       if (video.volume > 0 && !video.muted) lastAudibleVolume = video.volume;
-      volumePill.style.setProperty('--mfs-volume', `${volumePercent}%`);
+      volumePill.style.setProperty(
+        '--mfs-volume',
+        `${displayedVolumePercent}%`
+      );
       volumePill.dataset.mfsMuted = String(isMuted);
       volumePill.dataset.mfsVolumeLevel = volumeLevel;
       volumePill.setAttribute(
@@ -3644,6 +3843,7 @@ export class OverlayCreator {
     state: VideoStateT
   ): boolean {
     const canDragVideo =
+      !this.isMinimalPlayerBypassActive &&
       !DOMUtils.isYouTubeHoverPreview(video) &&
       (this.settingsManager.shouldDragVideoToSeek?.() ?? false) &&
       getMediaSeekRange(video) !== null;
@@ -3656,6 +3856,7 @@ export class OverlayCreator {
     } else if (canDragVideo) {
       state.overlay.style.cursor = 'pointer';
     } else if (
+      !this.isMinimalPlayerBypassActive &&
       (this.settingsManager.shouldHideVideoControls?.() ?? false) &&
       getMediaSeekRange(video) !== null
     ) {
@@ -3678,6 +3879,7 @@ export class OverlayCreator {
     state: VideoStateT
   ): void {
     const shouldHide =
+      !this.isMinimalPlayerBypassActive &&
       !DOMUtils.isYouTubeHoverPreview(video) &&
       this.settingsManager.shouldHideVideoControls() &&
       getMediaSeekRange(video) !== null;
@@ -4087,6 +4289,7 @@ export class OverlayCreator {
 
     const canHandleScrollSeeking = (): boolean =>
       !this.isKeyboardSuspended &&
+      !this.isMinimalPlayerBypassActive &&
       this.settingsManager.isScrollSeekingEnabled();
 
     const clearSeekCommitTimeout = (): void => {
@@ -4817,7 +5020,16 @@ export class OverlayCreator {
     // under the pointer. When Drag or Minimal Player still owns the surface,
     // wheel defaults can then continue to the page untouched.
     state.overlay.style.overflowX =
-      this.settingsManager.isScrollSeekingEnabled() ? 'scroll' : 'hidden';
+      this.settingsManager.isScrollSeekingEnabled() &&
+      !this.isMinimalPlayerBypassActive
+        ? 'scroll'
+        : 'hidden';
+
+    if (this.isMinimalPlayerBypassActive) {
+      state.overlay.style.setProperty('pointer-events', 'none', 'important');
+      state.overlay.dataset.mfsPassivePreview = 'true';
+      return;
+    }
 
     if (DOMUtils.isYouTubeHoverPreview(video)) {
       // YouTube's temporary thumbnail player must remain underneath the

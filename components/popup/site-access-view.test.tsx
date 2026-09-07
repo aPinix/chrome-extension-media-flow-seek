@@ -326,6 +326,13 @@ describe('SiteAccessView', () => {
     expect(editDomain.className).toContain(
       'group-hover/domain-edit:opacity-100'
     );
+    expect(editDomain.className).toContain('rounded-full');
+    expect(editDomain.className).toContain('bg-sky-500/15');
+    expect(editDomain.className).toContain('text-sky-500');
+    expect(editDomain.className).toContain('hover:scale-105');
+    expect(editDomain.querySelector('svg')?.classList).toContain(
+      'lucide-settings-2'
+    );
 
     await user.hover(editDomain);
     expect(await screen.findByText('Edit youtube.com')).toBeTruthy();
@@ -395,7 +402,19 @@ describe('SiteAccessView', () => {
       expect(historyButton.className).toContain('disabled:text-slate-500');
       expect(historyButton.className).toContain('dark:disabled:bg-slate-700');
       expect(historyButton.className).toContain('dark:disabled:text-slate-400');
+      expect(historyButton.getAttribute('title')).toBeNull();
+      expect(historyButton.parentElement?.tabIndex).toBe(0);
     }
+
+    await user.hover(undoButton.parentElement as HTMLElement);
+    expect((await screen.findByText('Undo')).parentElement?.textContent).toBe(
+      'Undo last website removal'
+    );
+    await user.unhover(undoButton.parentElement as HTMLElement);
+    await user.hover(redoButton.parentElement as HTMLElement);
+    expect((await screen.findByText('Redo')).parentElement?.textContent).toBe(
+      'Redo last website removal'
+    );
 
     const currentControl = screen.getByRole('group', {
       name: 'Access for current website example.com',
@@ -778,8 +797,9 @@ describe('SiteAccessView', () => {
     expect(globalDefaultIcon.className).toContain('transition-colors');
     const globalDefaultTitle = screen.getByText('Run by Default');
     const globalDefaultState = screen.getByTestId('global-default-state');
-    expect(globalDefaultTitle.className).toContain('text-lime-600');
-    expect(globalDefaultTitle.className).toContain('transition-colors');
+    expect(globalDefaultTitle.className).toContain('text-slate-900');
+    expect(globalDefaultTitle.className).toContain('dark:text-white');
+    expect(globalDefaultTitle.className).not.toContain('text-lime-600');
     expect(globalDefaultState.textContent).toBe('Enabled');
     expect(globalDefaultState.className).toContain('font-bold');
     expect(globalDefaultState.className).toContain('text-lime-600');
@@ -800,7 +820,7 @@ describe('SiteAccessView', () => {
     expect(globalDefaultState.textContent).toBe('Disabled');
     expect(globalDefaultState.className).toContain('text-rose-600');
     expect(globalDefaultIcon.className).toContain('text-rose-600');
-    expect(globalDefaultTitle.className).toContain('text-rose-600');
+    expect(globalDefaultTitle.className).not.toContain('text-rose-600');
     expect(defaultMode?.closest('label')?.className).toContain('text-rose-500');
     const switchGlobe = globalDefaultSwitch.querySelector('svg');
     expect(switchGlobe?.classList).toContain('text-rose-600');
@@ -815,7 +835,12 @@ describe('SiteAccessView', () => {
     if (!defaultMode) throw new Error('Expected a Default domain mode');
 
     await user.hover(defaultMode);
-    expect(await screen.findByText('Default: On')).toBeTruthy();
+    const onState = await screen.findByText(
+      (_, element) =>
+        element?.tagName === 'STRONG' && element.textContent === 'On'
+    );
+    expect(onState.tagName).toBe('STRONG');
+    expect(onState.parentElement?.textContent).toBe('Default: On');
 
     await user.unhover(defaultMode);
     await user.click(
@@ -824,6 +849,11 @@ describe('SiteAccessView', () => {
       })
     );
     await user.hover(defaultMode);
-    expect(await screen.findByText('Default: Off')).toBeTruthy();
+    const offState = await screen.findByText(
+      (_, element) =>
+        element?.tagName === 'STRONG' && element.textContent === 'Off'
+    );
+    expect(offState.tagName).toBe('STRONG');
+    expect(offState.parentElement?.textContent).toBe('Default: Off');
   });
 });

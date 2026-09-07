@@ -49,6 +49,7 @@ export class VideoStateManager {
       state.timeline.remove();
       state.debugIndicator.remove();
       state.mediaControls?.remove();
+      state.thumbnailPreview?.remove();
       state.wrapper.remove();
       video.removeAttribute('data-scrub-enabled');
     }
@@ -83,6 +84,7 @@ export class VideoStateManager {
       state.timeline.remove();
       state.debugIndicator.remove();
       state.mediaControls?.remove();
+      state.thumbnailPreview?.remove();
       state.wrapper.remove();
       video.removeAttribute('data-scrub-enabled');
     });

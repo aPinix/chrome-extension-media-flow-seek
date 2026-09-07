@@ -51,7 +51,11 @@ export function DomainModeControl({
           selectedClassName: globalDefaultOn
             ? 'text-lime-500 dark:text-lime-400'
             : 'text-rose-500 dark:text-rose-400',
-          tooltip: `Default: ${globalDefaultOn ? 'On' : 'Off'}`,
+          tooltip: (
+            <>
+              Default: <strong>{globalDefaultOn ? 'On' : 'Off'}</strong>
+            </>
+          ),
         };
       }
 

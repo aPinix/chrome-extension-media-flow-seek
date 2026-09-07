@@ -227,11 +227,6 @@ export function SiteAccessView({
                     </>
                   }
                   title="Run by Default"
-                  titleClassName={`transition-colors duration-200 ${
-                    globalDefaultOn
-                      ? 'text-lime-600 dark:text-lime-400'
-                      : 'text-rose-600 dark:text-rose-400'
-                  }`}
                 />
                 <AppSwitch
                   aria-label="Run BetterVideo by default on websites"

@@ -130,6 +130,8 @@ popular social platforms and other HTML5 video sites.
 
 Hold **Alt** while scrolling to seek at 3× speed, or hold **Alt+Shift** to seek at 1/4x speed for precise adjustments. Both hotkeys can be changed in the extension popup.
 
+Hold **Shift** by itself to temporarily hide BetterVideo's player layers, including the seekbar. When **Minimal Player** is enabled, this also restores the website's original player controls. Releasing Shift restores BetterVideo, while **Alt+Shift** continues to control slow seeking.
+
 ### Settings
 
 - **Click the extension icon** in your browser toolbar

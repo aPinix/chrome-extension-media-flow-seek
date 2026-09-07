@@ -14,7 +14,10 @@ import { AppKbd } from '@/components/app/app-kbd';
 import { AppSwitch } from '@/components/app/app-switch';
 import { XBrandIcon } from '@/components/icons/icons';
 import { CardListItem } from '@/components/popup/card-list-item';
+import { ExtraFeaturePreviewTooltip } from '@/components/popup/extra-feature-preview-tooltip';
+import { MinimalPlayerDescription } from '@/components/popup/minimal-player-description';
 import { SectionTitle } from '@/components/popup/section-title';
+import { ShowOnHoverSetting } from '@/components/popup/show-on-hover-setting';
 import { SiteAccessView } from '@/components/popup/site-access-view';
 import { ViewTitle } from '@/components/popup/view-title';
 import { SeekControlsSettings } from '@/components/settings/seek-controls-settings';
@@ -22,6 +25,12 @@ import { YouTubeSettings } from '@/components/settings/youtube-settings';
 import { useTheme } from '@/components/theme-provider';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { EXT_URL, IS_DEVELOPMENT } from '@/config/variables.config';
 import {
   DEFAULT_SETTINGS,
@@ -97,6 +106,36 @@ function ShortcutKeycaps({ shortcut }: { shortcut: string }) {
         <AppKbd key={`${key}-${index}`}>{key}</AppKbd>
       ))}
     </span>
+  );
+}
+
+function ResetDefaultsButton({
+  onClick,
+  section,
+}: {
+  onClick: () => void;
+  section: string;
+}) {
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              className="h-7 px-3 font-medium text-slate-600 text-xs transition-all hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800/50 dark:hover:text-slate-300"
+              onClick={onClick}
+              size="sm"
+              variant="ghost"
+            >
+              Reset Default
+            </Button>
+          }
+        />
+        <TooltipContent>
+          <strong>Reset {section}</strong> to its default settings
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
@@ -783,14 +822,10 @@ export function PopupContent() {
                 <div className="flex flex-none flex-col">
                   <SectionTitle title="Extension">
                     {!isExtensionAtDefaults && (
-                      <Button
-                        className="h-7 px-3 font-medium text-slate-600 text-xs transition-all hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800/50 dark:hover:text-slate-300"
+                      <ResetDefaultsButton
                         onClick={handleResetExtensionDefaults}
-                        size="sm"
-                        variant="ghost"
-                      >
-                        Reset Default
-                      </Button>
+                        section="Extension"
+                      />
                     )}
                   </SectionTitle>
                   <CardListItemWrapper>
@@ -853,14 +888,10 @@ export function PopupContent() {
                 <div className="flex flex-none flex-col">
                   <SectionTitle title="Seek Controls">
                     {!isSettingsAtDefaults ? (
-                      <Button
-                        className="h-7 px-3 font-medium text-slate-600 text-xs transition-all hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800/50 dark:hover:text-slate-300"
+                      <ResetDefaultsButton
                         onClick={handleResetSettingsDefaults}
-                        size="sm"
-                        variant="ghost"
-                      >
-                        Reset Default
-                      </Button>
+                        section="Seek Controls"
+                      />
                     ) : null}
                   </SectionTitle>
 
@@ -879,9 +910,6 @@ export function PopupContent() {
                       isPlayPauseWheelEnabled={isPlayPauseWheelEnabled}
                       isScrollSeekingEnabled={isScrollSeekingEnabled}
                       isSeekbarSeekingEnabled={isTimelineSeekingEnabled}
-                      isSeekbarThumbnailPreviewEnabled={
-                        isSeekbarThumbnailPreviewEnabled
-                      }
                       onActionAreaChange={applyActionArea}
                       onActionAreaReset={() =>
                         applyActionArea(DEFAULT_SETTINGS.actionArea)
@@ -910,12 +938,10 @@ export function PopupContent() {
                       onSeekbarSeekingEnabledChange={
                         handleTimelineSeekingToggle
                       }
-                      onShowTimelineOnHoverChange={handleTimelineHoverToggle}
                       onSlowScrollHotkeyChange={handleSlowScrollHotkeyChange}
                       onUnitChange={handleTimelineHeightUnitChange}
                       scrollInverted={invertHorizontalScroll}
                       scrollSpeedFactor={scrollSpeedFactor}
-                      showTimelineOnHover={showTimelineOnHover}
                       slowScrollHotkey={slowScrollHotkey}
                       timelineHeight={timelineHeight}
                       timelinePosition={timelinePosition}
@@ -931,6 +957,14 @@ export function PopupContent() {
                       !isEnabled && 'pointer-events-none opacity-50'
                     )}
                   >
+                    <ShowOnHoverSetting
+                      checked={showTimelineOnHover}
+                      isSeekbarSeekingEnabled={isTimelineSeekingEnabled}
+                      isSeekbarThumbnailPreviewEnabled={
+                        isSeekbarThumbnailPreviewEnabled
+                      }
+                      onCheckedChange={handleTimelineHoverToggle}
+                    />
                     <CardListItem
                       components={{
                         RightSlot: (
@@ -947,11 +981,18 @@ export function PopupContent() {
                       icon={ImagesIcon}
                       iconIsToggled={isSeekbarThumbnailPreviewEnabled}
                       title={
-                        <span className="inline-flex items-center gap-2">
+                        <span className="inline-flex items-center gap-1.5">
                           Hover Thumbnails
+                          <ExtraFeaturePreviewTooltip featureName="Hover Thumbnails" />
                           <AppBetaBadge
                             featureName="Hover Thumbnails"
-                            tooltip="Frame previews are best effort and may be unavailable for protected or streaming video sources."
+                            tooltip={
+                              <>
+                                <strong>Frame previews</strong> are best effort
+                                and may be unavailable for protected or
+                                streaming video sources.
+                              </>
+                            }
                           />
                         </span>
                       }
@@ -966,15 +1007,22 @@ export function PopupContent() {
                           />
                         ),
                       }}
-                      description="Hide the site's controls without changing seek methods"
+                      description={<MinimalPlayerDescription />}
                       icon={EyeOffIcon}
                       iconIsToggled={hideVideoControls}
                       title={
-                        <span className="inline-flex items-center gap-2">
+                        <span className="inline-flex items-center gap-1.5">
                           Minimal Player
+                          <ExtraFeaturePreviewTooltip featureName="Minimal Player" />
                           <AppBetaBadge
                             featureName="Minimal Player"
-                            tooltip="Minimal Player is experimental, so replacement controls may not be fully supported on every site."
+                            tooltip={
+                              <>
+                                <strong>Minimal Player</strong> is experimental,
+                                so replacement controls may not be fully
+                                supported on every site.
+                              </>
+                            }
                           />
                         </span>
                       }
@@ -992,7 +1040,12 @@ export function PopupContent() {
                       description="Use each site's favicon color for the timeline"
                       icon={PaletteIcon}
                       iconIsToggled={colorizedTimeline}
-                      title="Match Site Color"
+                      title={
+                        <span className="inline-flex items-center gap-1.5">
+                          Match Site Color
+                          <ExtraFeaturePreviewTooltip featureName="Match Site Color" />
+                        </span>
+                      }
                     />
                   </CardListItemWrapper>
                 </div>

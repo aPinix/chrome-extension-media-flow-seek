@@ -171,6 +171,9 @@ describe('seekbar thumbnail preview controller', () => {
 
     expect(preview.dataset.mfsVisible).toBe('true');
     expect(preview.dataset.mfsImageVisible).toBe('false');
+    expect(
+      preview.querySelector<HTMLElement>('.mfs-thumbnail-time')?.dataset.mfsTime
+    ).toBe('0:50');
     expect(preview.querySelector('.mfs-thumbnail-time')?.textContent).toBe(
       '0:50'
     );
@@ -181,6 +184,188 @@ describe('seekbar thumbnail preview controller', () => {
     controller.hide(true);
     expect(preview.dataset.mfsVisible).toBe('false');
     controller.cleanup();
+  });
+
+  it('morphs between chapter titles while animating their width', () => {
+    const scheduledFrames = new Map<number, FrameRequestCallback>();
+    let nextFrameId = 1;
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      const frameId = nextFrameId;
+      nextFrameId += 1;
+      scheduledFrames.set(frameId, callback);
+      return frameId;
+    });
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation((frameId) => {
+      scheduledFrames.delete(frameId);
+    });
+    const runNextFrame = () => {
+      const nextFrame = scheduledFrames.entries().next().value as
+        | [number, FrameRequestCallback]
+        | undefined;
+      if (!nextFrame) throw new Error('Expected an animation frame');
+      scheduledFrames.delete(nextFrame[0]);
+      nextFrame[1](0);
+    };
+
+    const video = document.createElement('video');
+    Object.defineProperty(video, 'duration', {
+      configurable: true,
+      value: 100,
+    });
+    const wrapper = document.createElement('div');
+    const timeline = document.createElement('div');
+    timeline.style.opacity = '1';
+    const preview = createSeekbarThumbnailPreviewElement(document);
+    const decoder = preview.querySelector('video');
+    if (!decoder) throw new Error('Missing decoder video');
+    decoder.load = vi.fn();
+    wrapper.append(timeline, preview);
+    document.body.appendChild(wrapper);
+    wrapper.getBoundingClientRect = () => rect(0, 0, 120, 100);
+    timeline.getBoundingClientRect = () => rect(10, 90, 100, 6);
+    const stage = preview.querySelector<HTMLElement>(
+      '.mfs-thumbnail-chapter-stage'
+    );
+    const measure = preview.querySelector<HTMLElement>(
+      '.mfs-thumbnail-chapter-measure'
+    );
+    if (!(stage && measure)) throw new Error('Missing chapter transition UI');
+    stage.getBoundingClientRect = () =>
+      rect(0, 0, Number.parseFloat(stage.style.width) || 0, 14);
+    Object.defineProperty(measure, 'scrollWidth', {
+      configurable: true,
+      get: () => (measure.textContent?.length ?? 0) * 6,
+    });
+    const controller = new SeekbarThumbnailPreviewController({
+      getTimelinePosition: () => 'bottom',
+      getYouTubeChapters: () => [
+        { end: 50, start: 0, title: 'Intro' },
+        { end: 100, start: 50, title: 'A longer chapter' },
+      ],
+      isEnabled: () => true,
+      isScrubbing: () => false,
+      preview,
+      timeline,
+      video,
+      wrapper,
+    });
+
+    controller.updateAtPoint(35, 92);
+    runNextFrame();
+    expect(stage.style.width).toBe('30px');
+
+    controller.updateAtPoint(85, 92);
+    expect(
+      preview.querySelector('.mfs-thumbnail-chapter-outgoing')?.textContent
+    ).toBe('Intro');
+    expect(
+      preview.querySelector<HTMLElement>('.mfs-thumbnail-chapter')?.dataset
+        .mfsState
+    ).toBe('entering');
+    runNextFrame();
+    expect(stage.style.width).toBe('96px');
+    expect(
+      preview.querySelector<HTMLElement>('.mfs-thumbnail-chapter-outgoing')
+        ?.dataset.mfsState
+    ).toBe('leaving');
+    expect(
+      preview.querySelector<HTMLElement>('.mfs-thumbnail-chapter')?.dataset
+        .mfsState
+    ).toBe('visible');
+
+    controller.cleanup();
+  });
+
+  it('aligns title changes with the midpoint of rendered chapter gaps', () => {
+    const video = document.createElement('video');
+    Object.defineProperty(video, 'duration', {
+      configurable: true,
+      value: 100,
+    });
+    const wrapper = document.createElement('div');
+    const timeline = document.createElement('div');
+    timeline.style.opacity = '1';
+    const firstSegment = document.createElement('div');
+    firstSegment.className = 'mfs-youtube-chapter-segment';
+    firstSegment.getBoundingClientRect = () => rect(10, 90, 24, 6);
+    const secondSegment = document.createElement('div');
+    secondSegment.className = 'mfs-youtube-chapter-segment';
+    secondSegment.getBoundingClientRect = () => rect(38, 90, 72, 6);
+    timeline.append(firstSegment, secondSegment);
+    const preview = createSeekbarThumbnailPreviewElement(document);
+    const decoder = preview.querySelector('video');
+    if (!decoder) throw new Error('Missing decoder video');
+    decoder.load = vi.fn();
+    wrapper.append(timeline, preview);
+    document.body.appendChild(wrapper);
+    wrapper.getBoundingClientRect = () => rect(0, 0, 120, 100);
+    timeline.getBoundingClientRect = () => rect(10, 90, 100, 6);
+    const controller = new SeekbarThumbnailPreviewController({
+      getTimelinePosition: () => 'bottom',
+      getYouTubeChapters: () => [
+        { end: 25, start: 0, title: 'First chapter' },
+        { end: 100, start: 25, title: 'Second chapter' },
+      ],
+      isEnabled: () => true,
+      isScrubbing: () => false,
+      preview,
+      timeline,
+      video,
+      wrapper,
+    });
+
+    controller.updateAtPoint(35, 92);
+    expect(preview.querySelector('.mfs-thumbnail-chapter')?.textContent).toBe(
+      'First chapter'
+    );
+
+    controller.updateAtPoint(37, 92);
+    expect(preview.querySelector('.mfs-thumbnail-chapter')?.textContent).toBe(
+      'Second chapter'
+    );
+
+    controller.cleanup();
+  });
+
+  it('keeps a portaled thumbnail and pill aligned to the seekbar', () => {
+    const video = document.createElement('video');
+    video.src = 'blob:https://example.com/media';
+    Object.defineProperty(video, 'duration', {
+      configurable: true,
+      value: 100,
+    });
+    const wrapper = document.createElement('div');
+    const timeline = document.createElement('div');
+    timeline.style.opacity = '1';
+    const preview = createSeekbarThumbnailPreviewElement(document);
+    const decoder = preview.querySelector('video');
+    if (!decoder) throw new Error('Missing decoder video');
+    decoder.load = vi.fn();
+    preview.dataset.mfsPortaled = 'true';
+    document.body.append(video, wrapper);
+    document.documentElement.append(timeline, preview);
+    wrapper.getBoundingClientRect = () => rect(100, 50, 300, 200);
+    timeline.getBoundingClientRect = () => rect(100, 240, 300, 10);
+    const controller = new SeekbarThumbnailPreviewController({
+      getTimelinePosition: () => 'bottom',
+      getYouTubeChapters: () => undefined,
+      isEnabled: () => true,
+      isScrubbing: () => false,
+      preview,
+      timeline,
+      video,
+      wrapper,
+    });
+
+    controller.updateAtPoint(250, 245);
+
+    expect(preview.style.left).toBe('250px');
+    expect(preview.style.top).toBe('200px');
+    expect(preview.style.maxWidth).toBe('284px');
+
+    controller.cleanup();
+    timeline.remove();
+    preview.remove();
   });
 
   it('stays hidden on devices without a fine hover pointer', () => {

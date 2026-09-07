@@ -26,7 +26,6 @@ const createCallbacks = () => ({
   onHeightReset: vi.fn(),
   onPositionChange: vi.fn(),
   onPositionReset: vi.fn(),
-  onShowTimelineOnHoverChange: vi.fn(),
   onUnitChange: vi.fn(),
 });
 
@@ -35,10 +34,7 @@ const baseProps = {
   actionAreaSize: 30,
   actionAreaSizeUnit: '%' as const,
   height: 6,
-  isSeekbarThumbnailPreviewEnabled: false,
-  isSeekbarSeekingEnabled: false,
   position: 'bottom' as const,
-  showTimelineOnHover: false,
   unit: 'px' as const,
 };
 
@@ -66,11 +62,7 @@ describe('VideoLayoutSettings', () => {
     expect(
       screen.getByTestId('action-area-size-control').getAttribute('aria-hidden')
     ).toBe('true');
-    expect(
-      screen
-        .getByRole('switch', { name: 'Show timeline on hover' })
-        .getAttribute('aria-checked')
-    ).toBe('false');
+    expect(screen.queryByText('Timeline Show on Hover')).toBeNull();
   });
 
   it('calls the shared layout callbacks', async () => {
@@ -145,14 +137,6 @@ describe('VideoLayoutSettings', () => {
     );
     expect(callbacks.onPositionChange).toHaveBeenCalledWith('top');
 
-    await user.click(
-      screen.getByRole('switch', { name: 'Show timeline on hover' })
-    );
-    expect(callbacks.onShowTimelineOnHoverChange).toHaveBeenCalledWith(
-      true,
-      expect.anything()
-    );
-
     const timelineHeightInput = screen.getByRole('spinbutton', {
       name: 'Timeline height value',
     });
@@ -168,48 +152,6 @@ describe('VideoLayoutSettings', () => {
     ).toContain('bg-slate-300/80');
     fireEvent.change(timelineHeightInput, { target: { value: '14' } });
     expect(callbacks.onHeightChange).toHaveBeenCalledWith(14);
-  });
-
-  it('locks effective hover visibility on without overwriting the preference', () => {
-    const callbacks = createCallbacks();
-    render(
-      <VideoLayoutSettings
-        {...baseProps}
-        {...callbacks}
-        isSeekbarSeekingEnabled={true}
-        showTimelineOnHover={false}
-      />
-    );
-
-    const hoverSwitch = screen.getByRole('switch', {
-      name: 'Show timeline on hover',
-    });
-    expect(hoverSwitch.getAttribute('aria-checked')).toBe('true');
-    expect(hoverSwitch.getAttribute('aria-disabled')).toBe('true');
-    expect(
-      screen.getByLabelText('Why Show on Hover is locked').className
-    ).toContain('cursor-help');
-    expect(
-      screen.getByText(/Locked on while Click & Drag Seekbar/)
-    ).toBeTruthy();
-    expect(callbacks.onShowTimelineOnHoverChange).not.toHaveBeenCalled();
-  });
-
-  it('locks hover visibility while thumbnail previews are enabled', () => {
-    render(
-      <VideoLayoutSettings
-        {...baseProps}
-        {...createCallbacks()}
-        isSeekbarThumbnailPreviewEnabled={true}
-      />
-    );
-
-    const hoverSwitch = screen.getByRole('switch', {
-      name: 'Show timeline on hover',
-    });
-    expect(hoverSwitch.getAttribute('aria-checked')).toBe('true');
-    expect(hoverSwitch.getAttribute('aria-disabled')).toBe('true');
-    expect(screen.getByText(/Locked on while Hover Thumbnails/)).toBeTruthy();
   });
 
   it('keeps timeline height reset enabled until both 6 and px are restored', async () => {
