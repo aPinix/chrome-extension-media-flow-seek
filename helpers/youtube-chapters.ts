@@ -16,7 +16,7 @@ const MODERN_CHAPTER_SEGMENT_SELECTOR =
   'yt-chaptered-progress-bar-line > .ytChapteredProgressBarChapteredPlayerBarChapter';
 const CHAPTER_SEGMENT_SELECTOR = `${CLASSIC_CHAPTER_SEGMENT_SELECTOR}, ${MODERN_CHAPTER_SEGMENT_SELECTOR}`;
 
-const isYouTubeHostname = (hostname: string): boolean => {
+export const isYouTubeHostname = (hostname: string): boolean => {
   const normalizedHostname = hostname.toLowerCase();
   return (
     normalizedHostname === 'youtube.com' ||

@@ -62,7 +62,7 @@ describe('ShowOnHoverSetting', () => {
     ).toBeTruthy();
   });
 
-  it('locks the effective value on for Hover Thumbnails', () => {
+  it('keeps the global hover preference adjustable when YouTube thumbnails are enabled', () => {
     render(
       <ShowOnHoverSetting
         checked={false}
@@ -75,8 +75,12 @@ describe('ShowOnHoverSetting', () => {
     const hoverSwitch = screen.getByRole('switch', {
       name: 'Show timeline on hover',
     });
-    expect(hoverSwitch.getAttribute('aria-checked')).toBe('true');
-    expect(hoverSwitch.getAttribute('aria-disabled')).toBe('true');
-    expect(screen.getByText(/Locked on while Hover Thumbnails/)).toBeTruthy();
+    expect(hoverSwitch.getAttribute('aria-checked')).toBe('false');
+    expect(hoverSwitch.getAttribute('aria-disabled')).not.toBe('true');
+    expect(
+      screen.getByText(
+        /Hover Thumbnails keeps the timeline visible on hover on YouTube/
+      )
+    ).toBeTruthy();
   });
 });

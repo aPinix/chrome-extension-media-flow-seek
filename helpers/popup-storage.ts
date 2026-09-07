@@ -70,17 +70,17 @@ export const DEFAULT_SETTINGS: Omit<PopupSettings, 'domainRules'> = {
   isTimelineSeekingEnabled: true,
   dragVideoToSeek: false,
   hideVideoControls: false,
-  colorizedTimeline: false,
+  colorizedTimeline: true,
   instagramPlaybackSpeed: 1,
   instagramAutoSkip: false,
-  instagramShowPlaybackSpeed: false,
-  instagramShowAutoSkip: false,
+  instagramShowPlaybackSpeed: true,
+  instagramShowAutoSkip: true,
   tiktokPlaybackSpeed: 1,
   tiktokAutoSkip: false,
-  tiktokShowPlaybackSpeed: false,
-  tiktokShowAutoSkip: false,
-  isYouTubeChapteredTimelineEnabled: false,
-  isSeekbarThumbnailPreviewEnabled: false,
+  tiktokShowPlaybackSpeed: true,
+  tiktokShowAutoSkip: true,
+  isYouTubeChapteredTimelineEnabled: true,
+  isSeekbarThumbnailPreviewEnabled: true,
   timelinePosition: 'bottom',
   timelineHeight: 6,
   timelineHeightUnit: 'px',
@@ -207,12 +207,18 @@ export const loadPopupSettings = (): Promise<PopupSettings> => {
           ),
           instagramAutoSkip: stored.instagramAutoSkip === true,
           instagramShowPlaybackSpeed:
-            stored.instagramShowPlaybackSpeed === true,
-          instagramShowAutoSkip: stored.instagramShowAutoSkip === true,
+            stored.instagramShowPlaybackSpeed ??
+            DEFAULT_SETTINGS.instagramShowPlaybackSpeed,
+          instagramShowAutoSkip:
+            stored.instagramShowAutoSkip ??
+            DEFAULT_SETTINGS.instagramShowAutoSkip,
           tiktokPlaybackSpeed: normalizeTikTokSpeed(stored.tiktokPlaybackSpeed),
           tiktokAutoSkip: stored.tiktokAutoSkip === true,
-          tiktokShowPlaybackSpeed: stored.tiktokShowPlaybackSpeed === true,
-          tiktokShowAutoSkip: stored.tiktokShowAutoSkip === true,
+          tiktokShowPlaybackSpeed:
+            stored.tiktokShowPlaybackSpeed ??
+            DEFAULT_SETTINGS.tiktokShowPlaybackSpeed,
+          tiktokShowAutoSkip:
+            stored.tiktokShowAutoSkip ?? DEFAULT_SETTINGS.tiktokShowAutoSkip,
           isYouTubeChapteredTimelineEnabled:
             stored.isYouTubeChapteredTimelineEnabled ??
             DEFAULT_SETTINGS.isYouTubeChapteredTimelineEnabled,

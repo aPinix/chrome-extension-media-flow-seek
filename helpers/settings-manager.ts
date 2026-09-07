@@ -12,6 +12,7 @@ import {
 } from '@/helpers/scroll-speed';
 import { migrateSeekSettings } from '@/helpers/settings-migration';
 import { normalizeTikTokSpeed } from '@/helpers/tiktok-settings';
+import { isYouTubeHostname } from '@/helpers/youtube-chapters';
 import type { ContentSettingsT } from '@/types/content';
 import type { DomainConfigT } from '@/types/domains';
 import { DomainRuleTypeE } from '@/types/domains';
@@ -111,14 +112,21 @@ export class SettingsManager {
             ),
             instagramAutoSkip: stored.instagramAutoSkip === true,
             instagramShowPlaybackSpeed:
-              stored.instagramShowPlaybackSpeed === true,
-            instagramShowAutoSkip: stored.instagramShowAutoSkip === true,
+              stored.instagramShowPlaybackSpeed ??
+              this.defaultSettings.instagramShowPlaybackSpeed,
+            instagramShowAutoSkip:
+              stored.instagramShowAutoSkip ??
+              this.defaultSettings.instagramShowAutoSkip,
             tiktokPlaybackSpeed: normalizeTikTokSpeed(
               stored.tiktokPlaybackSpeed
             ),
             tiktokAutoSkip: stored.tiktokAutoSkip === true,
-            tiktokShowPlaybackSpeed: stored.tiktokShowPlaybackSpeed === true,
-            tiktokShowAutoSkip: stored.tiktokShowAutoSkip === true,
+            tiktokShowPlaybackSpeed:
+              stored.tiktokShowPlaybackSpeed ??
+              this.defaultSettings.tiktokShowPlaybackSpeed,
+            tiktokShowAutoSkip:
+              stored.tiktokShowAutoSkip ??
+              this.defaultSettings.tiktokShowAutoSkip,
             isYouTubeChapteredTimelineEnabled:
               stored.isYouTubeChapteredTimelineEnabled ??
               this.defaultSettings.isYouTubeChapteredTimelineEnabled,
@@ -223,7 +231,7 @@ export class SettingsManager {
     return (
       this.settings.showTimelineOnHover ||
       this.settings.isTimelineSeekingEnabled ||
-      this.settings.isSeekbarThumbnailPreviewEnabled
+      this.isSeekbarThumbnailPreviewEnabled()
     );
   }
 
@@ -245,7 +253,7 @@ export class SettingsManager {
       this.settings.dragVideoToSeek ||
       this.settings.isTimelineSeekingEnabled ||
       this.settings.showTimelineOnHover ||
-      this.settings.isSeekbarThumbnailPreviewEnabled ||
+      this.isSeekbarThumbnailPreviewEnabled() ||
       this.settings.hideVideoControls ||
       ((window.location.hostname === 'instagram.com' ||
         window.location.hostname.endsWith('.instagram.com')) &&
@@ -271,7 +279,10 @@ export class SettingsManager {
   }
 
   isSeekbarThumbnailPreviewEnabled(): boolean {
-    return this.settings.isSeekbarThumbnailPreviewEnabled;
+    return (
+      this.settings.isSeekbarThumbnailPreviewEnabled &&
+      isYouTubeHostname(window.location.hostname)
+    );
   }
 
   getTimelinePosition(): 'top' | 'bottom' {

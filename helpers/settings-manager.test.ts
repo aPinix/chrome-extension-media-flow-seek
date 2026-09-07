@@ -1,18 +1,20 @@
 // @vitest-environment jsdom
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createDomainRule } from '@/helpers/domains';
 import { SettingsManager } from '@/helpers/settings-manager';
 import { DomainModeE } from '@/types/domains';
 
+afterEach(() => vi.unstubAllGlobals());
+
 describe('SettingsManager seek mode gates', () => {
-  it('defaults YouTube chaptered timelines to off and updates them independently', () => {
+  it('defaults YouTube chaptered timelines to on and updates them independently', () => {
     const settings = new SettingsManager();
 
-    expect(settings.isYouTubeChapteredTimelineEnabled()).toBe(false);
-    settings.updateSetting('isYouTubeChapteredTimelineEnabled', true);
     expect(settings.isYouTubeChapteredTimelineEnabled()).toBe(true);
+    settings.updateSetting('isYouTubeChapteredTimelineEnabled', false);
+    expect(settings.isYouTubeChapteredTimelineEnabled()).toBe(false);
   });
 
   it('defaults action area size to percentage units', () => {
@@ -47,18 +49,44 @@ describe('SettingsManager seek mode gates', () => {
     expect(settings.getSettings().showTimelineOnHover).toBe(false);
   });
 
-  it('keeps hover thumbnails independent and activates video overlays for them', () => {
-    const settings = new SettingsManager();
-    settings.updateSetting('isScrollSeekingEnabled', false);
-    settings.updateSetting('isTimelineSeekingEnabled', false);
-    settings.updateSetting('showTimelineOnHover', false);
-    settings.updateSetting('isSeekbarThumbnailPreviewEnabled', true);
+  it.each([
+    ['https://www.youtube.com/watch?v=example', true],
+    ['https://m.youtube.com/shorts/example', true],
+    ['https://www.youtube-nocookie.com/embed/example', true],
+    ['https://www.instagram.com/reels/example/', false],
+    ['https://www.tiktok.com/@example/video/1', false],
+    ['https://example.com/video', false],
+    ['https://youtube.com.example.com/video', false],
+  ])(
+    'limits thumbnail previews and their hover override on %s to %s',
+    (url, enabled) => {
+      vi.stubGlobal('window', { location: new URL(url) });
+      const settings = new SettingsManager();
+      settings.updateSetting('isScrollSeekingEnabled', false);
+      settings.updateSetting('isTimelineSeekingEnabled', false);
+      settings.updateSetting('dragVideoToSeek', false);
+      settings.updateSetting('hideVideoControls', false);
+      settings.updateSetting('showTimelineOnHover', false);
+      settings.updateSetting('instagramShowPlaybackSpeed', false);
+      settings.updateSetting('instagramShowAutoSkip', false);
+      settings.updateSetting('tiktokShowPlaybackSpeed', false);
+      settings.updateSetting('tiktokShowAutoSkip', false);
+      settings.updateSetting('isSeekbarThumbnailPreviewEnabled', true);
 
-    expect(settings.isSeekbarThumbnailPreviewEnabled()).toBe(true);
-    expect(settings.shouldShowTimelineOnHover()).toBe(true);
-    expect(settings.getSettings().showTimelineOnHover).toBe(false);
-    expect(settings.hasActiveVideoFeatures()).toBe(true);
-  });
+      expect(settings.isSeekbarThumbnailPreviewEnabled()).toBe(enabled);
+      expect(settings.shouldShowTimelineOnHover()).toBe(enabled);
+      expect(settings.hasActiveVideoFeatures()).toBe(enabled);
+      expect(settings.getSettings().showTimelineOnHover).toBe(false);
+      expect(settings.getSettings().isSeekbarThumbnailPreviewEnabled).toBe(
+        true
+      );
+
+      settings.updateSetting('isSeekbarThumbnailPreviewEnabled', false);
+      expect(settings.isSeekbarThumbnailPreviewEnabled()).toBe(false);
+      expect(settings.shouldShowTimelineOnHover()).toBe(false);
+      expect(settings.hasActiveVideoFeatures()).toBe(false);
+    }
+  );
 
   it('gates wheel actions and overlay activation with the Scroll parent', () => {
     const settings = new SettingsManager();

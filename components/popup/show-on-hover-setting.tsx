@@ -23,11 +23,7 @@ export function ShowOnHoverSetting({
   isSeekbarThumbnailPreviewEnabled,
   onCheckedChange,
 }: ShowOnHoverSettingPropsI) {
-  const lockedBy = isSeekbarSeekingEnabled
-    ? 'Click & Drag Seekbar'
-    : isSeekbarThumbnailPreviewEnabled
-      ? 'Hover Thumbnails'
-      : null;
+  const lockedBy = isSeekbarSeekingEnabled ? 'Click & Drag Seekbar' : null;
   const effectiveChecked = checked || lockedBy !== null;
 
   return (
@@ -45,7 +41,9 @@ export function ShowOnHoverSetting({
       description={
         lockedBy
           ? `Locked on while ${lockedBy} is enabled`
-          : 'Reveal progress when the pointer is over a video'
+          : isSeekbarThumbnailPreviewEnabled
+            ? 'Hover Thumbnails keeps the timeline visible on hover on YouTube'
+            : 'Reveal progress when the pointer is over a video'
       }
       icon={EyeIcon}
       iconIsToggled={effectiveChecked}
@@ -68,17 +66,8 @@ export function ShowOnHoverSetting({
                   }
                 />
                 <TooltipContent>
-                  {lockedBy === 'Click & Drag Seekbar' ? (
-                    <>
-                      <strong>Click & Drag Seekbar</strong> needs the timeline
-                      visible so it can be used.
-                    </>
-                  ) : (
-                    <>
-                      <strong>Hover Thumbnails</strong> needs the timeline
-                      visible so previews can be shown.
-                    </>
-                  )}
+                  <strong>Click & Drag Seekbar</strong> needs the timeline
+                  visible so it can be used.
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>

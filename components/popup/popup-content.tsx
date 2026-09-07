@@ -2,7 +2,6 @@ import {
   BugIcon,
   EyeOffIcon,
   GlobeIcon,
-  ImagesIcon,
   PaletteIcon,
   PowerIcon,
   SlidersHorizontalIcon,
@@ -1031,38 +1030,6 @@ export function PopupContent() {
                       components={{
                         RightSlot: (
                           <AppSwitch
-                            aria-label="Show seekbar thumbnail previews"
-                            checked={isSeekbarThumbnailPreviewEnabled}
-                            onCheckedChange={
-                              handleSeekbarThumbnailPreviewToggle
-                            }
-                          />
-                        ),
-                      }}
-                      description="Preview the frame, time, and chapter under the pointer"
-                      icon={ImagesIcon}
-                      iconIsToggled={isSeekbarThumbnailPreviewEnabled}
-                      title={
-                        <span className="inline-flex items-center gap-1.5">
-                          Hover Thumbnails
-                          <ExtraFeaturePreviewTooltip featureName="Hover Thumbnails" />
-                          <AppBetaBadge
-                            featureName="Hover Thumbnails"
-                            tooltip={
-                              <>
-                                <strong>Frame previews</strong> are best effort
-                                and may be unavailable for protected or
-                                streaming video sources.
-                              </>
-                            }
-                          />
-                        </span>
-                      }
-                    />
-                    <CardListItem
-                      components={{
-                        RightSlot: (
-                          <AppSwitch
                             aria-label="Use minimal player"
                             checked={hideVideoControls}
                             onCheckedChange={handleHideVideoControlsToggle}
@@ -1120,6 +1087,10 @@ export function PopupContent() {
                     onChapteredTimelineEnabledChange={
                       handleYouTubeChapteredTimelineToggle
                     }
+                    onThumbnailPreviewEnabledChange={
+                      handleSeekbarThumbnailPreviewToggle
+                    }
+                    thumbnailPreviewEnabled={isSeekbarThumbnailPreviewEnabled}
                   />
                 </div>
                 <div className="flex flex-none flex-col">

@@ -38,6 +38,7 @@ import {
 import {
   extractYouTubeChapterModel,
   isYouTubeChapterPage,
+  isYouTubeHostname,
   type YouTubeChapterModelT,
   type YouTubeChapterT,
   youtubeChapterMutationMayAffectModel,
@@ -471,9 +472,11 @@ export class OverlayCreator {
       isYouTubeChapterPage(ownerDocument.location.href)
         ? this.createYouTubeChapterTooltipElement(ownerDocument)
         : undefined;
-    const thumbnailPreview = !DOMUtils.isYouTubeHoverPreview(video)
-      ? createSeekbarThumbnailPreviewElement(ownerDocument)
-      : undefined;
+    const thumbnailPreview =
+      isYouTubeHostname(ownerDocument.location.hostname) &&
+      !DOMUtils.isYouTubeHoverPreview(video)
+        ? createSeekbarThumbnailPreviewElement(ownerDocument)
+        : undefined;
 
     // Add elements to wrapper
     scrubWrapper.appendChild(scrubOverlay);

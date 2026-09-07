@@ -6,6 +6,7 @@ import {
   saveSettings,
   subscribeToEnabledChanges,
 } from '@/helpers/popup-storage';
+import { SettingsManager } from '@/helpers/settings-manager';
 import { SETTINGS_SCHEMA_VERSION } from '@/helpers/settings-migration';
 import { DomainSortE } from '@/types/domains';
 
@@ -14,42 +15,58 @@ describe('timeline seeking storage', () => {
     vi.unstubAllGlobals();
   });
 
-  it('defaults timeline seeking to enabled when no preference is stored', async () => {
-    vi.stubGlobal('chrome', {
-      storage: {
-        sync: {
-          get: vi.fn((_keys, callback) => callback({})),
-          set: vi.fn(),
+  it.each(['popup', 'content'] as const)(
+    'loads new-install defaults in %s',
+    async (loader) => {
+      vi.stubGlobal('chrome', {
+        storage: {
+          sync: {
+            get: vi.fn((_keys, callback) => callback({})),
+            set: vi.fn(),
+          },
         },
-      },
-    });
+      });
 
-    const settings = await loadPopupSettings();
+      const settings =
+        loader === 'popup'
+          ? await loadPopupSettings()
+          : await new SettingsManager().initialize();
 
-    expect(DEFAULT_SETTINGS.isTimelineSeekingEnabled).toBe(true);
-    expect(settings.isTimelineSeekingEnabled).toBe(true);
-    expect(DEFAULT_SETTINGS.isScrollSeekingEnabled).toBe(true);
-    expect(settings.isScrollSeekingEnabled).toBe(true);
-    expect(settings.settingsSchemaVersion).toBe(SETTINGS_SCHEMA_VERSION);
-    expect(DEFAULT_SETTINGS.dragVideoToSeek).toBe(false);
-    expect(settings.dragVideoToSeek).toBe(false);
-    expect(DEFAULT_SETTINGS.hideVideoControls).toBe(false);
-    expect(settings.hideVideoControls).toBe(false);
-    expect(DEFAULT_SETTINGS.colorizedTimeline).toBe(false);
-    expect(settings.colorizedTimeline).toBe(false);
-    expect(DEFAULT_SETTINGS.isYouTubeChapteredTimelineEnabled).toBe(false);
-    expect(settings.isYouTubeChapteredTimelineEnabled).toBe(false);
-    expect(DEFAULT_SETTINGS.isSeekbarThumbnailPreviewEnabled).toBe(false);
-    expect(settings.isSeekbarThumbnailPreviewEnabled).toBe(false);
-    expect(DEFAULT_SETTINGS.isPlayPauseWheelEnabled).toBe(true);
-    expect(settings.isPlayPauseWheelEnabled).toBe(true);
-    expect(DEFAULT_SETTINGS.scrollSpeedFactor).toBe(1);
-    expect(settings.scrollSpeedFactor).toBe(1);
-    expect(DEFAULT_SETTINGS.actionAreaSizeUnit).toBe('%');
-    expect(settings.actionAreaSizeUnit).toBe('%');
-    expect(DEFAULT_SETTINGS.domainSort).toBe(DomainSortE.Custom);
-    expect(settings.domainSort).toBe(DomainSortE.Custom);
-  });
+      expect(DEFAULT_SETTINGS.isTimelineSeekingEnabled).toBe(true);
+      expect(settings.isTimelineSeekingEnabled).toBe(true);
+      expect(DEFAULT_SETTINGS.isScrollSeekingEnabled).toBe(true);
+      expect(settings.isScrollSeekingEnabled).toBe(true);
+      expect(settings.settingsSchemaVersion).toBe(SETTINGS_SCHEMA_VERSION);
+      expect(DEFAULT_SETTINGS.dragVideoToSeek).toBe(false);
+      expect(settings.dragVideoToSeek).toBe(false);
+      expect(DEFAULT_SETTINGS.hideVideoControls).toBe(false);
+      expect(settings.hideVideoControls).toBe(false);
+      expect(DEFAULT_SETTINGS.colorizedTimeline).toBe(true);
+      expect(settings.colorizedTimeline).toBe(true);
+      expect(DEFAULT_SETTINGS.isYouTubeChapteredTimelineEnabled).toBe(true);
+      expect(settings.isYouTubeChapteredTimelineEnabled).toBe(true);
+      expect(DEFAULT_SETTINGS.isSeekbarThumbnailPreviewEnabled).toBe(true);
+      expect(settings.isSeekbarThumbnailPreviewEnabled).toBe(true);
+      expect(settings.instagramShowPlaybackSpeed).toBe(true);
+      expect(settings.instagramShowAutoSkip).toBe(true);
+      expect(settings.tiktokShowPlaybackSpeed).toBe(true);
+      expect(settings.tiktokShowAutoSkip).toBe(true);
+      expect(settings.instagramAutoSkip).toBe(false);
+      expect(settings.tiktokAutoSkip).toBe(false);
+      expect(settings.instagramPlaybackSpeed).toBe(1);
+      expect(settings.tiktokPlaybackSpeed).toBe(1);
+      expect(DEFAULT_SETTINGS.isPlayPauseWheelEnabled).toBe(true);
+      expect(settings.isPlayPauseWheelEnabled).toBe(true);
+      expect(DEFAULT_SETTINGS.scrollSpeedFactor).toBe(1);
+      expect(settings.scrollSpeedFactor).toBe(1);
+      expect(DEFAULT_SETTINGS.actionAreaSizeUnit).toBe('%');
+      expect(settings.actionAreaSizeUnit).toBe('%');
+      expect(DEFAULT_SETTINGS.domainSort).toBe(DomainSortE.Custom);
+      if ('domainSort' in settings) {
+        expect(settings.domainSort).toBe(DomainSortE.Custom);
+      }
+    }
+  );
 
   it('loads and saves the website sort preference', async () => {
     const set = vi.fn();
@@ -172,13 +189,21 @@ describe('timeline seeking storage', () => {
     expect(set).toHaveBeenCalledWith({ isTimelineSeekingEnabled: false });
   });
 
-  it('loads and saves the seekbar thumbnail preview preference', async () => {
+  it('preserves saved opt-outs for features enabled by default', async () => {
     const set = vi.fn();
     vi.stubGlobal('chrome', {
       storage: {
         sync: {
           get: vi.fn((_keys, callback) =>
-            callback({ isSeekbarThumbnailPreviewEnabled: true })
+            callback({
+              colorizedTimeline: false,
+              isYouTubeChapteredTimelineEnabled: false,
+              isSeekbarThumbnailPreviewEnabled: false,
+              instagramShowPlaybackSpeed: false,
+              instagramShowAutoSkip: false,
+              tiktokShowPlaybackSpeed: false,
+              tiktokShowAutoSkip: false,
+            })
           ),
           set,
         },
@@ -188,7 +213,21 @@ describe('timeline seeking storage', () => {
     const settings = await loadPopupSettings();
     saveSettings({ isSeekbarThumbnailPreviewEnabled: false });
 
-    expect(settings.isSeekbarThumbnailPreviewEnabled).toBe(true);
+    const contentSettings = await new SettingsManager().initialize();
+    expect(settings.colorizedTimeline).toBe(false);
+    expect(contentSettings.colorizedTimeline).toBe(false);
+    expect(settings.isYouTubeChapteredTimelineEnabled).toBe(false);
+    expect(contentSettings.isYouTubeChapteredTimelineEnabled).toBe(false);
+    expect(settings.isSeekbarThumbnailPreviewEnabled).toBe(false);
+    expect(contentSettings.isSeekbarThumbnailPreviewEnabled).toBe(false);
+    expect(settings.instagramShowPlaybackSpeed).toBe(false);
+    expect(contentSettings.instagramShowPlaybackSpeed).toBe(false);
+    expect(settings.instagramShowAutoSkip).toBe(false);
+    expect(contentSettings.instagramShowAutoSkip).toBe(false);
+    expect(settings.tiktokShowPlaybackSpeed).toBe(false);
+    expect(contentSettings.tiktokShowPlaybackSpeed).toBe(false);
+    expect(settings.tiktokShowAutoSkip).toBe(false);
+    expect(contentSettings.tiktokShowAutoSkip).toBe(false);
     expect(set).toHaveBeenCalledWith({
       isSeekbarThumbnailPreviewEnabled: false,
     });
