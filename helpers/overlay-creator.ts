@@ -13,6 +13,7 @@ import {
   MEDIA_SCROLL_SEEK_SETTLE_DELAY_MS,
   MEDIA_SEEK_SETTLE_DELAY_MS,
 } from '@/helpers/media';
+import { getDocumentOverlayHost } from '@/helpers/overlay-portal';
 import {
   DEFAULT_SCROLL_SPEED_FACTOR,
   getPlayerLayerWheelDeltaPixels,
@@ -22,6 +23,7 @@ import {
   isScrollSpeedHotkeyCode,
 } from '@/helpers/scroll-speed';
 import type { SettingsManager } from '@/helpers/settings-manager';
+import { setupSocialVideo } from '@/helpers/social-video';
 import {
   createSeekbarThumbnailPreviewElement,
   SeekbarThumbnailPreviewController,
@@ -51,9 +53,10 @@ const INTERACTIVE_TIMELINE_Z_INDEX = '2147483645';
 const THUMBNAIL_PREVIEW_Z_INDEX = '2147483646';
 const VIDEO_DRAG_START_THRESHOLD_PX = 5;
 const VOLUME_DRAG_START_THRESHOLD_PX = 3;
-const VOLUME_CONTROL_WIDTH_PX = 20;
-const VOLUME_EDGE_GAP_PX = 0;
-const VOLUME_CONTROL_HEIGHT_PX = 72;
+const VOLUME_CONTROL_WIDTH_PX = 18;
+const VOLUME_EDGE_GAP_PX = 8;
+const VOLUME_BOTTOM_GAP_PX = 20;
+const VOLUME_CONTROL_HEIGHT_PX = 60;
 const VOLUME_KEY_STEP = 0.05;
 const VOLUME_WHEEL_SENSITIVITY = 0.001;
 const PAGE_DIALOG_SELECTOR = [
@@ -64,6 +67,7 @@ const PAGE_DIALOG_SELECTOR = [
   '[popover]',
 ].join(',');
 const EXTENSION_UI_SELECTOR = [
+  '.mfs-social-page-controls',
   '.scrub-wrapper',
   '.scrub-timeline',
   '.mfs-media-controls',
@@ -1026,19 +1030,20 @@ export class OverlayCreator {
           height: min(${VOLUME_CONTROL_HEIGHT_PX}px, calc(100% - 16px));
           position: absolute;
           right: ${VOLUME_EDGE_GAP_PX}px;
-          top: 50%;
+          top: auto;
+          bottom: ${VOLUME_BOTTOM_GAP_PX}px;
           z-index: 2147483647 !important;
           display: block;
           box-sizing: border-box;
           overflow: hidden;
           border: 0;
-          border-radius: 8px 0 0 8px;
+          border-radius: 999px;
           background: rgb(255 255 255 / 0.28);
           color: white;
           box-shadow: none;
           visibility: hidden;
           opacity: 0;
-          transform: translateY(-50%);
+          transform: none;
           transition: opacity 140ms ease, transform 140ms ease;
           -webkit-backdrop-filter: blur(6px) saturate(130%);
           backdrop-filter: blur(6px) saturate(130%);
@@ -1062,7 +1067,7 @@ export class OverlayCreator {
         .mfs-media-controls[data-mfs-active="true"]:focus-within {
           visibility: visible;
           opacity: 1;
-          transform: translateY(-50%);
+          transform: none;
           pointer-events: auto !important;
         }
 
@@ -1122,16 +1127,33 @@ export class OverlayCreator {
           transition: none;
         }
 
+        .mfs-volume-mute {
+          all: unset;
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          width: 100%;
+          height: ${VOLUME_CONTROL_WIDTH_PX}px;
+          z-index: 4;
+          cursor: pointer;
+          border-radius: 50%;
+        }
+
+        .mfs-volume-mute:focus-visible {
+          outline: 2px solid white;
+          outline-offset: -2px;
+        }
+
         .mfs-volume-icon {
           width: 14px;
           height: 14px;
           position: absolute;
           left: 50%;
-          bottom: 6px;
+          bottom: ${(VOLUME_CONTROL_WIDTH_PX - 14) / 2}px;
           z-index: 3;
           display: block;
-          color: white;
-          filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.25));
+          color: rgb(60 60 60);
+          filter: none;
           transform: translateX(-50%);
           pointer-events: none;
         }
@@ -1160,10 +1182,10 @@ export class OverlayCreator {
             transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
         }
 
-        .mfs-volume-pill[data-mfs-volume-level="low"] .mfs-volume-icon-wave-one,
-        .mfs-volume-pill[data-mfs-volume-level="medium"] .mfs-volume-icon-wave-one,
-        .mfs-volume-pill[data-mfs-volume-level="medium"] .mfs-volume-icon-wave-two,
-        .mfs-volume-pill[data-mfs-volume-level="high"] .mfs-volume-icon-wave {
+        .mfs-media-controls[data-mfs-volume-level="low"] .mfs-volume-icon-wave-one,
+        .mfs-media-controls[data-mfs-volume-level="medium"] .mfs-volume-icon-wave-one,
+        .mfs-media-controls[data-mfs-volume-level="medium"] .mfs-volume-icon-wave-two,
+        .mfs-media-controls[data-mfs-volume-level="high"] .mfs-volume-icon-wave {
           opacity: 1;
           transform: scaleX(1);
         }
@@ -1177,7 +1199,7 @@ export class OverlayCreator {
             stroke-dashoffset 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
         }
 
-        .mfs-volume-pill[data-mfs-volume-level="muted"] .mfs-volume-icon-muted {
+        .mfs-media-controls[data-mfs-volume-level="muted"] .mfs-volume-icon-muted {
           opacity: 1;
           stroke-dashoffset: 0;
         }
@@ -1630,7 +1652,7 @@ export class OverlayCreator {
     const portalHost =
       fullscreenElement?.contains(video) || fullscreenElement?.contains(wrapper)
         ? fullscreenElement
-        : ownerDocument.documentElement;
+        : getDocumentOverlayHost(video);
 
     if (timeline.parentElement !== portalHost) portalHost.appendChild(timeline);
     if (thumbnailPreview && thumbnailPreview.parentElement !== portalHost) {
@@ -2845,11 +2867,11 @@ export class OverlayCreator {
         <img
           class="scrub-debug-indicator-logo"
           src="${getAppLogoBase64()}"
-          alt="BetterVideo"
+          alt="Better Video Controls"
         />
       </span>
       <div class="scrub-debug-indicator-text">
-        <span class="scrub-debug-indicator-title">BetterVideo (Extension)</span>
+        <span class="scrub-debug-indicator-title">Better Video Controls (Extension)</span>
         <span class="scrub-debug-indicator-subtitle">Debug mode enabled</span>
       </div>
     `;
@@ -2864,14 +2886,18 @@ export class OverlayCreator {
     controls.setAttribute('role', 'group');
     controls.setAttribute('aria-label', 'Volume control');
     controls.innerHTML = `
-      <button
+      <div
         class="mfs-volume-pill"
-        type="button"
+        role="slider"
+        tabindex="0"
+        aria-orientation="vertical"
         data-mfs-action="volume"
         aria-label="Volume"
-        title="Drag or scroll to adjust volume; click to mute"
+        title="Click to mute/unmute; drag or scroll to adjust volume"
       >
         <span class="mfs-volume-fill" aria-hidden="true"></span>
+      </div>
+      <button class="mfs-volume-mute" type="button" data-mfs-action="mute" aria-label="Mute">
         <svg
           class="mfs-volume-icon"
           viewBox="0 0 24 24"
@@ -2898,22 +2924,60 @@ export class OverlayCreator {
     sync: () => void;
   } {
     const ownerWindow = video.ownerDocument.defaultView ?? window;
-    const volumePill = controls.querySelector<HTMLButtonElement>(
+    const volumePill = controls.querySelector<HTMLDivElement>(
       '[data-mfs-action="volume"]'
     );
 
-    if (!volumePill) {
+    const muteButton = controls.querySelector<HTMLButtonElement>(
+      '[data-mfs-action="mute"]'
+    );
+    if (!volumePill || !muteButton) {
       return {
         cleanup: () => {},
         preserveSourceVolume: () => {},
         sync: () => {},
       };
     }
+    const socialVideo = setupSocialVideo(
+      video,
+      () => this.settingsManager.getSettings?.() ?? {},
+      (key, value) => this.settingsManager.updateSetting(key, value)
+    );
     let lastAudibleVolume = video.volume > 0 ? video.volume : 1;
     let pointerStartY: number | null = null;
     let activePointerId: number | null = null;
     let suppressNextClick = false;
     let suppressClickTimeout: number | null = null;
+    let dragBounds: DOMRect | null = null;
+    let overdrag = 0;
+    let rebound: Animation | undefined;
+    const reducedMotion = ownerWindow.matchMedia?.(
+      '(prefers-reduced-motion: reduce)'
+    );
+    const stretch = (amount: number) =>
+      `scale(${1 - Math.abs(amount) * 0.22}, ${1 + Math.abs(amount)})`;
+    const resetOverdrag = (animate: boolean) => {
+      rebound?.cancel();
+      rebound = undefined;
+      const amount = overdrag;
+      overdrag = 0;
+      controls.style.removeProperty('transform');
+      if (animate && amount && !reducedMotion?.matches && controls.animate) {
+        // Damped spring samples: a small overshoot, then settle at rest.
+        rebound = controls.animate(
+          [
+            { transform: stretch(amount), offset: 0 },
+            {
+              transform: `scale(${1 + Math.abs(amount) * 0.035}, ${1 - Math.abs(amount) * 0.16})`,
+              offset: 0.48,
+            },
+            { transform: stretch(amount * 0.035), offset: 0.76 },
+            { transform: 'scale(1)', offset: 1 },
+          ],
+          { duration: 380, easing: 'ease-out' }
+        );
+      }
+    };
     let sourceVolumeState = {
       muted: video.muted,
       volume: video.volume,
@@ -2924,7 +2988,8 @@ export class OverlayCreator {
     const syncVolume = (): void => {
       const volumePercent = Math.round(video.volume * 100);
       const isMuted = video.muted || video.volume === 0;
-      const displayedVolumePercent = isMuted ? 0 : volumePercent;
+      // Muted autoplay must not move the remembered volume thumb to zero.
+      const displayedVolumePercent = volumePercent;
       const volumeLevel = isMuted
         ? 'muted'
         : volumePercent <= 33
@@ -2940,17 +3005,15 @@ export class OverlayCreator {
       );
       volumePill.dataset.mfsMuted = String(isMuted);
       volumePill.dataset.mfsVolumeLevel = volumeLevel;
-      volumePill.setAttribute(
-        'aria-label',
-        isMuted ? 'Unmute' : `Volume ${volumePercent}%, click to mute`
-      );
-      volumePill.setAttribute('aria-pressed', String(isMuted));
+      controls.dataset.mfsVolumeLevel = volumeLevel;
+      volumePill.setAttribute('aria-label', 'Volume');
+      muteButton.setAttribute('aria-label', isMuted ? 'Unmute' : 'Mute');
+      muteButton.setAttribute('aria-pressed', String(isMuted));
+      muteButton.title = isMuted ? 'Unmute' : 'Mute';
       volumePill.setAttribute('aria-valuenow', String(volumePercent));
       volumePill.setAttribute('aria-valuemin', '0');
       volumePill.setAttribute('aria-valuemax', '100');
-      volumePill.title = isMuted
-        ? 'Click to unmute; drag or scroll to adjust volume'
-        : `Volume ${volumePercent}% · drag or scroll to adjust · click to mute`;
+      volumePill.title = `Volume ${volumePercent}% · click, drag or scroll to adjust`;
     };
 
     const syncPreferredVolume = (): void => {
@@ -2985,27 +3048,44 @@ export class OverlayCreator {
     };
 
     const toggleMute = (): void => {
-      if (video.muted || video.volume === 0) {
-        if (video.volume === 0) video.volume = lastAudibleVolume;
-        video.muted = false;
-      } else {
-        lastAudibleVolume = video.volume;
-        video.muted = true;
-      }
+      const unmute = video.muted || video.volume === 0;
+      const volume =
+        unmute && video.volume === 0 ? lastAudibleVolume : video.volume;
+      socialVideo.remember({ volume, muted: !unmute });
+      video.volume = volume;
+      video.muted = !unmute;
+      if (volume > 0) lastAudibleVolume = volume;
       syncVolume();
     };
 
     const setVolume = (nextVolume: number): void => {
-      video.volume = Math.min(1, Math.max(0, nextVolume));
-      video.muted = video.volume === 0;
-      if (video.volume > 0) lastAudibleVolume = video.volume;
+      const volume = Math.min(1, Math.max(0, nextVolume));
+      socialVideo.remember({ volume, muted: volume === 0 });
+      video.volume = volume;
+      video.muted = volume === 0;
+      if (volume > 0) lastAudibleVolume = volume;
       syncVolume();
     };
 
     const setVolumeFromClientY = (clientY: number): void => {
-      const rect = volumePill.getBoundingClientRect();
+      const rect = dragBounds ?? volumePill.getBoundingClientRect();
       if (rect.height <= 0) return;
-      setVolume(1 - (clientY - rect.top) / rect.height);
+      const trackTop = rect.top;
+      const trackHeight = rect.height;
+      if (trackHeight <= 0) return;
+      setVolume(1 - (clientY - trackTop) / trackHeight);
+      const excess =
+        clientY < rect.top
+          ? rect.top - clientY
+          : clientY > rect.bottom
+            ? rect.bottom - clientY
+            : 0;
+      overdrag = reducedMotion?.matches
+        ? 0
+        : Math.sign(excess) * 0.24 * (1 - Math.exp(-Math.abs(excess) / 65));
+      controls.style.transformOrigin =
+        excess >= 0 ? 'center bottom' : 'center top';
+      controls.style.transform = stretch(overdrag);
     };
 
     const stopPlayerInteraction = (event: Event): void => {
@@ -3020,13 +3100,17 @@ export class OverlayCreator {
       )
         return;
 
+      resetOverdrag(false);
+      dragBounds = volumePill.getBoundingClientRect();
       pointerStartY = event.clientY;
       activePointerId = event.pointerId;
       suppressNextClick = false;
       controls.dataset.mfsInteracting = 'true';
       controls.dataset.mfsVisible = 'true';
       try {
-        volumePill.setPointerCapture?.(event.pointerId);
+        (event.currentTarget as HTMLElement).setPointerCapture?.(
+          event.pointerId
+        );
       } catch {
         // Document-level movement is not needed because the pill normally
         // captures the pointer; browsers without capture still work in-bounds.
@@ -3054,12 +3138,20 @@ export class OverlayCreator {
         setVolumeFromClientY(event.clientY);
       }
       try {
-        if (volumePill.hasPointerCapture?.(event.pointerId)) {
-          volumePill.releasePointerCapture(event.pointerId);
+        if (
+          (event.currentTarget as HTMLElement).hasPointerCapture?.(
+            event.pointerId
+          )
+        ) {
+          (event.currentTarget as HTMLElement).releasePointerCapture(
+            event.pointerId
+          );
         }
       } catch {
         // Pointer capture can already be gone after cancellation.
       }
+      resetOverdrag(event.type !== 'pointercancel');
+      dragBounds = null;
       activePointerId = null;
       pointerStartY = null;
       volumePill.dataset.mfsDragging = 'false';
@@ -3118,6 +3210,11 @@ export class OverlayCreator {
     };
 
     const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        toggleMute();
+        return;
+      }
       if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
       event.preventDefault();
       setVolume(
@@ -3147,6 +3244,11 @@ export class OverlayCreator {
     volumePill.addEventListener('pointerup', finishPointer);
     volumePill.addEventListener('pointercancel', finishPointer);
     volumePill.addEventListener('click', handleClick);
+    muteButton.addEventListener('click', handleClick);
+    muteButton.addEventListener('pointerdown', handlePointerDown);
+    muteButton.addEventListener('pointermove', handlePointerMove);
+    muteButton.addEventListener('pointerup', finishPointer);
+    muteButton.addEventListener('pointercancel', finishPointer);
     volumePill.addEventListener('wheel', handleWheel, { passive: false });
     volumePill.addEventListener('keydown', handleKeyDown);
     video.addEventListener('volumechange', handleVolumeChange);
@@ -3165,6 +3267,9 @@ export class OverlayCreator {
 
     return {
       cleanup: () => {
+        resetOverdrag(false);
+        controls.style.removeProperty('transform-origin');
+        socialVideo.cleanup();
         if (suppressClickTimeout !== null) {
           ownerWindow.clearTimeout(suppressClickTimeout);
           suppressClickTimeout = null;
@@ -3177,6 +3282,11 @@ export class OverlayCreator {
         volumePill.removeEventListener('pointerup', finishPointer);
         volumePill.removeEventListener('pointercancel', finishPointer);
         volumePill.removeEventListener('click', handleClick);
+        muteButton.removeEventListener('click', handleClick);
+        muteButton.removeEventListener('pointerdown', handlePointerDown);
+        muteButton.removeEventListener('pointermove', handlePointerMove);
+        muteButton.removeEventListener('pointerup', finishPointer);
+        muteButton.removeEventListener('pointercancel', finishPointer);
         volumePill.removeEventListener('wheel', handleWheel);
         volumePill.removeEventListener('keydown', handleKeyDown);
         video.removeEventListener('volumechange', handleVolumeChange);
@@ -3987,6 +4097,8 @@ export class OverlayCreator {
       controls.style.left = '';
       controls.style.right = '';
       controls.style.top = '';
+      controls.style.bottom = '';
+      controls.style.height = '';
       delete controls.dataset.mfsPortaled;
       return;
     }
@@ -3998,7 +4110,7 @@ export class OverlayCreator {
       fullscreenElement?.contains(video) ||
       fullscreenElement?.contains(state.wrapper)
         ? fullscreenElement
-        : ownerDocument.documentElement;
+        : getDocumentOverlayHost(video);
     const videoRect = state.wrapper.getBoundingClientRect();
     const controlsWidth =
       controls.getBoundingClientRect().width || VOLUME_CONTROL_WIDTH_PX;
@@ -4007,7 +4119,16 @@ export class OverlayCreator {
       controlsWidth -
       VOLUME_EDGE_GAP_PX +
       ownerWindow.scrollX;
-    let portalTop = videoRect.top + videoRect.height / 2 + ownerWindow.scrollY;
+    const controlsHeight = Math.max(
+      0,
+      Math.min(VOLUME_CONTROL_HEIGHT_PX, videoRect.height - 16)
+    );
+    let portalTop =
+      videoRect.top +
+      videoRect.height -
+      VOLUME_BOTTOM_GAP_PX -
+      controlsHeight +
+      ownerWindow.scrollY;
 
     if (portalHost !== ownerDocument.documentElement) {
       const portalRect = portalHost.getBoundingClientRect();
@@ -4023,7 +4144,9 @@ export class OverlayCreator {
         portalRect.top +
         portalHost.scrollTop -
         portalHost.clientTop +
-        videoRect.height / 2;
+        videoRect.height -
+        VOLUME_BOTTOM_GAP_PX -
+        controlsHeight;
     }
 
     if (controls.parentElement !== portalHost) portalHost.appendChild(controls);
@@ -4031,6 +4154,8 @@ export class OverlayCreator {
     controls.style.left = `${portalLeft}px`;
     controls.style.right = 'auto';
     controls.style.top = `${portalTop}px`;
+    controls.style.bottom = 'auto';
+    controls.style.height = `${controlsHeight}px`;
     controls.dataset.mfsPortaled = 'true';
   }
 
@@ -4333,7 +4458,7 @@ export class OverlayCreator {
       const fullscreenElement = ownerDocument.fullscreenElement;
       const portalHost = fullscreenElement?.contains(video)
         ? fullscreenElement
-        : ownerDocument.documentElement;
+        : getDocumentOverlayHost(video);
       const overlayRect = DOMUtils.isYouTubeHoverPreview(video)
         ? this.getVideoActionAreaBounds(video)
         : overlay.getBoundingClientRect();
@@ -4665,7 +4790,7 @@ export class OverlayCreator {
 
   /**
    * Let site-owned modal UI take exclusive pointer ownership while it is open.
-   * BetterVideo normally sits above custom player chrome, so without this guard
+   * Better Video Controls normally sits above custom player chrome, so without this guard
    * a transparent scrub layer can intercept clicks intended for a login,
    * consent, share, settings, or other page dialog.
    */

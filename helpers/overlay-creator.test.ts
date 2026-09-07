@@ -1827,7 +1827,9 @@ describe('OverlayCreator debug indicator', () => {
       .item(existingStyleCount).textContent;
 
     expect(debugIndicator.className).toBe('scrub-debug-indicator');
-    expect(debugIndicator.textContent).toContain('BetterVideo (Extension)');
+    expect(debugIndicator.textContent).toContain(
+      'Better Video Controls (Extension)'
+    );
     expect(debugIndicator.textContent).toContain('Debug mode enabled');
     expect(
       debugIndicator.querySelector('.scrub-debug-indicator-logo')
@@ -2721,8 +2723,8 @@ describe('OverlayCreator timeline seeking', () => {
     expect(state.wrapper.style.getPropertyValue('z-index')).toBe('');
     expect(state.mediaControls.parentElement).toBe(document.documentElement);
     expect(state.mediaControls.dataset.mfsPortaled).toBe('true');
-    expect(state.mediaControls.style.left).toBe('190px');
-    expect(state.mediaControls.style.top).toBe('70px');
+    expect(state.mediaControls.style.left).toBe('184px');
+    expect(state.mediaControls.style.top).toBe('40px');
 
     const hoverMethods = overlayCreator as unknown as {
       updateTimelineHoverState: (
@@ -3430,7 +3432,7 @@ describe('OverlayCreator timeline seeking', () => {
     playbackController.cleanup();
   });
 
-  it('renders a compact frosted volume pill and synchronizes it', () => {
+  it('renders the original compact volume bar and synchronizes it', () => {
     vi.useFakeTimers();
     const overlayCreator = new OverlayCreator(
       createSettingsManager({
@@ -3482,17 +3484,17 @@ describe('OverlayCreator timeline seeking', () => {
     expect(controls.querySelector('[data-mfs-action="fullscreen"]')).toBeNull();
     expect(volume?.style.getPropertyValue('--mfs-volume')).toBe('80%');
     expect(volume?.dataset.mfsVolumeLevel).toBe('high');
-    expect(getComputedStyle(controls).borderRadius).toBe('8px 0 0 8px');
-    expect(getComputedStyle(controls).width).toBe('20px');
-    expect(getComputedStyle(controls).right).toBe('0px');
+    expect(getComputedStyle(controls).borderRadius).toBe('999px');
+    expect(getComputedStyle(controls).width).toBe('18px');
+    expect(getComputedStyle(controls).right).toBe('8px');
     expect(getComputedStyle(icon as HTMLElement).left).toBe('50%');
     expect(getComputedStyle(icon as HTMLElement).transform).toBe(
       'translateX(-50%)'
     );
-    expect(getComputedStyle(controls).top).toBe('50%');
-    expect(getComputedStyle(controls).bottom).toBe('auto');
+    expect(getComputedStyle(controls).top).toBe('auto');
+    expect(getComputedStyle(controls).transform).toBe('none');
     expect(getComputedStyle(controls).borderWidth).toBe('0px');
-    expect(getComputedStyle(controls).height).toBe('min(72px, 100% - 16px)');
+    expect(getComputedStyle(controls).height).toBe('min(60px, 100% - 16px)');
     expect(getComputedStyle(controls).backgroundColor).toContain('0.28');
     expect(getComputedStyle(controls).opacity).toBe('0');
     expect(getComputedStyle(controls).visibility).toBe('hidden');
@@ -3509,14 +3511,10 @@ describe('OverlayCreator timeline seeking', () => {
     expect(getComputedStyle(controls).backdropFilter).toBe(
       'blur(6px) saturate(130%)'
     );
-    expect(getComputedStyle(fill as HTMLElement).backgroundColor).toContain(
-      '0.42'
+    expect(getComputedStyle(fill as HTMLElement).backgroundColor).toBe(
+      'rgba(255, 255, 255, 0.42)'
     );
     expect(getComputedStyle(fill as HTMLElement).borderRadius).toBe('0px');
-    expect(getComputedStyle(fill as HTMLElement).boxShadow).toBe('none');
-    expect(getComputedStyle(fill as HTMLElement).backdropFilter).toBe(
-      'blur(6px) saturate(130%)'
-    );
     expect(document.head.querySelector('style')?.textContent).toContain(
       '.mfs-volume-fill'
     );
@@ -3527,18 +3525,53 @@ describe('OverlayCreator timeline seeking', () => {
       'prefers-reduced-motion: reduce'
     );
 
-    volume?.click();
+    controls
+      .querySelector<HTMLButtonElement>('[data-mfs-action="mute"]')
+      ?.click();
     expect(video.muted).toBe(true);
-    expect(volume?.getAttribute('aria-label')).toBe('Unmute');
-    expect(volume?.style.getPropertyValue('--mfs-volume')).toBe('0%');
+    expect(
+      controls
+        .querySelector('[data-mfs-action="mute"]')
+        ?.getAttribute('aria-label')
+    ).toBe('Unmute');
+    expect(volume?.style.getPropertyValue('--mfs-volume')).toBe('80%');
     expect(volume?.getAttribute('aria-valuenow')).toBe('80');
     expect(volume?.dataset.mfsMuted).toBe('true');
     expect(volume?.dataset.mfsVolumeLevel).toBe('muted');
-    volume?.click();
+    controls
+      .querySelector<HTMLButtonElement>('[data-mfs-action="mute"]')
+      ?.click();
     expect(video.muted).toBe(false);
     expect(volume?.style.getPropertyValue('--mfs-volume')).toBe('80%');
     expect(volume?.dataset.mfsMuted).toBe('false');
     expect(volume?.dataset.mfsVolumeLevel).toBe('high');
+
+    expect(volume?.getAttribute('role')).toBe('slider');
+    if (volume) {
+      volume.getBoundingClientRect = () =>
+        ({
+          top: 0,
+          bottom: 72,
+          left: 0,
+          right: 20,
+          width: 20,
+          height: 72,
+        }) as DOMRect;
+      video.muted = false;
+      volume.dispatchEvent(
+        createPointerEvent('pointerdown', { clientX: 10, clientY: 36 })
+      );
+      expect(video.volume).toBeCloseTo(0.8);
+      volume.dispatchEvent(
+        createPointerEvent('pointerup', { clientX: 10, clientY: 36 })
+      );
+      volume.click();
+      expect(video.volume).toBeCloseTo(0.8);
+      expect(video.muted).toBe(true);
+      volume.click();
+      expect(video.muted).toBe(false);
+      expect(video.volume).toBeCloseTo(0.8);
+    }
 
     video.volume = 0.2;
     video.dispatchEvent(new Event('volumechange'));
@@ -3592,6 +3625,17 @@ describe('OverlayCreator timeline seeking', () => {
       expect(controls.dataset.mfsInteracting).toBe('true');
       expect(controls.dataset.mfsVisible).toBe('true');
       volume.dispatchEvent(
+        createPointerEvent('pointermove', { clientX: 30, clientY: -100 })
+      );
+      expect(video.volume).toBe(1);
+      expect(controls.style.transformOrigin).toBe('center bottom');
+      expect(controls.style.transform).not.toBe('scale(1, 1)');
+      volume.dispatchEvent(
+        createPointerEvent('pointermove', { clientX: 30, clientY: 250 })
+      );
+      expect(video.volume).toBe(0);
+      expect(controls.style.transformOrigin).toBe('center top');
+      volume.dispatchEvent(
         createPointerEvent('pointermove', { clientX: 30, clientY: 30 })
       );
       expect(volume.dataset.mfsDragging).toBe('true');
@@ -3610,6 +3654,7 @@ describe('OverlayCreator timeline seeking', () => {
       cancelable: true,
     });
     volume?.dispatchEvent(syntheticClick);
+    expect(controls.style.transform).toBe('');
     expect(syntheticClick.defaultPrevented).toBe(true);
     expect(video.muted).toBe(false);
 
@@ -3814,7 +3859,7 @@ describe('OverlayCreator timeline seeking', () => {
       controls
         .querySelector<HTMLButtonElement>('[data-mfs-action="volume"]')
         ?.style.getPropertyValue('--mfs-volume')
-    ).toBe('0%');
+    ).toBe('100%');
 
     video.volume = 0.1;
     video.muted = true;
@@ -3825,7 +3870,7 @@ describe('OverlayCreator timeline seeking', () => {
       controls
         .querySelector<HTMLButtonElement>('[data-mfs-action="volume"]')
         ?.style.getPropertyValue('--mfs-volume')
-    ).toBe('0%');
+    ).toBe('10%');
 
     video.volume = 0.2;
     video.muted = true;
@@ -3885,7 +3930,7 @@ describe('OverlayCreator timeline seeking', () => {
 
     methods.updateVideoControlsForVideo(video, state);
     controls
-      .querySelector<HTMLButtonElement>('[data-mfs-action="volume"]')
+      .querySelector<HTMLButtonElement>('[data-mfs-action="mute"]')
       ?.click();
     vi.advanceTimersByTime(250);
 

@@ -1,4 +1,4 @@
-# macOS input routing in Chrome and BetterVideo
+# macOS input routing in Chrome and Better Video Controls
 
 This document separates what the web platform exposes, what a Chrome
 extension adds, and what would require native macOS code. It targets recent
@@ -7,12 +7,12 @@ input differently.
 
 ## Practical conclusion
 
-BetterVideo can reveal controls and seek from a scroll gesture over a visible
+Better Video Controls can reveal controls and seek from a scroll gesture over a visible
 video even when that Chrome window is inactive. The received `WheelEvent`
 contains the cursor position and a snapshot of the active modifiers, so this
 does not require remembered `keydown` state or a native helper.
 
-BetterVideo cannot observe arbitrary pointer movement while Chrome is not the
+Better Video Controls cannot observe arbitrary pointer movement while Chrome is not the
 frontmost macOS application. If controls must react to movement alone in that
 state, a separately installed native companion is required.
 
@@ -124,7 +124,7 @@ defaults are restricted, operating-system conflicts can leave a shortcut
 unassigned, and users can remap shortcuts at `chrome://extensions/shortcuts`.
 
 Commands cannot report arbitrary current modifiers, mouse position, wheel
-events, or Command plus scroll. BetterVideo's current toggle command is not
+events, or Command plus scroll. Better Video Controls's current toggle command is not
 declared global and is intentionally unchanged.
 
 Source: [Chrome Commands API](https://developer.chrome.com/docs/extensions/reference/api/commands)
@@ -141,10 +141,10 @@ implementation.
 
 ## Development probe
 
-In a WXT development build, enable BetterVideo's existing debug setting and
+In a WXT development build, enable Better Video Controls's existing debug setting and
 reload or revisit a page if necessary. The all-frames content script logs
 wheel, pointer, mouse, keyboard, focus, blur, and visibility transitions.
-Records are printed as `[BetterVideo input probe]` and the latest 500 are
+Records are printed as `[Better Video Controls input probe]` and the latest 500 are
 available as `globalThis.__MFS_INPUT_EVENTS__` after selecting the extension
 content-script context in DevTools.
 
@@ -202,7 +202,7 @@ The companion would:
    send only coordinates, deltas, modifier flags, and timestamps, not typed
    key contents.
 4. Frame native-messaging JSON with Chrome's four-byte message length prefix.
-5. Restrict the host manifest's `allowed_origins` to the exact BetterVideo
+5. Restrict the host manifest's `allowed_origins` to the exact Better Video Controls
    extension ID and reconnect the worker after host termination.
 6. Deliver extension messages rather than synthesizing DOM events.
 

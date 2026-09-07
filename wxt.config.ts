@@ -16,8 +16,7 @@ export default defineConfig({
   }),
   manifest: (env) => {
     return {
-      name: 'Better Video Controls for YouTube, Instagram, TikTok & More',
-      short_name: 'BetterVideo',
+      name: 'Better Video Controls',
       default_locale: 'en',
       description:
         'Control videos on YouTube, Instagram, TikTok, and more. Scroll horizontally to seek instantly, even while another window is active.',

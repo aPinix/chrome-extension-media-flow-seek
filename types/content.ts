@@ -48,6 +48,14 @@ export type ContentSettingsT = {
   dragVideoToSeek: boolean;
   hideVideoControls: boolean;
   colorizedTimeline: boolean;
+  instagramPlaybackSpeed: number;
+  instagramAutoSkip: boolean;
+  instagramShowPlaybackSpeed: boolean;
+  instagramShowAutoSkip: boolean;
+  tiktokPlaybackSpeed: number;
+  tiktokAutoSkip: boolean;
+  tiktokShowPlaybackSpeed: boolean;
+  tiktokShowAutoSkip: boolean;
   isYouTubeChapteredTimelineEnabled: boolean;
   isSeekbarThumbnailPreviewEnabled: boolean;
   timelinePosition: 'top' | 'bottom';

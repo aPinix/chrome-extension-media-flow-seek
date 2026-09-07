@@ -117,6 +117,6 @@ export class InputEventProbe {
       this.records.splice(0, this.records.length - this.maxRecords);
     }
 
-    console.log('[BetterVideo input probe]', record);
+    console.log('[Better Video Controls input probe]', record);
   };
 }

@@ -1,3 +1,4 @@
+import { removeEmptyOverlayHost } from '@/helpers/overlay-portal';
 import type { VideoStateT } from '@/types/content';
 
 export class VideoStateManager {
@@ -52,6 +53,7 @@ export class VideoStateManager {
       state.thumbnailPreview?.remove();
       state.wrapper.remove();
       video.removeAttribute('data-scrub-enabled');
+      removeEmptyOverlayHost(video.ownerDocument);
     }
     return this.videoStates.delete(video);
   }
@@ -87,6 +89,7 @@ export class VideoStateManager {
       state.thumbnailPreview?.remove();
       state.wrapper.remove();
       video.removeAttribute('data-scrub-enabled');
+      removeEmptyOverlayHost(video.ownerDocument);
     });
     this.videoStates.clear();
   }

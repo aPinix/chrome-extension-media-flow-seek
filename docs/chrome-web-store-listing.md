@@ -2,7 +2,7 @@
 
 ## Title
 
-Better Video Controls for YouTube, Instagram, TikTok & More
+Better Video Controls
 
 ## Summary
 
@@ -12,7 +12,7 @@ Control videos on YouTube, Instagram, TikTok, and more. Scroll horizontally to s
 
 Take better control of videos across the web.
 
-BetterVideo lets you move backward or forward through a video by scrolling
+Better Video Controls lets you move backward or forward through a video by scrolling
 horizontally over it. It works on YouTube, Instagram, TikTok, and other sites
 that use HTML5 video, even while another window is active.
 
@@ -26,4 +26,4 @@ that use HTML5 video, even while another window is active.
 - Keep preferences and per-site access rules between sessions.
 - Seek supported videos embedded in frames and dynamic social feeds.
 
-Hover over a video, scroll horizontally, and BetterVideo handles the rest.
+Hover over a video, scroll horizontally, and Better Video Controls handles the rest.

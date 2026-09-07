@@ -2,9 +2,11 @@ import { IS_DEVELOPMENT } from '@/config/variables.config';
 import { DOMUtils } from '@/helpers/dom-utils';
 import { getProgressColorSync } from '@/helpers/favicon-color';
 import { InputEventProbe } from '@/helpers/input-event-probe';
+import { normalizeInstagramSpeed } from '@/helpers/instagram-settings';
 import { OverlayCreator } from '@/helpers/overlay-creator';
 import { normalizeScrollSpeedFactor } from '@/helpers/scroll-speed';
 import { SettingsManager } from '@/helpers/settings-manager';
+import { normalizeTikTokSpeed } from '@/helpers/tiktok-settings';
 import { VideoStateManager } from '@/helpers/video-state';
 import { MessageHandler } from '@/lib/message-handler';
 
@@ -76,6 +78,69 @@ export default defineContentScript({
       if (areaName !== 'sync') return;
 
       let shouldReconcileOverlays = false;
+      if (
+        changes.instagramPlaybackSpeed ||
+        changes.instagramAutoSkip ||
+        changes.instagramShowPlaybackSpeed ||
+        changes.instagramShowAutoSkip
+      ) {
+        if (changes.instagramPlaybackSpeed) {
+          settingsManager.updateSetting(
+            'instagramPlaybackSpeed',
+            normalizeInstagramSpeed(changes.instagramPlaybackSpeed.newValue)
+          );
+        }
+        if (changes.instagramAutoSkip) {
+          settingsManager.updateSetting(
+            'instagramAutoSkip',
+            changes.instagramAutoSkip.newValue === true
+          );
+        }
+        if (changes.instagramShowPlaybackSpeed)
+          settingsManager.updateSetting(
+            'instagramShowPlaybackSpeed',
+            changes.instagramShowPlaybackSpeed.newValue === true
+          );
+        if (changes.instagramShowAutoSkip)
+          settingsManager.updateSetting(
+            'instagramShowAutoSkip',
+            changes.instagramShowAutoSkip.newValue === true
+          );
+        document.dispatchEvent(new Event('mfs-instagram-settings'));
+        shouldReconcileOverlays = true;
+      }
+
+      if (
+        changes.tiktokPlaybackSpeed ||
+        changes.tiktokAutoSkip ||
+        changes.tiktokShowPlaybackSpeed ||
+        changes.tiktokShowAutoSkip
+      ) {
+        if (changes.tiktokPlaybackSpeed) {
+          settingsManager.updateSetting(
+            'tiktokPlaybackSpeed',
+            normalizeTikTokSpeed(changes.tiktokPlaybackSpeed.newValue)
+          );
+        }
+        if (changes.tiktokAutoSkip) {
+          settingsManager.updateSetting(
+            'tiktokAutoSkip',
+            changes.tiktokAutoSkip.newValue === true
+          );
+        }
+        if (changes.tiktokShowPlaybackSpeed)
+          settingsManager.updateSetting(
+            'tiktokShowPlaybackSpeed',
+            changes.tiktokShowPlaybackSpeed.newValue === true
+          );
+        if (changes.tiktokShowAutoSkip)
+          settingsManager.updateSetting(
+            'tiktokShowAutoSkip',
+            changes.tiktokShowAutoSkip.newValue === true
+          );
+        document.dispatchEvent(new Event('mfs-tiktok-settings'));
+        shouldReconcileOverlays = true;
+      }
 
       const isScrollSeekingEnabled = changes.isScrollSeekingEnabled?.newValue;
       if (typeof isScrollSeekingEnabled === 'boolean') {

@@ -31,11 +31,11 @@ export const createNotificationFunction = () => {
         <div class="mfs-notification-content ${enabled ? 'mfs-notification-enabled' : 'mfs-notification-disabled'}">
           <div class="mfs-notification-logo-container">
             <a class="mfs-notification-logo-link" href="${extensionUrl}" target="_blank" rel="noopener noreferrer">
-              <img class="mfs-notification-logo" src="${extensionLogo}" alt="BetterVideo" />
+              <img class="mfs-notification-logo" src="${extensionLogo}" alt="Better Video Controls" />
             </a>
           </div>
           <div class="mfs-notification-text">
-            <span class="mfs-notification-title">BetterVideo <span class="mfs-notification-status">${status}</span></span>
+            <span class="mfs-notification-title">Better Video Controls <span class="mfs-notification-status">${status}</span></span>
             <span class="mfs-notification-subtitle">${triggerText}</span>
           </div>
         </div>

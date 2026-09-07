@@ -1,4 +1,4 @@
-# Better Video Controls for YouTube, Instagram, TikTok & More - Changelog
+# Better Video Controls - Changelog
 
 All notable changes to this project will be documented in this file.
 
@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
-- Rebranded the extension as Better Video Controls for YouTube, Instagram, TikTok & More, with the compact name BetterVideo.
+- Rebranded the extension as Better Video Controls.
 
 ### 🌟 New Features
 

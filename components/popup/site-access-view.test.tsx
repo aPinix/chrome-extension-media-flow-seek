@@ -117,7 +117,7 @@ describe('SiteAccessView', () => {
     expect(
       screen.getByRole('heading', { level: 1, name: 'Domains' })
     ).toBeTruthy();
-    expect(screen.getByText('Choose where BetterVideo runs')).toBeTruthy();
+    expect(screen.getByText('Choose where Better Video Controls runs')).toBeTruthy();
   });
 
   it('puts history after the website settings title and search in the bottom toolbar', () => {
@@ -789,7 +789,7 @@ describe('SiteAccessView', () => {
     const before = readRules().slice(1);
     const globalDefaultIcon = screen.getByTestId('global-default-icon');
     const globalDefaultSwitch = screen.getByRole('switch', {
-      name: 'Run BetterVideo by default on websites',
+      name: 'Run Better Video Controls by default on websites',
     });
     const defaultMode = screen.getAllByRole('radio', { name: 'Default' })[0];
 
@@ -804,7 +804,7 @@ describe('SiteAccessView', () => {
     expect(globalDefaultState.className).toContain('font-bold');
     expect(globalDefaultState.className).toContain('text-lime-600');
     expect(globalDefaultState.parentElement?.textContent).toBe(
-      'BetterVideo is Enabled by default on websites without a custom setting.'
+      'Better Video Controls is Enabled by default on websites without a custom setting.'
     );
     expect(defaultMode?.closest('label')?.className).toContain('text-lime-500');
     expect(globalDefaultSwitch.className).toContain('data-checked:bg-lime-500');
@@ -845,7 +845,7 @@ describe('SiteAccessView', () => {
     await user.unhover(defaultMode);
     await user.click(
       screen.getByRole('switch', {
-        name: 'Run BetterVideo by default on websites',
+        name: 'Run Better Video Controls by default on websites',
       })
     );
     await user.hover(defaultMode);

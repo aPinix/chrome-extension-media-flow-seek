@@ -134,9 +134,11 @@ export class DOMUtils {
 
   static removeExistingScrubWrappers(): void {
     DOMUtils.getSearchRoots().forEach((root) => {
-      root.querySelectorAll('.scrub-wrapper').forEach((overlay) => {
-        overlay.remove();
-      });
+      root
+        .querySelectorAll('.scrub-wrapper, .mfs-viewport-portal')
+        .forEach((overlay) => {
+          overlay.remove();
+        });
     });
   }
 

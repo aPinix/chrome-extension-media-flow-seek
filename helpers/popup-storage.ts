@@ -2,6 +2,7 @@ import {
   getDefaultDomainRules,
   mergeAndMigrateDomainRules,
 } from '@/helpers/domains';
+import { normalizeInstagramSpeed } from '@/helpers/instagram-settings';
 import {
   DEFAULT_FAST_SCROLL_HOTKEY,
   DEFAULT_SCROLL_SPEED_FACTOR,
@@ -14,6 +15,7 @@ import {
   migrateSeekSettings,
   SETTINGS_SCHEMA_VERSION,
 } from '@/helpers/settings-migration';
+import { normalizeTikTokSpeed } from '@/helpers/tiktok-settings';
 import type { DomainConfigT, DomainSortT } from '@/types/domains';
 import { DomainSortE } from '@/types/domains';
 
@@ -33,6 +35,14 @@ export type PopupSettings = {
   dragVideoToSeek: boolean;
   hideVideoControls: boolean;
   colorizedTimeline: boolean;
+  instagramPlaybackSpeed: number;
+  instagramAutoSkip: boolean;
+  instagramShowPlaybackSpeed: boolean;
+  instagramShowAutoSkip: boolean;
+  tiktokPlaybackSpeed: number;
+  tiktokAutoSkip: boolean;
+  tiktokShowPlaybackSpeed: boolean;
+  tiktokShowAutoSkip: boolean;
   isYouTubeChapteredTimelineEnabled: boolean;
   isSeekbarThumbnailPreviewEnabled: boolean;
   timelinePosition: 'top' | 'bottom';
@@ -61,6 +71,14 @@ export const DEFAULT_SETTINGS: Omit<PopupSettings, 'domainRules'> = {
   dragVideoToSeek: false,
   hideVideoControls: false,
   colorizedTimeline: false,
+  instagramPlaybackSpeed: 1,
+  instagramAutoSkip: false,
+  instagramShowPlaybackSpeed: false,
+  instagramShowAutoSkip: false,
+  tiktokPlaybackSpeed: 1,
+  tiktokAutoSkip: false,
+  tiktokShowPlaybackSpeed: false,
+  tiktokShowAutoSkip: false,
   isYouTubeChapteredTimelineEnabled: false,
   isSeekbarThumbnailPreviewEnabled: false,
   timelinePosition: 'bottom',
@@ -102,6 +120,14 @@ export const loadPopupSettings = (): Promise<PopupSettings> => {
         'dragVideoToSeek',
         'hideVideoControls',
         'colorizedTimeline',
+        'instagramPlaybackSpeed',
+        'instagramAutoSkip',
+        'instagramShowPlaybackSpeed',
+        'instagramShowAutoSkip',
+        'tiktokPlaybackSpeed',
+        'tiktokAutoSkip',
+        'tiktokShowPlaybackSpeed',
+        'tiktokShowAutoSkip',
         'isYouTubeChapteredTimelineEnabled',
         'isSeekbarThumbnailPreviewEnabled',
         'timelinePosition',
@@ -176,6 +202,17 @@ export const loadPopupSettings = (): Promise<PopupSettings> => {
           hideVideoControls: migratedSeekSettings.hideVideoControls,
           colorizedTimeline:
             stored.colorizedTimeline ?? DEFAULT_SETTINGS.colorizedTimeline,
+          instagramPlaybackSpeed: normalizeInstagramSpeed(
+            stored.instagramPlaybackSpeed
+          ),
+          instagramAutoSkip: stored.instagramAutoSkip === true,
+          instagramShowPlaybackSpeed:
+            stored.instagramShowPlaybackSpeed === true,
+          instagramShowAutoSkip: stored.instagramShowAutoSkip === true,
+          tiktokPlaybackSpeed: normalizeTikTokSpeed(stored.tiktokPlaybackSpeed),
+          tiktokAutoSkip: stored.tiktokAutoSkip === true,
+          tiktokShowPlaybackSpeed: stored.tiktokShowPlaybackSpeed === true,
+          tiktokShowAutoSkip: stored.tiktokShowAutoSkip === true,
           isYouTubeChapteredTimelineEnabled:
             stored.isYouTubeChapteredTimelineEnabled ??
             DEFAULT_SETTINGS.isYouTubeChapteredTimelineEnabled,

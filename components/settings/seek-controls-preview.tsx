@@ -659,10 +659,9 @@ export function SeekControlsPreview({
           aria-hidden="true"
           className={cn(
             'absolute inset-x-0 z-10 border-2 border-brand-300/90 bg-brand-400/25 transition-[top,height] duration-300 ease-in-out motion-reduce:transition-none dark:border-brand-400/80 dark:bg-brand-600/30',
-            isFullActionArea && 'inset-0 h-full rounded-lg',
-            actionArea === ActionAreaE.Top && 'top-0 rounded-t-lg',
-            actionArea === ActionAreaE.Middle && 'rounded',
-            actionArea === ActionAreaE.Bottom && 'rounded-b-lg'
+            isFullActionArea && 'inset-0 h-full rounded-xl',
+            actionArea === ActionAreaE.Top && 'top-0 rounded-t-xl',
+            actionArea === ActionAreaE.Bottom && 'rounded-b-xl'
           )}
           data-testid="action-area-overlay"
           style={actionAreaStyle}
@@ -704,7 +703,7 @@ export function SeekControlsPreview({
 
         <span
           aria-hidden="true"
-          className="absolute top-3 left-3 z-50 rounded-md bg-slate-950/50 px-2 py-1 font-semibold text-[10px] text-white shadow-sm backdrop-blur-md"
+          className="pointer-events-none absolute top-3 left-3 z-50 py-1 font-semibold text-[10px] text-white [text-shadow:0_1px_3px_rgb(0_0_0_/_85%),0_0_8px_rgb(0_0_0_/_45%)]"
           data-testid="focused-method-label"
         >
           {methodPreviewLabels[focusedMethod]}

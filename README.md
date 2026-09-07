@@ -1,6 +1,6 @@
 <div style="display: flex; align-items: center;">
   <img src="public/icon/48.png" alt="App Icon" width="48" style="margin-right: 12px;" />
-  <h1 style="margin: 0;">Better Video Controls for YouTube, Instagram, TikTok &amp; More</h1>
+  <h1 style="margin: 0;">Better Video Controls</h1>
 </div>
 
 <br />
@@ -9,7 +9,7 @@
 
 > **Control videos on YouTube, Instagram, TikTok, and more. Scroll horizontally to seek instantly, even while another window is active.**
 
-BetterVideo makes seeking through web videos fast and natural. Hover over a
+Better Video Controls makes seeking through web videos fast and natural. Hover over a
 video and scroll horizontally to move backward or forward, with support for
 popular social platforms and other HTML5 video sites.
 
@@ -130,7 +130,7 @@ popular social platforms and other HTML5 video sites.
 
 Hold **Alt** while scrolling to seek at 3× speed, or hold **Alt+Shift** to seek at 1/4x speed for precise adjustments. Both hotkeys can be changed in the extension popup.
 
-Hold **Shift** by itself to temporarily hide BetterVideo's player layers, including the seekbar. When **Minimal Player** is enabled, this also restores the website's original player controls. Releasing Shift restores BetterVideo, while **Alt+Shift** continues to control slow seeking.
+Hold **Shift** by itself to temporarily hide Better Video Controls's player layers, including the seekbar. When **Minimal Player** is enabled, this also restores the website's original player controls. Releasing Shift restores Better Video Controls, while **Alt+Shift** continues to control slow seeking.
 
 ### Settings
 

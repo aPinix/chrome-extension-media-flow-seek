@@ -4,12 +4,14 @@ import {
   getDefaultDomainRules,
   mergeAndMigrateDomainRules,
 } from '@/helpers/domains';
+import { normalizeInstagramSpeed } from '@/helpers/instagram-settings';
 import { DEFAULT_SETTINGS } from '@/helpers/popup-storage';
 import {
   normalizeScrollHotkeys,
   normalizeScrollSpeedFactor,
 } from '@/helpers/scroll-speed';
 import { migrateSeekSettings } from '@/helpers/settings-migration';
+import { normalizeTikTokSpeed } from '@/helpers/tiktok-settings';
 import type { ContentSettingsT } from '@/types/content';
 import type { DomainConfigT } from '@/types/domains';
 import { DomainRuleTypeE } from '@/types/domains';
@@ -44,6 +46,14 @@ export class SettingsManager {
           'dragVideoToSeek',
           'hideVideoControls',
           'colorizedTimeline',
+          'instagramPlaybackSpeed',
+          'instagramAutoSkip',
+          'instagramShowPlaybackSpeed',
+          'instagramShowAutoSkip',
+          'tiktokPlaybackSpeed',
+          'tiktokAutoSkip',
+          'tiktokShowPlaybackSpeed',
+          'tiktokShowAutoSkip',
           'isYouTubeChapteredTimelineEnabled',
           'isSeekbarThumbnailPreviewEnabled',
           'timelinePosition',
@@ -96,6 +106,19 @@ export class SettingsManager {
             colorizedTimeline:
               stored.colorizedTimeline ??
               this.defaultSettings.colorizedTimeline,
+            instagramPlaybackSpeed: normalizeInstagramSpeed(
+              stored.instagramPlaybackSpeed
+            ),
+            instagramAutoSkip: stored.instagramAutoSkip === true,
+            instagramShowPlaybackSpeed:
+              stored.instagramShowPlaybackSpeed === true,
+            instagramShowAutoSkip: stored.instagramShowAutoSkip === true,
+            tiktokPlaybackSpeed: normalizeTikTokSpeed(
+              stored.tiktokPlaybackSpeed
+            ),
+            tiktokAutoSkip: stored.tiktokAutoSkip === true,
+            tiktokShowPlaybackSpeed: stored.tiktokShowPlaybackSpeed === true,
+            tiktokShowAutoSkip: stored.tiktokShowAutoSkip === true,
             isYouTubeChapteredTimelineEnabled:
               stored.isYouTubeChapteredTimelineEnabled ??
               this.defaultSettings.isYouTubeChapteredTimelineEnabled,
@@ -223,7 +246,19 @@ export class SettingsManager {
       this.settings.isTimelineSeekingEnabled ||
       this.settings.showTimelineOnHover ||
       this.settings.isSeekbarThumbnailPreviewEnabled ||
-      this.settings.hideVideoControls
+      this.settings.hideVideoControls ||
+      ((window.location.hostname === 'instagram.com' ||
+        window.location.hostname.endsWith('.instagram.com')) &&
+        (this.settings.instagramShowPlaybackSpeed ||
+          this.settings.instagramShowAutoSkip ||
+          this.settings.instagramAutoSkip ||
+          this.settings.instagramPlaybackSpeed !== 1)) ||
+      ((window.location.hostname === 'tiktok.com' ||
+        window.location.hostname.endsWith('.tiktok.com')) &&
+        (this.settings.tiktokShowPlaybackSpeed ||
+          this.settings.tiktokShowAutoSkip ||
+          this.settings.tiktokAutoSkip ||
+          this.settings.tiktokPlaybackSpeed !== 1))
     );
   }
 

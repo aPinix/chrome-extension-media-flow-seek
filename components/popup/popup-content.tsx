@@ -8,7 +8,6 @@ import {
   SlidersHorizontalIcon,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-
 import { AppBetaBadge } from '@/components/app/app-beta-badge';
 import { AppKbd } from '@/components/app/app-kbd';
 import { AppSwitch } from '@/components/app/app-switch';
@@ -20,7 +19,9 @@ import { SectionTitle } from '@/components/popup/section-title';
 import { ShowOnHoverSetting } from '@/components/popup/show-on-hover-setting';
 import { SiteAccessView } from '@/components/popup/site-access-view';
 import { ViewTitle } from '@/components/popup/view-title';
+import { InstagramSettings } from '@/components/settings/instagram-settings';
 import { SeekControlsSettings } from '@/components/settings/seek-controls-settings';
+import { TikTokSettings } from '@/components/settings/tiktok-settings';
 import { YouTubeSettings } from '@/components/settings/youtube-settings';
 import { useTheme } from '@/components/theme-provider';
 import { Button } from '@/components/ui/button';
@@ -189,7 +190,7 @@ function PopupHeader() {
 
         <div className="flex min-w-0 flex-1 flex-col justify-center leading-none">
           <span className="truncate font-bold text-slate-900 text-sm dark:text-white">
-            Better Video
+            Better Video Controls
           </span>
           {version ? (
             <span className="mt-1 shrink-0 text-[9px] text-slate-500 dark:text-slate-400">
@@ -272,6 +273,34 @@ export function PopupContent() {
     DEFAULT_SETTINGS.actionAreaSizeUnit
   );
 
+  const [instagramPlaybackSpeed, setInstagramPlaybackSpeed] = useState(
+    DEFAULT_SETTINGS.instagramPlaybackSpeed
+  );
+  const [instagramAutoSkip, setInstagramAutoSkip] = useState(
+    DEFAULT_SETTINGS.instagramAutoSkip
+  );
+
+  const [tiktokPlaybackSpeed, setTikTokPlaybackSpeed] = useState(
+    DEFAULT_SETTINGS.tiktokPlaybackSpeed
+  );
+  const [tiktokAutoSkip, setTikTokAutoSkip] = useState(
+    DEFAULT_SETTINGS.tiktokAutoSkip
+  );
+
+  const [instagramShowPlaybackSpeed, setInstagramShowPlaybackSpeed] = useState(
+    DEFAULT_SETTINGS.instagramShowPlaybackSpeed
+  );
+  const [instagramShowAutoSkip, setInstagramShowAutoSkip] = useState(
+    DEFAULT_SETTINGS.instagramShowAutoSkip
+  );
+
+  const [tiktokShowPlaybackSpeed, setTikTokShowPlaybackSpeed] = useState(
+    DEFAULT_SETTINGS.tiktokShowPlaybackSpeed
+  );
+  const [tiktokShowAutoSkip, setTikTokShowAutoSkip] = useState(
+    DEFAULT_SETTINGS.tiktokShowAutoSkip
+  );
+
   // Check if extension settings are at defaults
   const isExtensionAtDefaults =
     isEnabled === DEFAULT_SETTINGS.isEnabled &&
@@ -279,6 +308,15 @@ export function PopupContent() {
 
   // Check if settings are at defaults
   const isSettingsAtDefaults =
+    tiktokShowAutoSkip === DEFAULT_SETTINGS.tiktokShowAutoSkip &&
+    tiktokShowPlaybackSpeed === DEFAULT_SETTINGS.tiktokShowPlaybackSpeed &&
+    instagramShowAutoSkip === DEFAULT_SETTINGS.instagramShowAutoSkip &&
+    instagramShowPlaybackSpeed ===
+      DEFAULT_SETTINGS.instagramShowPlaybackSpeed &&
+    tiktokPlaybackSpeed === DEFAULT_SETTINGS.tiktokPlaybackSpeed &&
+    tiktokAutoSkip === DEFAULT_SETTINGS.tiktokAutoSkip &&
+    instagramPlaybackSpeed === DEFAULT_SETTINGS.instagramPlaybackSpeed &&
+    instagramAutoSkip === DEFAULT_SETTINGS.instagramAutoSkip &&
     isScrollSeekingEnabled === DEFAULT_SETTINGS.isScrollSeekingEnabled &&
     invertHorizontalScroll === DEFAULT_SETTINGS.invertHorizontalScroll &&
     scrollSpeedFactor === DEFAULT_SETTINGS.scrollSpeedFactor &&
@@ -320,6 +358,14 @@ export function PopupContent() {
       setDragVideoToSeek(settings.dragVideoToSeek);
       setHideVideoControls(settings.hideVideoControls);
       setColorizedTimeline(settings.colorizedTimeline);
+      setInstagramPlaybackSpeed(settings.instagramPlaybackSpeed);
+      setInstagramAutoSkip(settings.instagramAutoSkip);
+      setInstagramShowAutoSkip(settings.instagramShowAutoSkip);
+      setInstagramShowPlaybackSpeed(settings.instagramShowPlaybackSpeed);
+      setTikTokPlaybackSpeed(settings.tiktokPlaybackSpeed);
+      setTikTokAutoSkip(settings.tiktokAutoSkip);
+      setTikTokShowAutoSkip(settings.tiktokShowAutoSkip);
+      setTikTokShowPlaybackSpeed(settings.tiktokShowPlaybackSpeed);
       setIsYouTubeChapteredTimelineEnabled(
         settings.isYouTubeChapteredTimelineEnabled
       );
@@ -653,6 +699,14 @@ export function PopupContent() {
     setDragVideoToSeek(defaultSettings.dragVideoToSeek);
     setHideVideoControls(defaultSettings.hideVideoControls);
     setColorizedTimeline(defaultSettings.colorizedTimeline);
+    setInstagramPlaybackSpeed(defaultSettings.instagramPlaybackSpeed);
+    setInstagramAutoSkip(defaultSettings.instagramAutoSkip);
+    setInstagramShowAutoSkip(defaultSettings.instagramShowAutoSkip);
+    setInstagramShowPlaybackSpeed(defaultSettings.instagramShowPlaybackSpeed);
+    setTikTokPlaybackSpeed(defaultSettings.tiktokPlaybackSpeed);
+    setTikTokAutoSkip(defaultSettings.tiktokAutoSkip);
+    setTikTokShowAutoSkip(defaultSettings.tiktokShowAutoSkip);
+    setTikTokShowPlaybackSpeed(defaultSettings.tiktokShowPlaybackSpeed);
     setIsYouTubeChapteredTimelineEnabled(
       defaultSettings.isYouTubeChapteredTimelineEnabled
     );
@@ -679,6 +733,14 @@ export function PopupContent() {
       dragVideoToSeek: defaultSettings.dragVideoToSeek,
       hideVideoControls: defaultSettings.hideVideoControls,
       colorizedTimeline: defaultSettings.colorizedTimeline,
+      instagramPlaybackSpeed: defaultSettings.instagramPlaybackSpeed,
+      instagramAutoSkip: defaultSettings.instagramAutoSkip,
+      instagramShowAutoSkip: defaultSettings.instagramShowAutoSkip,
+      instagramShowPlaybackSpeed: defaultSettings.instagramShowPlaybackSpeed,
+      tiktokPlaybackSpeed: defaultSettings.tiktokPlaybackSpeed,
+      tiktokAutoSkip: defaultSettings.tiktokAutoSkip,
+      tiktokShowAutoSkip: defaultSettings.tiktokShowAutoSkip,
+      tiktokShowPlaybackSpeed: defaultSettings.tiktokShowPlaybackSpeed,
       isYouTubeChapteredTimelineEnabled:
         defaultSettings.isYouTubeChapteredTimelineEnabled,
       isSeekbarThumbnailPreviewEnabled:
@@ -1058,6 +1120,58 @@ export function PopupContent() {
                     onChapteredTimelineEnabledChange={
                       handleYouTubeChapteredTimelineToggle
                     }
+                  />
+                </div>
+                <div className="flex flex-none flex-col">
+                  <SectionTitle title="Instagram" />
+                  <InstagramSettings
+                    autoSkip={instagramAutoSkip}
+                    extensionEnabled={isEnabled}
+                    onAutoSkipChange={(value) => {
+                      setInstagramAutoSkip(value);
+                      saveSettings({ instagramAutoSkip: value });
+                    }}
+                    onPlaybackSpeedChange={(value) => {
+                      setInstagramPlaybackSpeed(value);
+                      saveSettings({ instagramPlaybackSpeed: value });
+                    }}
+                    onShowAutoSkipChange={(value) => {
+                      setInstagramShowAutoSkip(value);
+                      saveSettings({ instagramShowAutoSkip: value });
+                    }}
+                    onShowPlaybackSpeedChange={(value) => {
+                      setInstagramShowPlaybackSpeed(value);
+                      saveSettings({ instagramShowPlaybackSpeed: value });
+                    }}
+                    playbackSpeed={instagramPlaybackSpeed}
+                    showAutoSkip={instagramShowAutoSkip}
+                    showPlaybackSpeed={instagramShowPlaybackSpeed}
+                  />
+                </div>
+                <div className="flex flex-none flex-col">
+                  <SectionTitle title="TikTok" />
+                  <TikTokSettings
+                    autoSkip={tiktokAutoSkip}
+                    extensionEnabled={isEnabled}
+                    onAutoSkipChange={(value) => {
+                      setTikTokAutoSkip(value);
+                      saveSettings({ tiktokAutoSkip: value });
+                    }}
+                    onPlaybackSpeedChange={(value) => {
+                      setTikTokPlaybackSpeed(value);
+                      saveSettings({ tiktokPlaybackSpeed: value });
+                    }}
+                    onShowAutoSkipChange={(value) => {
+                      setTikTokShowAutoSkip(value);
+                      saveSettings({ tiktokShowAutoSkip: value });
+                    }}
+                    onShowPlaybackSpeedChange={(value) => {
+                      setTikTokShowPlaybackSpeed(value);
+                      saveSettings({ tiktokShowPlaybackSpeed: value });
+                    }}
+                    playbackSpeed={tiktokPlaybackSpeed}
+                    showAutoSkip={tiktokShowAutoSkip}
+                    showPlaybackSpeed={tiktokShowPlaybackSpeed}
                   />
                 </div>
               </div>

@@ -192,7 +192,7 @@ export function SiteAccessView({
             data-testid="site-access-intro"
           >
             <ViewTitle
-              description="Choose where BetterVideo runs"
+              description="Choose where Better Video Controls runs"
               title="Domains"
             />
 
@@ -212,7 +212,7 @@ export function SiteAccessView({
                   className="flex-1"
                   description={
                     <>
-                      BetterVideo is{' '}
+                      Better Video Controls is{' '}
                       <span
                         className={`font-bold transition-colors duration-200 ${
                           globalDefaultOn
@@ -229,7 +229,7 @@ export function SiteAccessView({
                   title="Run by Default"
                 />
                 <AppSwitch
-                  aria-label="Run BetterVideo by default on websites"
+                  aria-label="Run Better Video Controls by default on websites"
                   checked={globalDefaultOn}
                   className="data-checked:border-lime-500 data-unchecked:border-rose-500 data-checked:bg-lime-500 data-unchecked:bg-rose-500 group-has-[:focus-visible]/field-label:data-checked:border-lime-500 group-has-[:focus-visible]/field-label:data-unchecked:border-rose-500 dark:data-unchecked:border-rose-400 dark:data-unchecked:bg-rose-400"
                   onCheckedChange={(checked) =>
