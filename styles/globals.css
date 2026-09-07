@@ -388,3 +388,72 @@
     width: 52%;
   }
 }
+
+/* A shared clock keeps the hover cue and the seekbar fade in sync.
+   Pause inside, exit right, pause outside, then return and pause again. */
+.feature-preview-hover-cursor {
+  animation: feature-preview-hover-cursor 6s ease-in-out infinite;
+}
+
+.feature-preview-hover-timeline {
+  animation: feature-preview-hover-timeline 6s linear infinite;
+}
+
+@keyframes feature-preview-hover-cursor {
+  0%,
+  25%,
+  80%,
+  100% {
+    transform: translate(0, 0);
+  }
+  /* The cursor tip crosses the right edge at these shared fade cues. */
+  35%,
+  70% {
+    transform: translate(90px, 26px);
+  }
+  40%,
+  65% {
+    transform: translate(120px, 35px);
+  }
+}
+
+@keyframes feature-preview-hover-timeline {
+  0%,
+  35%,
+  75%,
+  100% {
+    opacity: 1;
+  }
+  40%,
+  70% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .feature-preview-hover-cursor,
+  .feature-preview-hover-timeline {
+    animation: none;
+  }
+}
+
+.feature-preview-site-badge {
+  animation: feature-preview-site-enter 400ms ease-out;
+}
+
+@keyframes feature-preview-site-enter {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .feature-preview-site-badge {
+    animation: none;
+  }
+}

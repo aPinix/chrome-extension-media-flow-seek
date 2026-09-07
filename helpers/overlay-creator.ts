@@ -13,6 +13,13 @@ import {
   MEDIA_SCROLL_SEEK_SETTLE_DELAY_MS,
   MEDIA_SEEK_SETTLE_DELAY_MS,
 } from '@/helpers/media';
+import {
+  MEDIA_OVERLAY_STYLES,
+  VOLUME_BOTTOM_GAP_PX,
+  VOLUME_CONTROL_HEIGHT_PX,
+  VOLUME_CONTROL_WIDTH_PX,
+  VOLUME_EDGE_GAP_PX,
+} from '@/helpers/media-overlay-styles';
 import { getDocumentOverlayHost } from '@/helpers/overlay-portal';
 import {
   DEFAULT_SCROLL_SPEED_FACTOR,
@@ -28,7 +35,15 @@ import {
   createSeekbarThumbnailPreviewElement,
   SeekbarThumbnailPreviewController,
 } from '@/helpers/thumbnail-preview';
+import {
+  DEFAULT_TIMELINE_BACKGROUND,
+  DEFAULT_TIMELINE_PROGRESS_BACKGROUND,
+  getColorizedTimelineBackground,
+  TIMELINE_BACKDROP_FILTER,
+  YOUTUBE_CHAPTER_GAP_PX,
+} from '@/helpers/timeline-appearance';
 import type { VideoStateManager } from '@/helpers/video-state';
+import { VOLUME_ICON_PATHS } from '@/helpers/volume-icon';
 import {
   getWheelPlaybackAction,
   isHorizontalWheelAction,
@@ -54,10 +69,6 @@ const INTERACTIVE_TIMELINE_Z_INDEX = '2147483645';
 const THUMBNAIL_PREVIEW_Z_INDEX = '2147483646';
 const VIDEO_DRAG_START_THRESHOLD_PX = 5;
 const VOLUME_DRAG_START_THRESHOLD_PX = 3;
-const VOLUME_CONTROL_WIDTH_PX = 18;
-const VOLUME_EDGE_GAP_PX = 8;
-const VOLUME_BOTTOM_GAP_PX = 20;
-const VOLUME_CONTROL_HEIGHT_PX = 60;
 const VOLUME_KEY_STEP = 0.05;
 const VOLUME_WHEEL_SENSITIVITY = 0.001;
 const PAGE_DIALOG_SELECTOR = [
@@ -104,9 +115,6 @@ const PLAYER_SINGLE_CLICK_DELAY_MS = 220;
 const WHEEL_HOVER_LEASE_MS = 1500;
 const SEEK_SPEED_LABEL_DISMISS_DELAY_MS = 700;
 const PLAY_PAUSE_WHEEL_GESTURE_END_MS = 500;
-const DEFAULT_TIMELINE_PROGRESS_BACKGROUND = 'rgb(255 255 255 / 0.3)';
-const DEFAULT_TIMELINE_BACKGROUND = 'rgb(255 255 255 / 0.2)';
-const YOUTUBE_CHAPTER_GAP_PX = 4;
 const SETTINGS_LAYOUT_TRANSITION_MS = 320;
 const ACTION_AREA_PREVIEW_MS = 1200;
 const ACTION_AREA_PREVIEW_BACKGROUND = 'rgb(126 34 206 / 0.4)';
@@ -134,20 +142,6 @@ const PLAYBACK_PLAY_ICON_MASK = `url("data:image/svg+xml,${encodeURIComponent(
 const PLAYBACK_PAUSE_ICON_MASK = `url("data:image/svg+xml,${encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="5" y="4" width="5" height="16" rx="1.75" fill="white"/><rect x="14" y="4" width="5" height="16" rx="1.75" fill="white"/></svg>'
 )}")`;
-
-const getColorizedTimelineBackground = (color: string): string => {
-  const rgbMatch = color.match(/^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/i);
-  if (rgbMatch) {
-    return `rgb(${rgbMatch[1]} ${rgbMatch[2]} ${rgbMatch[3]} / 0.8)`;
-  }
-
-  const hexMatch = color.match(/^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i);
-  if (hexMatch) {
-    return `rgb(${Number.parseInt(hexMatch[1] ?? '', 16)} ${Number.parseInt(hexMatch[2] ?? '', 16)} ${Number.parseInt(hexMatch[3] ?? '', 16)} / 0.8)`;
-  }
-
-  return color;
-};
 
 export class OverlayCreator {
   private settingsManager: SettingsManager;
@@ -854,365 +848,7 @@ export class OverlayCreator {
           opacity: 1;
         }
 
-        .mfs-seekbar-thumbnail-preview {
-          all: initial;
-          position: absolute;
-          left: 0;
-          z-index: 2147483646 !important;
-          display: block;
-          box-sizing: border-box;
-          width: 220px;
-          max-width: calc(100% - 16px);
-          overflow: visible;
-          border: 0;
-          background: transparent;
-          color: white;
-          opacity: 0;
-          transform: translateX(-50%) translateY(4px);
-          transition: opacity 100ms ease, transform 100ms ease;
-          pointer-events: none;
-          user-select: none;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        }
-
-        .mfs-seekbar-thumbnail-preview[data-mfs-visible="true"] {
-          opacity: 1;
-          transform: translateX(-50%) translateY(0);
-        }
-
-        .mfs-thumbnail-frame {
-          position: relative;
-          display: none;
-          width: 100%;
-          aspect-ratio: 16 / 9;
-          overflow: hidden;
-          box-sizing: border-box;
-          border: 1px solid rgb(255 255 255 / 0.14);
-          border-radius: 8px;
-          background: black;
-          box-shadow: 0 5px 18px rgb(0 0 0 / 0.38);
-        }
-
-        .mfs-seekbar-thumbnail-preview[data-mfs-image-visible="true"] .mfs-thumbnail-frame {
-          display: block;
-        }
-
-        .mfs-thumbnail-image,
-        .mfs-thumbnail-video {
-          position: absolute;
-          inset: 0;
-          display: block;
-          box-sizing: border-box;
-          width: 100%;
-          height: 100%;
-          border: 0;
-          background-color: black;
-          background-repeat: no-repeat;
-          object-fit: cover;
-        }
-
-        .mfs-thumbnail-image[hidden],
-        .mfs-thumbnail-video[hidden],
-        .mfs-thumbnail-loader {
-          display: none !important;
-        }
-
-        .mfs-thumbnail-copy {
-          display: flex;
-          box-sizing: border-box;
-          width: fit-content;
-          max-width: 100%;
-          min-width: 0;
-          align-items: center;
-          gap: 8px;
-          margin: 0 auto;
-          padding: 6px 12px;
-          overflow: hidden;
-          border-radius: 9999px;
-          background: rgb(15 23 42 / 0.68);
-          box-shadow: 0 3px 12px rgb(0 0 0 / 0.28);
-          backdrop-filter: blur(10px) saturate(1.2);
-          -webkit-backdrop-filter: blur(10px) saturate(1.2);
-          font-size: 11px;
-          line-height: 14px;
-        }
-
-        .mfs-seekbar-thumbnail-preview[data-mfs-image-visible="true"] .mfs-thumbnail-copy {
-          margin-top: 7px;
-        }
-
-        .mfs-thumbnail-time {
-          display: inline-flex;
-          flex: none;
-          align-items: center;
-          color: rgb(255 255 255 / 0.78);
-          font-variant-numeric: tabular-nums;
-          font-weight: 400;
-        }
-
-        .mfs-thumbnail-time-number {
-          display: inline-block;
-          --number-flow-mask-height: 0.15em;
-          --number-flow-mask-width: 0.25em;
-          line-height: 1;
-        }
-
-        .mfs-thumbnail-time-symbol {
-          display: inline-block;
-        }
-
-        .mfs-thumbnail-chapter-stage {
-          position: relative;
-          display: block;
-          flex: 0 1 auto;
-          width: 0;
-          min-width: 0;
-          height: 14px;
-          overflow: hidden;
-          transition: width 180ms cubic-bezier(0.22, 1, 0.36, 1);
-        }
-
-        .mfs-thumbnail-chapter-stage[hidden] {
-          display: none !important;
-        }
-
-        .mfs-thumbnail-chapter,
-        .mfs-thumbnail-chapter-outgoing {
-          position: absolute;
-          inset: 0;
-          display: block;
-          min-width: 0;
-          overflow: hidden;
-          color: white;
-          font-weight: 500;
-          white-space: nowrap;
-          text-overflow: ellipsis;
-          transform-origin: left center;
-          transition: opacity 160ms ease, filter 180ms ease,
-            transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
-        }
-
-        .mfs-thumbnail-chapter[data-mfs-state="entering"],
-        .mfs-thumbnail-chapter-outgoing[data-mfs-state="idle"],
-        .mfs-thumbnail-chapter-outgoing[data-mfs-state="leaving"] {
-          opacity: 0;
-          filter: blur(5px);
-          transform: scale(0.96);
-        }
-
-        .mfs-thumbnail-chapter[data-mfs-state="visible"],
-        .mfs-thumbnail-chapter-outgoing[data-mfs-state="visible"] {
-          opacity: 1;
-          filter: blur(0);
-          transform: scale(1);
-        }
-
-        .mfs-thumbnail-chapter-measure {
-          position: absolute;
-          width: max-content;
-          visibility: hidden;
-          font-weight: 500;
-          white-space: nowrap;
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-          .mfs-seekbar-thumbnail-preview {
-            transition: none;
-          }
-
-          .mfs-thumbnail-chapter-stage,
-          .mfs-thumbnail-chapter,
-          .mfs-thumbnail-chapter-outgoing {
-            transition: none;
-          }
-        }
-
-        .mfs-media-controls {
-          all: initial;
-          width: ${VOLUME_CONTROL_WIDTH_PX}px;
-          height: min(${VOLUME_CONTROL_HEIGHT_PX}px, calc(100% - 16px));
-          position: absolute;
-          right: ${VOLUME_EDGE_GAP_PX}px;
-          top: auto;
-          bottom: ${VOLUME_BOTTOM_GAP_PX}px;
-          z-index: 2147483647 !important;
-          display: block;
-          box-sizing: border-box;
-          overflow: hidden;
-          border: 0;
-          border-radius: 999px;
-          background: rgb(255 255 255 / 0.28);
-          color: white;
-          box-shadow: none;
-          visibility: hidden;
-          opacity: 0;
-          transform: none;
-          transition: opacity 140ms ease, transform 140ms ease;
-          -webkit-backdrop-filter: blur(6px) saturate(130%);
-          backdrop-filter: blur(6px) saturate(130%);
-          pointer-events: none;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        }
-
-        .mfs-media-controls[hidden] {
-          display: none !important;
-        }
-
-        .mfs-media-controls[data-mfs-active="true"][data-mfs-video-hovered="true"] {
-          visibility: visible;
-          opacity: 0.3;
-          pointer-events: auto;
-        }
-
-        .mfs-media-controls[data-mfs-active="true"][data-mfs-visible="true"],
-        .mfs-media-controls[data-mfs-active="true"][data-mfs-interacting="true"],
-        .mfs-media-controls[data-mfs-active="true"]:hover,
-        .mfs-media-controls[data-mfs-active="true"]:focus-within {
-          visibility: visible;
-          opacity: 1;
-          transform: none;
-          pointer-events: auto !important;
-        }
-
-        .mfs-volume-pill {
-          all: unset;
-          width: 100%;
-          height: 100%;
-          position: relative;
-          display: block;
-          box-sizing: border-box;
-          overflow: hidden;
-          border-radius: inherit;
-          color: inherit;
-          cursor: pointer;
-          touch-action: none;
-          user-select: none;
-        }
-
-        .mfs-volume-pill::after {
-          content: '';
-          position: absolute;
-          top: 0;
-          right: 0;
-          bottom: 0;
-          left: 0;
-          z-index: 2;
-          border-radius: inherit;
-        }
-
-        .mfs-volume-pill:focus-visible {
-          outline: 2px solid white;
-          outline-offset: -4px;
-        }
-
-        .mfs-volume-pill[data-mfs-dragging="true"] {
-          cursor: ns-resize;
-        }
-
-        .mfs-volume-fill {
-          width: 100%;
-          height: var(--mfs-volume, 100%);
-          position: absolute;
-          right: 0;
-          bottom: 0;
-          left: 0;
-          z-index: 0;
-          background: rgb(255 255 255 / 0.42);
-          border-radius: 0;
-          box-shadow: none;
-          transition: height 120ms ease-out;
-          -webkit-backdrop-filter: blur(6px) saturate(130%);
-          backdrop-filter: blur(6px) saturate(130%);
-          pointer-events: none;
-        }
-
-        .mfs-volume-pill[data-mfs-dragging="true"] .mfs-volume-fill {
-          transition: none;
-        }
-
-        .mfs-volume-mute {
-          all: unset;
-          position: absolute;
-          bottom: 0;
-          left: 0;
-          width: 100%;
-          height: ${VOLUME_CONTROL_WIDTH_PX}px;
-          z-index: 4;
-          cursor: pointer;
-          border-radius: 50%;
-        }
-
-        .mfs-volume-mute:focus-visible {
-          outline: 2px solid white;
-          outline-offset: -2px;
-        }
-
-        .mfs-volume-icon {
-          width: 14px;
-          height: 14px;
-          position: absolute;
-          left: 50%;
-          bottom: ${(VOLUME_CONTROL_WIDTH_PX - 14) / 2}px;
-          z-index: 3;
-          display: block;
-          color: rgb(60 60 60);
-          filter: none;
-          transform: translateX(-50%);
-          pointer-events: none;
-        }
-
-        .mfs-volume-icon path {
-          fill: none;
-          stroke: currentColor;
-          stroke-width: 2;
-          stroke-linecap: round;
-          stroke-linejoin: round;
-        }
-
-        .mfs-volume-icon-speaker {
-          fill: currentColor !important;
-          stroke: none !important;
-        }
-
-        .mfs-volume-icon-wave,
-        .mfs-volume-icon-muted {
-          opacity: 0;
-          transform: scaleX(0.35);
-          transform-box: fill-box;
-          transform-origin: left center;
-          transition:
-            opacity 140ms ease,
-            transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
-        }
-
-        .mfs-media-controls[data-mfs-volume-level="low"] .mfs-volume-icon-wave-one,
-        .mfs-media-controls[data-mfs-volume-level="medium"] .mfs-volume-icon-wave-one,
-        .mfs-media-controls[data-mfs-volume-level="medium"] .mfs-volume-icon-wave-two,
-        .mfs-media-controls[data-mfs-volume-level="high"] .mfs-volume-icon-wave {
-          opacity: 1;
-          transform: scaleX(1);
-        }
-
-        .mfs-volume-icon-muted {
-          stroke-dasharray: 24;
-          stroke-dashoffset: 24;
-          transform: none;
-          transition:
-            opacity 100ms ease,
-            stroke-dashoffset 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
-        }
-
-        .mfs-media-controls[data-mfs-volume-level="muted"] .mfs-volume-icon-muted {
-          opacity: 1;
-          stroke-dashoffset: 0;
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-          .mfs-volume-icon-wave,
-          .mfs-volume-icon-muted {
-            transition: none;
-          }
-        }
+${MEDIA_OVERLAY_STYLES}
 
         @media (hover: none), (pointer: coarse) {
           .mfs-media-controls[data-mfs-active="true"] {
@@ -1521,9 +1157,9 @@ export class OverlayCreator {
       position: absolute;
       left: 0px;
       top: ${topPosition};
-      background: rgb(255 255 255 / 0.2);
-      -webkit-backdrop-filter: blur(8px) saturate(140%);
-      backdrop-filter: blur(8px) saturate(140%);
+      background: ${DEFAULT_TIMELINE_BACKGROUND};
+      -webkit-backdrop-filter: ${TIMELINE_BACKDROP_FILTER};
+      backdrop-filter: ${TIMELINE_BACKDROP_FILTER};
       opacity: 0;
       transition: opacity 0.3s ease;
       pointer-events: none;
@@ -2334,8 +1970,8 @@ export class OverlayCreator {
       position: relative;
       overflow: visible;
       background-color: ${DEFAULT_TIMELINE_PROGRESS_BACKGROUND};
-      -webkit-backdrop-filter: blur(8px) saturate(140%);
-      backdrop-filter: blur(8px) saturate(140%);
+      -webkit-backdrop-filter: ${TIMELINE_BACKDROP_FILTER};
+      backdrop-filter: ${TIMELINE_BACKDROP_FILTER};
     `;
     progressIndicator.classList.add('scrub-timeline-progress-indicator');
     this.updateProgressIndicatorColor(progressIndicator);
@@ -2467,9 +2103,9 @@ export class OverlayCreator {
       timeline.style.background = DEFAULT_TIMELINE_BACKGROUND;
       timeline.style.setProperty(
         '-webkit-backdrop-filter',
-        'blur(8px) saturate(140%)'
+        TIMELINE_BACKDROP_FILTER
       );
-      timeline.style.backdropFilter = 'blur(8px) saturate(140%)';
+      timeline.style.backdropFilter = TIMELINE_BACKDROP_FILTER;
       delete timeline.dataset.mfsYoutubeChapterSignature;
       delete timeline.dataset.mfsYoutubeChaptered;
       if (progressIndicator) {
@@ -2478,9 +2114,9 @@ export class OverlayCreator {
           DEFAULT_TIMELINE_PROGRESS_BACKGROUND;
         progressIndicator.style.setProperty(
           '-webkit-backdrop-filter',
-          'blur(8px) saturate(140%)'
+          TIMELINE_BACKDROP_FILTER
         );
-        progressIndicator.style.backdropFilter = 'blur(8px) saturate(140%)';
+        progressIndicator.style.backdropFilter = TIMELINE_BACKDROP_FILTER;
       }
       return;
     }
@@ -2515,8 +2151,8 @@ export class OverlayCreator {
         min-width: 0;
         overflow: hidden;
         background: ${DEFAULT_TIMELINE_BACKGROUND};
-        -webkit-backdrop-filter: blur(8px) saturate(140%);
-        backdrop-filter: blur(8px) saturate(140%);
+        -webkit-backdrop-filter: ${TIMELINE_BACKDROP_FILTER};
+        backdrop-filter: ${TIMELINE_BACKDROP_FILTER};
       `;
       segment.style.flexGrow = String(chapter.end - chapter.start);
       segment.style.flexShrink = '1';
@@ -2906,11 +2542,7 @@ export class OverlayCreator {
           viewBox="0 0 24 24"
           aria-hidden="true"
         >
-          <path class="mfs-volume-icon-speaker" d="M3 10v4a1 1 0 0 0 1 1h2.6l3.7 3.7A1 1 0 0 0 12 18V6a1 1 0 0 0-1.7-.7L6.6 9H4a1 1 0 0 0-1 1Z"></path>
-          <path class="mfs-volume-icon-wave mfs-volume-icon-wave-one" d="M14 9.5c2 1.5 2 3.5 0 5"></path>
-          <path class="mfs-volume-icon-wave mfs-volume-icon-wave-two" d="M16.5 7.5c3.5 2.5 3.5 6.5 0 9"></path>
-          <path class="mfs-volume-icon-wave mfs-volume-icon-wave-three" d="M18.5 5.5c5 3.5 5 9.5 0 13"></path>
-          <path class="mfs-volume-icon-muted" d="M4.5 4.5 19.5 19.5"></path>
+          ${VOLUME_ICON_PATHS.map(({ className, d }) => `<path class="${className}" d="${d}"></path>`).join('')}
         </svg>
       </button>
     `;

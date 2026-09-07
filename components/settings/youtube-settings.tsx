@@ -41,6 +41,7 @@ export function YouTubeSettings({
         title={
           <span className="inline-flex items-center gap-2">
             Chaptered Timeline
+            <ExtraFeaturePreviewTooltip featureName="Chaptered Timeline" />
             <AppBetaBadge
               featureName="Chaptered Timeline"
               tooltip={

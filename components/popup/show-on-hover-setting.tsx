@@ -65,7 +65,7 @@ export function ShowOnHoverSetting({
                     </button>
                   }
                 />
-                <TooltipContent>
+                <TooltipContent className="border-amber-200 bg-amber-100 text-amber-700 dark:border-amber-400/25 dark:bg-amber-500/15 dark:text-amber-300 [&_strong]:text-amber-800 dark:[&_strong]:text-amber-200">
                   <strong>Click & Drag Seekbar</strong> needs the timeline
                   visible so it can be used.
                 </TooltipContent>
