@@ -92,7 +92,7 @@ export class YouTubePlayerButtons {
     this.boostButton.classList.remove('mfs-loop-button');
     this.boostButton.classList.add('mfs-loop-button', 'mfs-boost-button');
     this.boostButton.setAttribute('aria-label', 'Boost Volume');
-    this.boostButton.querySelector('svg')!.innerHTML = '<path d="M3 8h4l5-4v16l-5-4H3Z M16 7a7 7 0 0 1 0 10 M19 4a11 11 0 0 1 0 16" transform="translate(1 -1) scale(.9)" stroke-width="2" stroke="currentColor" fill="none"/>';
+    this.boostButton.querySelector('svg')!.innerHTML = '<path d="m13 3-5 8h4l-1 6 5-8h-4Z" fill="currentColor" stroke="none"/><path d="M6 5a9 9 0 0 0 0 10M3 2a14 14 0 0 0 0 16M18 5a9 9 0 0 1 0 10M21 2a14 14 0 0 1 0 16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>';
     const boostTooltip = tooltip.cloneNode(true) as HTMLSpanElement;
     this.boostContainer.append(style.cloneNode(true), this.boostButton, boostTooltip);
     this.boostButton.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); onBoost(); });
@@ -177,8 +177,9 @@ export class YouTubePlayerButtons {
         controls.insertBefore(this.boostContainer, this.container);
       this.boostButton.disabled = !boostAvailable;
       this.boostButton.setAttribute('aria-pressed', String(boostActive));
-      this.boostButton.style.color = boostActive ? '#F3CD45' : 'inherit';
-      this.boostButton.style.opacity = boostAvailable ? '1' : '.4';
+      this.boostButton.style.color = 'inherit';
+      this.boostButton.style.opacity = !boostAvailable ? '.3' : boostActive ? '1' : '.5';
+      this.boostButton.style.transition = 'opacity 180ms ease';
       this.boostContainer.querySelector('.mfs-loop-tooltip')!.textContent =
         boostAvailable ? `Boost Volume · ${boostLevel}×` : 'Boost Volume unavailable for this video';
     } else this.boostContainer.remove();
