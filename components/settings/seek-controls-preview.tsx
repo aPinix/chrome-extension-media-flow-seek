@@ -628,7 +628,7 @@ export function SeekControlsPreview({
         aria-label={previewLabel}
         aria-roledescription="interactive video preview"
         className={cn(
-          'relative aspect-video overflow-hidden rounded-xl bg-black outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-inset',
+          'relative aspect-[2/1] overflow-hidden rounded-xl bg-black outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-inset',
           focusedMethod === 'drag' && 'cursor-ew-resize touch-none'
         )}
         data-focused-method={focusedMethod}
@@ -703,7 +703,7 @@ export function SeekControlsPreview({
 
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute top-3 left-3 z-50 py-1 font-semibold text-[10px] text-white [text-shadow:0_1px_3px_rgb(0_0_0_/_85%),0_0_8px_rgb(0_0_0_/_45%)]"
+          className="pointer-events-none absolute top-3 left-3 z-50 font-semibold text-sm text-white leading-none [text-shadow:0_1px_3px_rgb(0_0_0_/_85%),0_0_8px_rgb(0_0_0_/_45%)]"
           data-testid="focused-method-label"
         >
           {methodPreviewLabels[focusedMethod]}

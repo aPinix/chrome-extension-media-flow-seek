@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { AppInputText } from '@/components/app/app-input-text';
 import { AppSegment } from '@/components/app/app-segment';
 import { AppSlider } from '@/components/app/app-slider';
+import { DEFAULT_SETTINGS } from '@/helpers/popup-storage';
 import { cn } from '@/lib/utils';
 
 type TimelineUnit = 'px' | '%';
@@ -28,12 +29,13 @@ const TimelineHeightControl = ({
 
   const commitInputValue = () => {
     const parsedValue = Number(inputValue);
-    if (!inputValue.trim() || !Number.isFinite(parsedValue)) {
-      setInputValue(String(value));
-      return;
-    }
-
-    const nextValue = Math.min(100, Math.max(0, parsedValue));
+    const nextValue =
+      inputValue.trim() &&
+      Number.isInteger(parsedValue) &&
+      parsedValue >= 0 &&
+      parsedValue <= 100
+        ? parsedValue
+        : DEFAULT_SETTINGS.timelineHeight;
     setInputValue(String(nextValue));
     onChange(nextValue);
   };
@@ -54,10 +56,10 @@ const TimelineHeightControl = ({
         trackClassName="h-3"
         value={value}
       />
-      <div className="relative h-8 w-32 shrink-0 rounded-full bg-slate-200 dark:bg-slate-800">
+      <div className="relative h-8 w-32 shrink-0 rounded-full bg-slate-200 transition-colors duration-300 ease-in-out motion-reduce:transition-none dark:bg-slate-800">
         <AppInputText
           aria-label="Timeline height value"
-          className="h-8 w-full appearance-none rounded-full bg-slate-200 pr-20 pl-2 text-center font-mono text-xs focus-visible:bg-slate-200 dark:bg-slate-800 dark:focus-visible:bg-slate-800 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          className="h-8 w-full appearance-none rounded-full bg-slate-200 pr-20 pl-2 text-center font-mono text-xs dark:bg-slate-800 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
           inputMode="numeric"
           max={100}
           min={0}
@@ -69,7 +71,7 @@ const TimelineHeightControl = ({
             const nextValue = Number(nextInputValue);
             if (
               nextInputValue.trim() &&
-              Number.isFinite(nextValue) &&
+              Number.isInteger(nextValue) &&
               nextValue >= 0 &&
               nextValue <= 100
             ) {

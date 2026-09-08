@@ -154,6 +154,26 @@ describe('VideoLayoutSettings', () => {
     expect(callbacks.onHeightChange).toHaveBeenCalledWith(14);
   });
 
+  it('restores six on blur for empty or invalid heights and keeps valid values', () => {
+    const callbacks = createCallbacks();
+    render(<VideoLayoutSettings {...baseProps} {...callbacks} height={14} />);
+    const input = screen.getByRole('spinbutton', {
+      name: 'Timeline height value',
+    }) as HTMLInputElement;
+    for (const value of ['', '-1', '101', '2.5']) {
+      fireEvent.change(input, { target: { value } });
+      fireEvent.blur(input);
+      expect(input.value).toBe('6');
+      expect(callbacks.onHeightChange).toHaveBeenLastCalledWith(6);
+    }
+    for (const value of ['0', '12', '100']) {
+      fireEvent.change(input, { target: { value } });
+      fireEvent.blur(input);
+      expect(input.value).toBe(value);
+      expect(callbacks.onHeightChange).toHaveBeenLastCalledWith(Number(value));
+    }
+  });
+
   it('keeps timeline height reset enabled until both 6 and px are restored', async () => {
     const user = userEvent.setup();
     const callbacks = createCallbacks();

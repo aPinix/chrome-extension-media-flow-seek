@@ -128,7 +128,7 @@ describe('SiteAccessView', () => {
 
     expect(classNames).toContain('h-12');
     expect(classNames).toContain('items-center');
-    const heading = screen.getByRole('heading', { name: 'Website settings' });
+    const heading = screen.getByRole('heading', { name: 'Website Settings' });
     const history = screen.getByRole('toolbar', {
       name: 'Website settings history',
     });

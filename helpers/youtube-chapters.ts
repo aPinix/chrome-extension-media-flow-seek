@@ -6,7 +6,7 @@ export type YouTubeChapterT = {
 
 export type YouTubeChapterModelT = {
   chapters: YouTubeChapterT[];
-  source: 'markers' | 'segments';
+  source: 'markers' | 'segments' | 'description';
 };
 
 const CHAPTER_MARKER_SELECTOR = 'ytd-macro-markers-list-item-renderer';
@@ -346,16 +346,71 @@ export const extractYouTubeChapterModel = ({
   if (markerModel) return markerModel;
   if (hasOnlyStaleMarkers(ownerDocument, pageUrl, videoId)) return null;
 
-  return extractNativeSegments(player, duration);
+  const native = extractNativeSegments(player, duration);
+  if (native) return native;
+  if (player.dataset.mfsAutoChapters !== 'true') return null;
+  const description = ownerDocument.querySelector<HTMLElement>(
+    'ytd-watch-metadata #description-inline-expander, ytd-watch-metadata #description, ytd-video-secondary-info-renderer #description'
+  );
+  return description
+    ? extractDescriptionChapters(
+        description.innerText || description.textContent || '',
+        duration
+      )
+    : null;
 };
+
+/** Local fallback only: descriptions containing at least two titled timestamps. */
+export function extractDescriptionChapters(
+  text: string,
+  duration: number
+): YouTubeChapterModelT | null {
+  if (!Number.isFinite(duration) || duration <= 0) return null;
+  const starts = new Map<number, string>();
+  for (const line of text.split(/\r?\n/)) {
+    const match = line
+      .trim()
+      .match(/^(?:[-•*]\s*)?(\d+:\d{2}(?::\d{2})?)\s*[-–—:|]?\s+(.+)$/);
+    if (!match) continue;
+    const timestamp = match[1] ?? '';
+    const title = match[2]?.trim() ?? '';
+    const parts = timestamp.split(':').map(Number);
+    if (
+      (parts.at(-1) ?? 0) >= 60 ||
+      (parts.length === 3 && (parts[1] ?? 0) >= 60)
+    )
+      continue;
+    const start = parseYouTubeTimestamp(timestamp);
+    if (start !== null && start < duration && title && !starts.has(start))
+      starts.set(start, title);
+  }
+  const sorted = [...starts].sort(([a], [b]) => a - b);
+  if (sorted.length < 2) return null;
+  return {
+    source: 'description',
+    chapters: sorted.map(([start, title], index) => ({
+      start,
+      title,
+      end: sorted[index + 1]?.[0] ?? duration,
+    })),
+  };
+}
 
 export const youtubeChapterMutationMayAffectModel = (
   mutation: MutationRecord
 ): boolean => {
   const target = mutation.target;
-  const targetElement = target.nodeType === 1 ? (target as Element) : null;
+  const targetElement =
+    target.nodeType === 1 ? (target as Element) : target.parentElement;
+  if (
+    targetElement?.closest(
+      'ytd-watch-metadata #description, #description-inline-expander, ytd-video-secondary-info-renderer #description'
+    )
+  )
+    return true;
 
   if (mutation.type === 'attributes') {
+    if (mutation.attributeName === 'data-mfs-auto-chapters') return true;
     if (targetElement?.matches('[role="slider"]')) {
       return true;
     }
@@ -396,6 +451,9 @@ export const youtubeChapterMutationMayAffectModel = (
     if (node.nodeType !== 1) return false;
     const element = node as Element;
     return (
+      element.matches('#description, #description-inline-expander') ||
+      element.querySelector('#description, #description-inline-expander') !==
+        null ||
       element.matches('[role="slider"]') ||
       element.querySelector('[role="slider"]') !== null ||
       containsProportionalSiblings(element) ||

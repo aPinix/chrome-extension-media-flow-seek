@@ -368,6 +368,53 @@ describe('seekbar thumbnail preview controller', () => {
     preview.remove();
   });
 
+  it('reuses the preview for loop handles when normal hover thumbnails are disabled', () => {
+    const video = document.createElement('video');
+    video.src = 'blob:https://example.com/media';
+    Object.defineProperty(video, 'duration', {
+      configurable: true,
+      value: 100,
+    });
+    const wrapper = document.createElement('div');
+    const timeline = document.createElement('div');
+    timeline.style.opacity = '1';
+    const preview = createSeekbarThumbnailPreviewElement(document);
+    const decoder = preview.querySelector('video');
+    if (!decoder) throw new Error('Missing decoder video');
+    decoder.load = vi.fn();
+    preview.dataset.mfsPortaled = 'true';
+    document.body.append(video, wrapper);
+    document.documentElement.append(timeline, preview);
+    wrapper.getBoundingClientRect = () => rect(100, 50, 300, 200);
+    timeline.getBoundingClientRect = () => rect(100, 240, 300, 10);
+    const controller = new SeekbarThumbnailPreviewController({
+      getTimelinePosition: () => 'bottom',
+      getYouTubeChapters: () => undefined,
+      isEnabled: () => false,
+      isScrubbing: () => false,
+      preview,
+      timeline,
+      video,
+      wrapper,
+    });
+
+    controller.updateAtPoint(250, 245);
+    expect(preview.dataset.mfsVisible).toBe('false');
+    controller.updateAtPoint(250, 245, 50);
+    expect(preview.dataset.mfsVisible).toBe('true');
+    expect(preview.querySelector('.mfs-thumbnail-time')?.textContent).toBe('0:50');
+    controller.updateAtPoint(250, 245, 65);
+    expect(preview.querySelector('.mfs-thumbnail-time')?.textContent).toBe('1:05');
+
+    expect(preview.style.left).toBe('250px');
+    expect(preview.style.top).toBe('200px');
+    expect(preview.style.maxWidth).toBe('284px');
+
+    controller.cleanup();
+    timeline.remove();
+    preview.remove();
+  });
+
   it('stays hidden on devices without a fine hover pointer', () => {
     vi.stubGlobal(
       'matchMedia',

@@ -21,6 +21,7 @@ import {
   VOLUME_EDGE_GAP_PX,
 } from '@/helpers/media-overlay-styles';
 import { getDocumentOverlayHost } from '@/helpers/overlay-portal';
+import { PlayerTools } from '@/helpers/player-tools';
 import {
   DEFAULT_SCROLL_SPEED_FACTOR,
   getPlayerLayerWheelDeltaPixels,
@@ -83,6 +84,7 @@ const EXTENSION_UI_SELECTOR = [
   '.scrub-wrapper',
   '.scrub-timeline',
   '.mfs-media-controls',
+  '.mfs-player-tools',
   '.mfs-seek-speed-label',
   '.mfs-youtube-chapter-tooltip',
   '.mfs-seekbar-thumbnail-preview',
@@ -242,6 +244,11 @@ export class OverlayCreator {
       console.log('🚫 Extension disabled by key press, fast-hiding overlays');
     }
 
+    // Cancel loop layout motion before hiding so resuming a shortcut never
+    // interpolates from a stale or temporarily reparented position.
+    this.videoStateManager.forEach((state) => {
+      delete state.timeline.dataset.mfsLoopAnimating;
+    });
     // Hide the extension UI immediately while the page handles the shortcut.
     this.fastHideOverlays();
 
@@ -678,7 +685,23 @@ export class OverlayCreator {
       scrubTimeline
     );
 
+    // Update height and its anchored position together before the next paint.
+    scrubTimeline.addEventListener('mfs-loop-layout', updateTimelineInteractivity);
+    const playerTools = !DOMUtils.isYouTubeHoverPreview(video)
+      ? new PlayerTools(video, scrubTimeline, deferredSeek, (time) => {
+          if (time === null) { thumbnailPreviewController?.hide(); return; }
+          const rect = scrubTimeline.getBoundingClientRect();
+          thumbnailPreviewController?.updateAtPoint(
+            rect.left + (time / video.duration) * rect.width,
+            rect.top + rect.height / 2,
+            time
+          );
+        })
+      : null;
+
     videoState.syncCleanup = () => {
+      playerTools?.cleanup();
+      scrubTimeline.removeEventListener('mfs-loop-layout', updateTimelineInteractivity);
       video.removeEventListener('loadedmetadata', updateContentWidth);
       video.removeEventListener('durationchange', updateContentWidth);
       video.removeEventListener('loadedmetadata', updateTimelineInteractivity);
@@ -1250,7 +1273,7 @@ ${MEDIA_OVERLAY_STYLES}
     const wrapperRect = wrapper.getBoundingClientRect();
     const configuredHeightInPixels =
       unit === '%' ? (wrapperRect.height * height) / 100 : height;
-    const heightInPixels =
+    const heightInPixels = timeline.dataset.mfsLoopEditing === 'true' ? 32 :
       isInteractive &&
       configuredHeightInPixels < MIN_INTERACTIVE_TIMELINE_HEIGHT_PX
         ? Math.min(MIN_INTERACTIVE_TIMELINE_HEIGHT_PX, wrapperRect.height)
@@ -1269,7 +1292,7 @@ ${MEDIA_OVERLAY_STYLES}
         wrapper.appendChild(thumbnailPreview);
       }
 
-      const heightValue = unit === '%' ? `${height}%` : `${height}px`;
+      const heightValue = timeline.dataset.mfsLoopEditing === 'true' ? '32px' : unit === '%' ? `${height}%` : `${height}px`;
       timeline.style.position = 'absolute';
       timeline.style.left = '0px';
       timeline.style.width = '100%';
@@ -1581,6 +1604,7 @@ ${MEDIA_OVERLAY_STYLES}
 
     const handlePointerDown = (event: PointerEvent): void => {
       if (
+        timeline.dataset.mfsLoopEditing === 'true' ||
         !this.settingsManager.isTimelineSeekingEnabled() ||
         event.isPrimary === false ||
         (event.pointerType === 'mouse' && event.button !== 0) ||
@@ -2121,9 +2145,16 @@ ${MEDIA_OVERLAY_STYLES}
       return;
     }
 
-    const signature = JSON.stringify(model.chapters);
+    // Description timestamps can start after zero. Render the leading span
+    // without a title so the real sections retain their absolute positions.
+    const firstStart = model.chapters[0]?.start ?? 0;
+    const timelineChapters =
+      firstStart > 0
+        ? [{ start: 0, end: firstStart }, ...model.chapters]
+        : model.chapters;
+    const signature = JSON.stringify(timelineChapters);
     if (timeline.dataset.mfsYoutubeChapterSignature === signature) {
-      this.youtubeChapterModels.set(timeline, model.chapters);
+      this.youtubeChapterModels.set(timeline, timelineChapters);
       this.updateYouTubeChapterGap(timeline);
       return;
     }
@@ -2142,7 +2173,7 @@ ${MEDIA_OVERLAY_STYLES}
       pointer-events: none;
     `;
 
-    model.chapters.forEach((chapter) => {
+    timelineChapters.forEach((chapter) => {
       const segment = timeline.ownerDocument.createElement('div');
       const fill = timeline.ownerDocument.createElement('div');
       segment.className = 'mfs-youtube-chapter-segment';
@@ -2177,7 +2208,7 @@ ${MEDIA_OVERLAY_STYLES}
     timeline.style.backdropFilter = 'none';
     timeline.dataset.mfsYoutubeChaptered = 'true';
     timeline.dataset.mfsYoutubeChapterSignature = signature;
-    this.youtubeChapterModels.set(timeline, model.chapters);
+    this.youtubeChapterModels.set(timeline, timelineChapters);
     if (progressIndicator) {
       progressIndicator.style.zIndex = '1';
       progressIndicator.style.backgroundColor = 'transparent';
@@ -2287,6 +2318,7 @@ ${MEDIA_OVERLAY_STYLES}
       mutationObserver.observe(ownerDocument.documentElement, {
         attributeFilter: [
           'aria-orientation',
+          'data-mfs-auto-chapters',
           'class',
           'href',
           'role',
@@ -2295,6 +2327,7 @@ ${MEDIA_OVERLAY_STYLES}
         ],
         attributes: true,
         childList: true,
+        characterData: true,
         subtree: true,
       });
       video.addEventListener('loadedmetadata', scheduleRefresh);
@@ -4029,7 +4062,7 @@ ${MEDIA_OVERLAY_STYLES}
     timeline: HTMLDivElement,
     seekSpeedLabel: HTMLDivElement,
     getIsSettingInitialScroll: () => boolean,
-    _setIsSettingInitialScroll: (value: boolean) => void,
+    setIsSettingInitialScroll: (value: boolean) => void,
     setScrubTimeout: (timeout: number | null) => void,
     getScrubTimeout: () => number | null,
     getIsHovering: () => boolean,
@@ -4046,10 +4079,13 @@ ${MEDIA_OVERLAY_STYLES}
     let isPlayPauseGestureLocked = false;
     let playPauseGestureAction: 'play' | 'pause' | null = null;
     let isWheelGestureActive = false;
+    let lastScrollGeometry = `${overlay.offsetWidth}:${scrollContent.offsetWidth}`;
+    let resizedScrollPosition: number | null = null;
 
     const canHandleScrollSeeking = (): boolean =>
       !this.isKeyboardSuspended &&
       !this.isMinimalPlayerBypassActive &&
+      video.dataset.mfsPip !== 'true' &&
       this.settingsManager.isScrollSeekingEnabled();
 
     const clearSeekCommitTimeout = (): void => {
@@ -4333,6 +4369,31 @@ ${MEDIA_OVERLAY_STYLES}
       const videoState = this.videoStateManager.get(video);
       if (!videoState) return;
       if (videoState.isVideoDragging) return;
+
+      // Resizing a scroll container (Mini Player, PiP, fullscreen) can clamp
+      // scrollLeft and emit a native scroll event without any user gesture.
+      // Keep background/non-wheel seeking, but never interpret that clamp as a seek.
+      const geometry = `${overlay.offsetWidth}:${scrollContent.offsetWidth}`;
+      if (geometry !== lastScrollGeometry) {
+        lastScrollGeometry = geometry;
+        if (!isWheelGestureActive) {
+          this.syncOverlayToVideo(
+            video,
+            overlay,
+            scrollContent,
+            setIsSettingInitialScroll
+          );
+          resizedScrollPosition = overlay.scrollLeft;
+          return;
+        }
+      }
+      if (resizedScrollPosition !== null) {
+        const isResizeEcho =
+          !isWheelGestureActive &&
+          Math.abs(overlay.scrollLeft - resizedScrollPosition) < 0.5;
+        resizedScrollPosition = null;
+        if (isResizeEcho) return;
+      }
 
       videoState.isUserScrubbing = true;
 

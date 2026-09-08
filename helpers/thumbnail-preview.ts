@@ -437,7 +437,7 @@ export class SeekbarThumbnailPreviewController {
     );
   }
 
-  updateAtPoint(clientX: number, clientY: number): void {
+  updateAtPoint(clientX: number, clientY: number, loopTime?: number): void {
     const { timeline, video, wrapper } = this.options;
     const ownerWindow = video.ownerDocument.defaultView;
     const canHoverWithFinePointer =
@@ -445,9 +445,10 @@ export class SeekbarThumbnailPreviewController {
       ownerWindow.matchMedia('(any-hover: hover) and (any-pointer: fine)')
         .matches;
     if (
+      loopTime === undefined && (
       !this.options.isEnabled() ||
       !canHoverWithFinePointer ||
-      timeline.style.opacity !== '1'
+      timeline.style.opacity !== '1')
     ) {
       this.hide();
       return;
@@ -462,7 +463,7 @@ export class SeekbarThumbnailPreviewController {
       clientY >= timelineRect.top && clientY <= timelineRect.bottom;
     if (
       !isWithinHorizontalBounds ||
-      (!isWithinVerticalBounds && !this.options.isScrubbing())
+      (!isWithinVerticalBounds && !this.options.isScrubbing() && loopTime === undefined)
     ) {
       this.hide();
       return;
@@ -477,6 +478,8 @@ export class SeekbarThumbnailPreviewController {
           timelineRect.width
         )
       : null;
+    if (target && loopTime !== undefined && range)
+      target.time = Math.max(range.start, Math.min(range.end, loopTime));
     if (!range || !target) {
       this.hide();
       return;
@@ -486,7 +489,7 @@ export class SeekbarThumbnailPreviewController {
       this.restoreTextTracks = prepareThumbnailTextTracks(video);
     }
 
-    this.updateTimeLabel(formatThumbnailPreviewTime(target.time, range));
+    this.updateTimeLabel(formatThumbnailPreviewTime(target.time, range), loopTime !== undefined);
     const chapterTitle =
       this.getYouTubeChapterTitleAtPoint(clientX, target.time, timelineRect) ??
       getTextTrackChapterTitle(video, target.time);
@@ -748,7 +751,17 @@ export class SeekbarThumbnailPreviewController {
     this.options.preview.style.top = `${top}px`;
   }
 
-  private updateTimeLabel(label: string): void {
+  private updateTimeLabel(label: string, plainText = false): void {
+    // Loop previews can update while the animated renderer is hidden. Keep
+    // their timestamp readable without depending on custom-element animation.
+    if (plainText) {
+      if (this.timeElement.getAttribute(THUMBNAIL_PREVIEW_TIME_MOUNTED_ATTRIBUTE) === 'true')
+        this.timeElement.dispatchEvent(new CustomEvent(THUMBNAIL_PREVIEW_TIME_CLEANUP_EVENT, { bubbles: true }));
+      this.timeElement.textContent = label;
+      this.timeElement.dataset.mfsTime = label;
+      this.currentTimeLabel = '';
+      return;
+    }
     if (label === this.currentTimeLabel) return;
     this.currentTimeLabel = label;
     this.timeElement.dataset.mfsTime = label;

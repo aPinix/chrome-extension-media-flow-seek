@@ -1,5 +1,4 @@
 import {
-  BugIcon,
   EyeOffIcon,
   GlobeIcon,
   PaletteIcon,
@@ -17,7 +16,9 @@ import { MinimalPlayerDescription } from '@/components/popup/minimal-player-desc
 import { SectionTitle } from '@/components/popup/section-title';
 import { ShowOnHoverSetting } from '@/components/popup/show-on-hover-setting';
 import { SiteAccessView } from '@/components/popup/site-access-view';
+import { SettingsSearch } from '@/components/popup/settings-search';
 import { ViewTitle } from '@/components/popup/view-title';
+import { ArrowSeekSettings } from '@/components/settings/arrow-seek-settings';
 import { InstagramSettings } from '@/components/settings/instagram-settings';
 import { SeekControlsSettings } from '@/components/settings/seek-controls-settings';
 import { TikTokSettings } from '@/components/settings/tiktok-settings';
@@ -31,7 +32,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { EXT_URL, IS_DEVELOPMENT } from '@/config/variables.config';
+import { EXT_URL } from '@/config/variables.config';
 import {
   DEFAULT_SETTINGS,
   loadPopupSettings,
@@ -46,8 +47,8 @@ import { getExtensionVersion } from '@/lib/version';
 import { ActionAreaE, type ActionAreaT } from '@/types/content';
 import type { DomainConfigT, DomainSortT } from '@/types/domains';
 import { ShortcutHotkeyStateE } from '@/types/shortcut';
-
 import { CardListItemWrapper } from './card-list-item-wrapper';
+import { PlayerToolsLibrary } from './player-tools-library';
 
 const headerLinkClassName =
   'flex size-6 items-center justify-center rounded-md border border-transparent text-slate-400 transition-[color,background-color,border-color] hover:border-brand-100 hover:bg-brand-50 hover:text-brand focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2 dark:text-slate-400 dark:hover:border-brand-800 dark:hover:bg-brand-900/50 dark:hover:text-brand-300';
@@ -207,10 +208,10 @@ function PopupHeader() {
 export function PopupContent() {
   const { theme } = useTheme();
   const carouselRef = useRef<HTMLElement>(null);
+  const settingsContentRef = useRef<HTMLDivElement>(null);
   const programmaticViewRef = useRef<boolean | null>(null);
   const domainSortTouchedRef = useRef(false);
   const [isEnabled, setIsEnabled] = useState(true);
-  const [isDebugEnabled, setIsDebugEnabled] = useState(false);
   const [isScrollSeekingEnabled, setIsScrollSeekingEnabled] = useState(
     DEFAULT_SETTINGS.isScrollSeekingEnabled
   );
@@ -302,8 +303,7 @@ export function PopupContent() {
 
   // Check if extension settings are at defaults
   const isExtensionAtDefaults =
-    isEnabled === DEFAULT_SETTINGS.isEnabled &&
-    (!IS_DEVELOPMENT || isDebugEnabled === DEFAULT_SETTINGS.isDebugEnabled);
+    isEnabled === DEFAULT_SETTINGS.isEnabled;
 
   // Check if settings are at defaults
   const isSettingsAtDefaults =
@@ -345,7 +345,6 @@ export function PopupContent() {
     const loadSettings = async () => {
       const settings = await loadPopupSettings();
       setIsEnabled(settings.isEnabled);
-      setIsDebugEnabled(settings.isDebugEnabled);
       setIsScrollSeekingEnabled(settings.isScrollSeekingEnabled);
       setInvertHorizontalScroll(settings.invertHorizontalScroll);
       setScrollSpeedFactor(settings.scrollSpeedFactor);
@@ -425,15 +424,6 @@ export function PopupContent() {
     sendMessageToCurrentTab({
       action: 'updateEnabled',
       isEnabled: checked,
-    });
-  };
-
-  const handleDebugToggle = (checked: boolean) => {
-    setIsDebugEnabled(checked);
-    saveSettings({ isDebugEnabled: checked });
-    sendMessageToCurrentTab({
-      action: 'updateDebug',
-      isDebugEnabled: checked,
     });
   };
 
@@ -666,7 +656,6 @@ export function PopupContent() {
     const defaultSettings = DEFAULT_SETTINGS;
 
     setIsEnabled(defaultSettings.isEnabled);
-    setIsDebugEnabled(defaultSettings.isDebugEnabled);
 
     // Save only extension-related settings
     saveSettings({
@@ -873,7 +862,7 @@ export function PopupContent() {
           >
             {/* Scrollable Content */}
             <ScrollArea className="flex-1 overflow-hidden **:data-[slot='scroll-area-viewport']:relative">
-              <div className="flex flex-1 flex-col gap-6 p-6 pt-22 pb-20">
+              <div ref={settingsContentRef} className="flex flex-1 flex-col gap-6 p-6 pt-22 pb-36">
                 <ViewTitle
                   description="Customize video controls and scrolling"
                   title="Settings"
@@ -925,24 +914,7 @@ export function PopupContent() {
                       title="Enable Extension"
                     />
 
-                    {IS_DEVELOPMENT && (
-                      <CardListItem
-                        classNameIcon={isDebugEnabled ? 'text-red-500!' : ''}
-                        components={{
-                          RightSlot: (
-                            <AppSwitch
-                              checked={isDebugEnabled}
-                              disabled={!isEnabled}
-                              onCheckedChange={handleDebugToggle}
-                            />
-                          ),
-                        }}
-                        description="Highlight video elements"
-                        disabledSoft={!isEnabled}
-                        icon={BugIcon}
-                        title="Debug"
-                      />
-                    )}
+
                   </CardListItemWrapper>
                 </div>
 
@@ -1012,7 +984,19 @@ export function PopupContent() {
                 </div>
 
                 <div className="flex flex-none flex-col">
+                  <SectionTitle title="Basic Features" />
+                  <CardListItemWrapper
+                    className={cn(
+                      !isEnabled && 'pointer-events-none opacity-50'
+                    )}
+                  >
+                    <ArrowSeekSettings disabled={!isEnabled} />
+                  </CardListItemWrapper>
+                </div>
+
+                <div className="flex flex-none flex-col">
                   <SectionTitle title="Extra Features" />
+                  <PlayerToolsLibrary />
                   <CardListItemWrapper
                     className={cn(
                       !isEnabled && 'pointer-events-none opacity-50'
@@ -1184,6 +1168,9 @@ export function PopupContent() {
 
         {/* Persistent Tab Navigation */}
         <footer className="absolute inset-x-3 bottom-2 z-50 h-12 p-1">
+          <div aria-hidden={showDomainsView} inert={showDomainsView} className={cn('absolute right-1 bottom-[calc(100%+0.25rem)] left-1', showDomainsView && 'hidden')}>
+            <SettingsSearch contentRef={settingsContentRef} active={!showDomainsView} />
+          </div>
           <div
             aria-hidden={!showDomainsView}
             className={cn(

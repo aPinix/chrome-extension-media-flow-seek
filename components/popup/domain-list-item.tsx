@@ -40,6 +40,7 @@ export interface DomainRuleDragItemI {
 interface DomainListItemPropsI {
   globalDefaultOn: boolean;
   highlighted?: boolean;
+  searchQuery?: string;
   index: number;
   isEntering?: boolean;
   isRemoving?: boolean;
@@ -60,6 +61,7 @@ interface DomainListItemPropsI {
 export function DomainListItem({
   globalDefaultOn,
   highlighted,
+  searchQuery,
   index,
   isEntering,
   isRemoving,
@@ -329,7 +331,7 @@ export function DomainListItem({
             title={`Double-click to edit ${rule.domain}`}
             type="button"
           >
-            <DomainName domain={rule.domain} />
+            <DomainName domain={rule.domain} searchQuery={searchQuery} />
           </button>
         )}
         {createdDate ? (

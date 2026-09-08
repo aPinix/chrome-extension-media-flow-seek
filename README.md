@@ -121,6 +121,27 @@ popular social platforms and other HTML5 video sites.
 
 ## 🎮 Usage
 
+### Player tools, saved moments, and floating video
+
+Hover over a video and open **Tools**. The compact menu includes:
+
+- Set the shared **Seek interval (secs)** in **Settings → Basic Features → Arrow Key Seeking** (5 seconds by default). The left/right arrow keys seek the active video and ignore text fields and modifier shortcuts.
+- YouTube speed presets and precise 0.25–4× controls. Selecting a speed remembers it for YouTube. Remaining time accounts for the actual playback speed.
+- Extra volume up to 300%, video filters, and PNG screenshots. Boost is explicit; screenshots can optionally include filters. Source restrictions can make boost or screenshots unavailable.
+- Cinema Mode, which dims the surrounding page. Press Escape or click the dimmed background to leave.
+
+Loop is YouTube-only and off by default. Enable **Settings → YouTube → Loop** to add its button before autoplay and captions in the native player controls. The button opens a dedicated editor, separate from Tools. Draw an A–B range on the timeline while the editor is open. Drag its handles to adjust the boundaries, drag its middle to move it, or enter times in seconds. Focus a handle and use the arrow keys for 0.1-second adjustments (Shift for one second). Enable the loop to repeat it. Name it and choose **Save loop**; editing a saved range uses **Save changes**. Normal timeline dragging continues to seek outside editing mode. Turning the feature off removes its native button and stops the active loop.
+
+**Bookmark this moment** saves a named timestamp. The extension popup's **Saved moments & loops** library supports search, editing, deletion, reopening, and JSON import/export. Exported files are versioned; imports preserve existing items with matching IDs. Opening a saved item seeks only the matching video; ordinary visits never activate saved loops automatically.
+
+Saved YouTube items use the video ID. Stable direct video URLs can also be saved across sessions. Videos with temporary or signed URLs remain session-only because their addresses cannot reliably identify the same video later. Saved media stays in local browser storage; preferences use the existing browser sync storage. No account or AI service is required.
+
+YouTube additionally offers separate **Hide info cards** and **Hide end screens** switches. **Detect description chapters** is opt-in: existing chapters take priority, then titled timestamps from the description are used. Detected sections are labeled in the menu, and an initial gap remains untitled.
+
+Enable **Mini player on scroll** to keep a playing YouTube video visible when it leaves the viewport. Drag its header to reposition it, use the corner to resize it, and scroll back to restore the original player. Size and position are remembered locally. Closing the mini player suppresses it for the current video.
+
+**Picture-in-Picture** provides playback, skip, seek, volume, speed, remaining-time, and active-loop controls in browsers supporting Document PiP. Other compatible browsers fall back to native PiP with the browser's own controls. Mini Player and PiP are mutually exclusive. Live streams do not support saved loop editing in this version.
+
 ### Basic Usage
 
 1. **Navigate to any video** - YouTube, Vimeo, Netflix, or any website with video

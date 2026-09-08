@@ -1547,6 +1547,28 @@ describe('OverlayCreator scroll gesture seeking', () => {
     cleanup();
   });
 
+  it('does not seek when resizing the player clamps the scroll position', () => {
+    vi.useFakeTimers();
+    const { cleanup, overlay, soughtTimes, videoState } = setupScrollSeeking();
+    Object.defineProperty(overlay, 'offsetWidth', {
+      configurable: true,
+      value: 360,
+    });
+    overlay.scrollLeft = 0;
+    overlay.dispatchEvent(new Event('scroll'));
+    overlay.dispatchEvent(new Event('scroll'));
+    overlay.dispatchEvent(new Event('scrollend'));
+    vi.advanceTimersByTime(300);
+    expect(soughtTimes).toEqual([]);
+    expect(videoState.isUserScrubbing).toBe(false);
+    // A later, genuine background scroll still seeks normally.
+    overlay.scrollLeft = 320;
+    overlay.dispatchEvent(new Event('scroll'));
+    overlay.dispatchEvent(new Event('scrollend'));
+    expect(soughtTimes).toEqual([50]);
+    cleanup();
+  });
+
   it('does not commit programmatic scroll synchronization', () => {
     vi.useFakeTimers();
     let isSettingInitialScroll = true;

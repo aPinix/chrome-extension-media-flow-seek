@@ -6,10 +6,12 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { ExtraFeaturePreview } from './extra-feature-preview';
+import { LoopSectionsPreview } from './loop-sections-preview';
 
 export const EXTRA_FEATURE_PREVIEW_NAMES = [
   'Timeline Show on Hover',
   'Hover Thumbnails',
+  'Loop Sections',
   'Chaptered Timeline',
   'Minimal Player',
   'Match Site Color',
@@ -46,7 +48,7 @@ export function ExtraFeaturePreviewTooltip({
           side="top"
           sideOffset={8}
         >
-          <ExtraFeaturePreview featureName={featureName} />
+          {featureName === 'Loop Sections' ? <LoopSectionsPreview /> : <ExtraFeaturePreview featureName={featureName} />}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

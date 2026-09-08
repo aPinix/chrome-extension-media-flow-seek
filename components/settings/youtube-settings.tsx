@@ -6,6 +6,8 @@ import { CardListItem } from '@/components/popup/card-list-item';
 import { CardListItemWrapper } from '@/components/popup/card-list-item-wrapper';
 import { ExtraFeaturePreviewTooltip } from '@/components/popup/extra-feature-preview-tooltip';
 import { cn } from '@/lib/utils';
+import { YouTubeBoostSetting } from './youtube-boost-setting';
+import { YouTubeLoopSetting } from './youtube-loop-setting';
 
 export function YouTubeSettings({
   chapteredTimelineEnabled,
@@ -24,6 +26,8 @@ export function YouTubeSettings({
     <CardListItemWrapper
       className={cn(!extensionEnabled && 'pointer-events-none opacity-50')}
     >
+      <YouTubeBoostSetting disabled={!extensionEnabled} />
+      <YouTubeLoopSetting disabled={!extensionEnabled} />
       <CardListItem
         components={{
           RightSlot: (

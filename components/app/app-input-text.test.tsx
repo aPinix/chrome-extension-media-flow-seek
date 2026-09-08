@@ -18,6 +18,6 @@ describe('AppInputText', () => {
     expect(input.className).toContain('focus-visible:ring-inset');
     expect(input.className).toContain('border-color');
     expect(input.className).toContain('duration-300');
-    expect(input.className).toContain('ease-out');
+    expect(input.className).toContain('ease-in-out');
   });
 });

@@ -482,6 +482,14 @@ function SortableDomainRulesList({
       })
     : sortedSiteRules;
   const isFiltering = Boolean(trimmedSearchValue);
+  const firstSearchDomain = visibleSiteRules[0]?.domain;
+  useEffect(() => {
+    if (!normalizedSearchValue || !firstSearchDomain) return;
+    const timer = setTimeout(() => {
+      rowRefs.current.get(firstSearchDomain)?.scrollIntoView?.({ block: 'center', behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    }, 160);
+    return () => clearTimeout(timer);
+  }, [normalizedSearchValue, firstSearchDomain]);
 
   const captureRowPositions = useCallback(() => {
     reorderPositionsRef.current = new Map(
@@ -687,9 +695,10 @@ function SortableDomainRulesList({
         <SectionTitle
           className="justify-start gap-1.5"
           id="website-settings-title"
-          title="Website settings"
+          title="Website Settings"
         >
           {historyControls}
+          {isFiltering && <span role="status" className="ml-1 whitespace-nowrap text-xs font-normal normal-case text-muted-foreground">{visibleSiteRules.length} found</span>}
           {sortControl}
         </SectionTitle>
 
@@ -701,7 +710,8 @@ function SortableDomainRulesList({
             {visibleSiteRules.map((rule, index) => (
               <DomainListItem
                 globalDefaultOn={globalDefaultOn}
-                highlighted={highlightedDomain === rule.domain}
+                highlighted={isFiltering || highlightedDomain === rule.domain}
+                searchQuery={normalizedSearchValue}
                 index={index}
                 isEntering={enteringDomains.has(rule.domain)}
                 isRemoving={removingDomain === rule.domain}

@@ -5,6 +5,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { YouTubeSettings } from './youtube-settings';
 
+vi.mock('./youtube-boost-setting', () => ({ YouTubeBoostSetting: () => null }));
+vi.mock('./youtube-loop-setting', () => ({ YouTubeLoopSetting: () => null }));
+
 afterEach(cleanup);
 
 describe('YouTubeSettings', () => {
