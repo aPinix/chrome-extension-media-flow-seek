@@ -7,6 +7,7 @@ import {
   removeEmptyOverlayHost,
 } from '@/helpers/overlay-portal';
 import type { ContentSettingsT } from '@/types/content';
+import { isVideoBlockedByDialog } from '@/helpers/page-dialogs';
 
 export type SocialPlaybackSetting =
   | 'instagramPlaybackSpeed'
@@ -70,16 +71,19 @@ export function setupSocialPageControls(
     .mfs-social-page-controls[data-appearance="dark"] { --mfs-foreground:#f8f9f9; --mfs-menu:rgba(20,20,20,.86); --mfs-border:#ffffff3d; --mfs-hover:#ffffff1f; --mfs-selected:#ffffff33; --mfs-track:#2c2f33; --mfs-active:#f8f9f9; --mfs-active-knob:#0c1014; color-scheme:dark; }
     .mfs-social-page-controls button { appearance:none; margin:0; padding:0; border:0; cursor:pointer; color:inherit; font:inherit; }
     .mfs-social-page-controls button:focus-visible { outline:2px solid var(--mfs-foreground); outline-offset:3px; }
-    .mfs-social-page-controls .mfs-control-group { height:44px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; white-space:nowrap; text-align:center; }
-    .mfs-social-page-controls .mfs-speed-button { width:36px; height:28px; background:transparent; }
+    .mfs-social-page-controls .mfs-control-group { width:52px; height:44px; flex:none; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; white-space:nowrap; text-align:center; }
+    .mfs-social-page-controls .mfs-speed-button,
+    .mfs-social-page-controls .mfs-skip-switch { width:100%; height:44px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; border-radius:8px; background:transparent; }
+    .mfs-social-page-controls .mfs-speed-button { gap:2px; }
+    .mfs-social-page-controls .mfs-speed-button svg { flex:none; }
     .mfs-social-page-controls .mfs-speed-menu { position:absolute; width:68px; padding:6px; box-sizing:border-box; border-radius:13px; background:var(--mfs-menu); border:1px solid var(--mfs-border); backdrop-filter:blur(16px) saturate(140%); box-shadow:0 6px 24px #0004; }
     .mfs-social-page-controls .mfs-speed-option { display:block; width:100%; height:28px; border-radius:10px; background:transparent; font-size:13px; }
     .mfs-social-page-controls .mfs-speed-option:hover { background:var(--mfs-hover); }
     .mfs-social-page-controls .mfs-speed-option[aria-checked=true] { background:var(--mfs-selected); }
-    .mfs-social-page-controls .mfs-skip-switch { width:40px; height:22px; border-radius:20px; background:var(--mfs-track); transition:background 150ms; }
-    .mfs-social-page-controls .mfs-skip-switch span { display:block; width:12px; height:12px; margin-left:5px; border-radius:50%; background:white; transition:transform 150ms,background 150ms; }
-    .mfs-social-page-controls .mfs-skip-switch[aria-checked=true] { background:var(--mfs-active); }
-    .mfs-social-page-controls .mfs-skip-switch[aria-checked=true] span { transform:translateX(18px); background:var(--mfs-active-knob); }
+    .mfs-social-page-controls .mfs-skip-track { display:flex; flex:none; align-items:center; width:40px; height:22px; border-radius:20px; background:var(--mfs-track); transition:background 150ms; }
+    .mfs-social-page-controls .mfs-skip-knob { display:block; width:12px; height:12px; margin-left:5px; border-radius:50%; background:white; transition:transform 150ms,background 150ms; }
+    .mfs-social-page-controls .mfs-skip-switch[aria-checked=true] .mfs-skip-track { background:var(--mfs-active); }
+    .mfs-social-page-controls .mfs-skip-switch[aria-checked=true] .mfs-skip-knob { transform:translateX(18px); background:var(--mfs-active-knob); }
   `;
   const speedGroup = doc.createElement('div');
   speedGroup.className = 'mfs-control-group';
@@ -111,7 +115,8 @@ export function setupSocialPageControls(
     menu.append(option);
     return option;
   });
-  speedGroup.append(speed, speedLabel);
+  speed.append(speedLabel);
+  speedGroup.append(speed);
   const skipGroup = doc.createElement('div');
   skipGroup.className = 'mfs-control-group';
   const skip = doc.createElement('button');
@@ -120,10 +125,16 @@ export function setupSocialPageControls(
   skip.dataset.mfsAction = 'auto-skip';
   skip.setAttribute('role', 'switch');
   skip.setAttribute('aria-label', 'Auto-Skip');
-  skip.append(doc.createElement('span'));
+  const skipTrack = doc.createElement('span');
+  skipTrack.className = 'mfs-skip-track';
+  skipTrack.setAttribute('aria-hidden', 'true');
+  const skipKnob = doc.createElement('span');
+  skipKnob.className = 'mfs-skip-knob';
+  skipTrack.append(skipKnob);
   const skipLabel = doc.createElement('span');
   skipLabel.textContent = 'Auto-skip';
-  skipGroup.append(skip, skipLabel);
+  skip.append(skipTrack, skipLabel);
+  skipGroup.append(skip);
   toolbar.append(styles, speedGroup, skipGroup, menu);
   function closeMenu(focus = false) {
     menu.hidden = true;
@@ -191,6 +202,26 @@ export function setupSocialPageControls(
   });
   let frame: number | undefined;
   let disposed = false;
+  let nativeRail: HTMLElement | null = null;
+  let positionedRail: {
+    element: HTMLElement;
+    value: string;
+    priority: string;
+  } | null = null;
+  function restoreRailPosition() {
+    if (!positionedRail) return;
+    const { element, value, priority } = positionedRail;
+    if (element.style.position === 'relative') {
+      if (value) element.style.setProperty('position', value, priority);
+      else element.style.removeProperty('position');
+    }
+    positionedRail = null;
+  }
+  function detachToolbar() {
+    toolbar.remove();
+    restoreRailPosition();
+    removeEmptyOverlayHost(doc);
+  }
   const area = (candidate: HTMLVideoElement) => {
     const rect = candidate.getBoundingClientRect();
     return (
@@ -230,29 +261,53 @@ export function setupSocialPageControls(
     skip.title = `Auto-Skip: ${enabled ? 'on' : 'off'}`;
     if (!showSpeed && !showSkip) {
       closeMenu();
-      toolbar.remove();
-      removeEmptyOverlayHost(doc);
+      detachToolbar();
       return;
     }
     const bestVideo = Array.from(
       doc.querySelectorAll<HTMLVideoElement>('video:not(.mfs-thumbnail-video)')
     ).reduce<HTMLVideoElement | null>(
       (best, candidate) =>
-        area(candidate) > (best ? area(best) : 0) ? candidate : best,
+        !isVideoBlockedByDialog(candidate) && area(candidate) > (best ? area(best) : 0) ? candidate : best,
       null
     );
-    const blockedByDialog = Array.from(
-      doc.querySelectorAll('[role="dialog"], [aria-modal="true"]')
-    ).some(
-      (dialog) => !dialog.contains(video) && dialog.getClientRects().length > 0
-    );
+    const blockedByDialog = isVideoBlockedByDialog(video);
     if (bestVideo !== video || blockedByDialog) {
       closeMenu();
-      toolbar.remove();
-      removeEmptyOverlayHost(doc);
+      detachToolbar();
       return;
     }
     const rect = video.getBoundingClientRect();
+    const popup = site === 'tiktok' ? video.closest('[role="dialog"], [aria-modal="true"]') : null;
+    const sound = popup?.querySelector<HTMLElement>('[data-e2e="browse-sound"]');
+    const soundHost = sound?.parentElement;
+    if (sound && soundHost && sound.getBoundingClientRect().width > 0) {
+      // The mini-player and volume buttons have separate absolute wrappers.
+      // Place our row above them without changing TikTok's layout or covering
+      // the seekbar that runs alongside the native buttons.
+      if (toolbar.parentElement !== soundHost) {
+        detachToolbar();
+        soundHost.append(toolbar);
+      }
+      toolbar.style.flexDirection = 'row';
+      toolbar.style.gap = '12px';
+      toolbar.style.width = `${showSpeed && showSkip ? 116 : 52}px`;
+      toolbar.style.left = 'auto';
+      toolbar.style.right = '0px';
+      toolbar.style.top = 'auto';
+      toolbar.style.bottom = 'calc(100% + 12px)';
+      toolbar.style.transform = 'none';
+      menu.style.left = '0px';
+      menu.style.top = 'auto';
+      menu.style.bottom = '54px';
+      updateAppearance(soundHost, true);
+      return;
+    }
+    toolbar.style.flexDirection = 'column';
+    toolbar.style.gap = '20px';
+    toolbar.style.width = '52px';
+    toolbar.style.right = 'auto';
+    menu.style.bottom = 'auto';
     const height = showSpeed && showSkip ? 108 : 44;
     // Locate the visible action rail adjacent to this video, without depending
     // on the platforms' generated class names or moving any native buttons.
@@ -262,7 +317,7 @@ export function setupSocialPageControls(
       ) ?? doc;
     const railButtons = Array.from(
       scope.querySelectorAll<HTMLElement>(
-        'button, [role="button"], [role="checkbox"], svg[aria-label]'
+        'button, [role="button"], [role="checkbox"], svg[aria-label], [data-e2e="like-icon"], [data-e2e="comment-icon"], [data-e2e="share-icon"]'
       )
     ).filter((button) => {
       if (button.closest('.mfs-social-page-controls')) return false;
@@ -282,14 +337,16 @@ export function setupSocialPageControls(
         bounds.height > 0 &&
         bounds.left >= rect.right - 32 &&
         bounds.left < rect.right + 130 &&
-        bounds.top >= Math.max(rect.top, 0) &&
-        bounds.bottom <= Math.min(rect.bottom, win.innerHeight)
+        (site === 'tiktok' ||
+          (bounds.top >= Math.max(rect.top, 0) &&
+            bounds.bottom <= Math.min(rect.bottom, win.innerHeight)))
       );
     });
     const firstRailButton = railButtons.sort(
       (a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top
     )[0];
     let rail = firstRailButton?.getBoundingClientRect();
+    let railElement: HTMLElement | null = null;
     // Include an avatar above Like when it belongs to the same narrow rail.
     for (
       let parent = firstRailButton?.parentElement;
@@ -301,25 +358,76 @@ export function setupSocialPageControls(
       if (
         bounds.width > 0 &&
         bounds.height > 0 &&
-        bounds.top >= Math.max(0, rect.top)
-      )
+        (site === 'tiktok' || bounds.top >= Math.max(0, rect.top))
+      ) {
         rail = bounds;
+        railElement = parent;
+      }
     }
-    let left = rail ? rail.left + rail.width / 2 - 26 : rect.right - 64;
+    const fullscreen = doc.fullscreenElement;
+    if (site === 'tiktok') {
+      // Keep the same rail while it scrolls partially offscreen. Re-picking a
+      // visible Like/Share button or clamping to the viewport makes controls jump.
+      if (!nativeRail?.isConnected || !scope.contains(nativeRail))
+        nativeRail = railElement;
+      if (nativeRail && (!fullscreen || fullscreen.contains(nativeRail))) {
+        if (toolbar.parentElement !== nativeRail) {
+          detachToolbar();
+          if (
+            win.getComputedStyle(nativeRail).position === 'static' ||
+            !win.getComputedStyle(nativeRail).position
+          ) {
+            positionedRail = {
+              element: nativeRail,
+              value: nativeRail.style.getPropertyValue('position'),
+              priority: nativeRail.style.getPropertyPriority('position'),
+            };
+            nativeRail.style.setProperty('position', 'relative', 'important');
+          }
+          nativeRail.append(toolbar);
+        }
+        // The child belongs to the rail but adds no height or flex gap, so the
+        // original video/action alignment stays exactly as the site laid it out.
+        toolbar.style.left = '50%';
+        toolbar.style.top = 'auto';
+        toolbar.style.bottom = 'calc(100% + 20px)';
+        toolbar.style.transform = 'translateX(-50%)';
+        menu.style.left = '-78px';
+        menu.style.top = '0px';
+        updateAppearance(nativeRail, false);
+        return;
+      }
+      if (!fullscreen) {
+        closeMenu();
+        detachToolbar();
+        return;
+      }
+    }
+    restoreRailPosition();
+    toolbar.style.bottom = 'auto';
+    toolbar.style.transform = 'none';
+    const toolbarWidth = 52;
+    let left = rail
+      ? rail.left + rail.width / 2 - toolbarWidth / 2
+      : site === 'tiktok'
+        ? rect.right + 12
+        : rect.right - 64;
     let top = rail ? rail.top - height - 20 : rect.top + 12;
-    if (top < Math.max(8, rect.top)) {
+    if (site !== 'tiktok' && top < Math.max(8, rect.top)) {
       left = rect.right - 64;
       top = rect.top + 12;
     }
-    left = Math.max(8, Math.min(left, win.innerWidth - 60));
+    left = Math.max(8, Math.min(left, win.innerWidth - toolbarWidth - 8));
     top = Math.max(8, Math.min(top, win.innerHeight - height - 8));
     updateAppearance(
       firstRailButton?.parentElement ?? video.parentElement ?? doc.body,
-      left < rect.right && left + 52 > rect.left
+      left < rect.right &&
+        left + toolbarWidth > rect.left &&
+        top < rect.bottom &&
+        top + height > rect.top
     );
     menu.style.left = left >= 86 ? '-78px' : '62px';
     menu.style.top = `${Math.max(8 - top, Math.min(-70, win.innerHeight - top - 190))}px`;
-    const fullscreen = doc.fullscreenElement;
     const host = fullscreen?.contains(video)
       ? (fullscreen as HTMLElement)
       : getViewportOverlayHost(doc);
@@ -417,8 +525,7 @@ export function setupSocialPageControls(
       video.removeEventListener('loadedmetadata', schedule);
       video.removeEventListener('timeupdate', schedule);
       closeMenu();
-      toolbar.remove();
-      removeEmptyOverlayHost(doc);
+      detachToolbar();
     },
   };
 }

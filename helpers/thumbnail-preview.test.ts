@@ -138,6 +138,101 @@ describe('lazy generic video thumbnails', () => {
 });
 
 describe('seekbar thumbnail preview controller', () => {
+  it('holds the loaded frame while the next image loads, keeps time visible, and clears recycled media', () => {
+    const video = document.createElement('video');
+    video.src = 'blob:https://example.com/first';
+    Object.defineProperty(video, 'duration', { value: 100 });
+    const track = document.createElement('track');
+    track.kind = 'metadata';
+    Object.defineProperty(track, 'track', {
+      value: {
+        mode: 'hidden',
+        cues: {
+          0: {
+            startTime: 0,
+            endTime: 50,
+            text: 'https://cdn.example/first.jpg',
+          },
+          1: {
+            startTime: 50,
+            endTime: 100,
+            text: 'https://cdn.example/next.jpg',
+          },
+          length: 2,
+        },
+      },
+    });
+    video.append(track);
+    const wrapper = document.createElement('div');
+    const timeline = document.createElement('div');
+    timeline.style.opacity = '1';
+    const preview = createSeekbarThumbnailPreviewElement(document);
+    preview.querySelector('video')!.load = vi.fn();
+    wrapper.append(timeline, preview);
+    document.body.append(video, wrapper);
+    wrapper.getBoundingClientRect = () => rect(0, 0, 300, 200);
+    timeline.getBoundingClientRect = () => rect(0, 190, 300, 6);
+    const controller = new SeekbarThumbnailPreviewController({
+      video,
+      wrapper,
+      timeline,
+      preview,
+      isEnabled: () => true,
+      isScrubbing: () => false,
+      getTimelinePosition: () => 'bottom',
+      getYouTubeChapters: () => undefined,
+    });
+    const loader = preview.querySelector<HTMLImageElement>(
+      '.mfs-thumbnail-loader'
+    )!;
+    const image = preview.querySelector<HTMLElement>('.mfs-thumbnail-image')!;
+    controller.updateAtPoint(60, 192);
+    loader.dispatchEvent(new Event('load'));
+    expect(preview.dataset.mfsImageVisible).toBe('true');
+    const previousFrame = image.style.backgroundImage;
+    controller.updateAtPoint(240, 192);
+    expect(preview.dataset.mfsImageVisible).toBe('true');
+    expect(image.style.backgroundImage).toBe(previousFrame);
+    expect(preview.querySelector('.mfs-thumbnail-time')?.textContent).toBe(
+      '1:20'
+    );
+    loader.dispatchEvent(new Event('load'));
+    expect(image.style.backgroundImage).toContain('next.jpg');
+    video.src = 'blob:https://example.com/recycled';
+    controller.updateAtPoint(60, 192);
+    expect(preview.dataset.mfsImageVisible).toBe('false');
+    controller.cleanup();
+  });
+
+  it('clamps a time-only pill using its own width and an eight-pixel edge inset', () => {
+    const video = document.createElement('video');
+    Object.defineProperty(video, 'duration', { value: 100 });
+    const wrapper = document.createElement('div');
+    const timeline = document.createElement('div');
+    timeline.style.opacity = '1';
+    const preview = createSeekbarThumbnailPreviewElement(document);
+    preview.querySelector('video')!.load = vi.fn();
+    Object.defineProperty(preview, 'offsetWidth', { value: 48 });
+    wrapper.append(timeline, preview);
+    document.body.append(video, wrapper);
+    wrapper.getBoundingClientRect = () => rect(0, 0, 300, 200);
+    timeline.getBoundingClientRect = () => rect(0, 190, 300, 6);
+    const controller = new SeekbarThumbnailPreviewController({
+      video,
+      wrapper,
+      timeline,
+      preview,
+      isEnabled: () => true,
+      isScrubbing: () => false,
+      getTimelinePosition: () => 'bottom',
+      getYouTubeChapters: () => undefined,
+    });
+    controller.updateAtPoint(0, 192);
+    expect(preview.style.left).toBe('32px');
+    controller.updateAtPoint(300, 192);
+    expect(preview.style.left).toBe('268px');
+    controller.cleanup();
+  });
   it('shows time and chapter text when no image provider is available', () => {
     const video = document.createElement('video');
     video.src = 'blob:https://example.com/media';
@@ -171,9 +266,6 @@ describe('seekbar thumbnail preview controller', () => {
 
     expect(preview.dataset.mfsVisible).toBe('true');
     expect(preview.dataset.mfsImageVisible).toBe('false');
-    expect(
-      preview.querySelector<HTMLElement>('.mfs-thumbnail-time')?.dataset.mfsTime
-    ).toBe('0:50');
     expect(preview.querySelector('.mfs-thumbnail-time')?.textContent).toBe(
       '0:50'
     );
@@ -360,13 +452,56 @@ describe('seekbar thumbnail preview controller', () => {
     controller.updateAtPoint(250, 245);
 
     expect(preview.style.left).toBe('250px');
-    expect(preview.style.top).toBe('200px');
+    expect(preview.style.top).toBe('232px');
+    expect(preview.style.translate).toBe('0 -100%');
     expect(preview.style.maxWidth).toBe('284px');
 
     controller.cleanup();
     timeline.remove();
     preview.remove();
   });
+
+  it.each(['top', 'bottom'] as const)(
+    'keeps the %s timeline anchor stable when the preview height changes',
+    (position) => {
+      const video = document.createElement('video');
+      video.src = 'blob:https://example.com/media';
+      Object.defineProperty(video, 'duration', { value: 100 });
+      const wrapper = document.createElement('div');
+      const timeline = document.createElement('div');
+      timeline.style.opacity = '1';
+      const preview = createSeekbarThumbnailPreviewElement(document);
+      preview.querySelector('video')!.load = vi.fn();
+      wrapper.append(video, timeline, preview);
+      document.body.append(wrapper);
+      wrapper.getBoundingClientRect = () => rect(100, 50, 800, 450);
+      const timelineTop = position === 'top' ? 50 : 490;
+      timeline.getBoundingClientRect = () => rect(100, timelineTop, 800, 10);
+      let height = 26;
+      Object.defineProperty(preview, 'offsetHeight', { get: () => height });
+      const controller = new SeekbarThumbnailPreviewController({
+        getTimelinePosition: () => position,
+        getYouTubeChapters: () => undefined,
+        isEnabled: () => true,
+        isScrubbing: () => false,
+        preview,
+        timeline,
+        video,
+        wrapper,
+      });
+      controller.updateAtPoint(500, timelineTop + 5);
+      const anchor = preview.style.top;
+      for (height of [143, 157, 171, 26]) {
+        controller.reposition();
+        expect(preview.style.top).toBe(anchor);
+        expect(preview.style.translate).toBe(
+          position === 'top' ? '0 0' : '0 -100%'
+        );
+      }
+      expect(anchor).toBe(position === 'top' ? '18px' : '432px');
+      controller.cleanup();
+    }
+  );
 
   it('reuses the preview for loop handles when normal hover thumbnails are disabled', () => {
     const video = document.createElement('video');
@@ -402,12 +537,16 @@ describe('seekbar thumbnail preview controller', () => {
     expect(preview.dataset.mfsVisible).toBe('false');
     controller.updateAtPoint(250, 245, 50);
     expect(preview.dataset.mfsVisible).toBe('true');
-    expect(preview.querySelector('.mfs-thumbnail-time')?.textContent).toBe('0:50');
+    expect(preview.querySelector('.mfs-thumbnail-time')?.textContent).toBe(
+      '0:50'
+    );
     controller.updateAtPoint(250, 245, 65);
-    expect(preview.querySelector('.mfs-thumbnail-time')?.textContent).toBe('1:05');
+    expect(preview.querySelector('.mfs-thumbnail-time')?.textContent).toBe(
+      '1:05'
+    );
 
     expect(preview.style.left).toBe('250px');
-    expect(preview.style.top).toBe('200px');
+    expect(preview.style.top).toBe('232px');
     expect(preview.style.maxWidth).toBe('284px');
 
     controller.cleanup();

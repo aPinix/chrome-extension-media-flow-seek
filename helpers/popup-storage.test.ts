@@ -47,6 +47,8 @@ describe('timeline seeking storage', () => {
       expect(settings.isYouTubeChapteredTimelineEnabled).toBe(true);
       expect(DEFAULT_SETTINGS.isSeekbarThumbnailPreviewEnabled).toBe(true);
       expect(settings.isSeekbarThumbnailPreviewEnabled).toBe(true);
+      expect(settings.instagramHoverThumbnails).toBe(true);
+      expect(settings.tiktokHoverThumbnails).toBe(true);
       expect(settings.instagramShowPlaybackSpeed).toBe(true);
       expect(settings.instagramShowAutoSkip).toBe(true);
       expect(settings.tiktokShowPlaybackSpeed).toBe(true);
@@ -87,6 +89,30 @@ describe('timeline seeking storage', () => {
     expect(settings.domainSort).toBe(DomainSortE.DateDescending);
     expect(set).toHaveBeenCalledWith({ domainSort: DomainSortE.Custom });
   });
+
+  it.each(['popup', 'content'] as const)(
+    'preserves independent thumbnail preferences in %s',
+    async (loader) => {
+      const preferences = {
+        isSeekbarThumbnailPreviewEnabled: true,
+        instagramHoverThumbnails: false,
+        tiktokHoverThumbnails: false,
+      };
+      const set = vi.fn();
+      vi.stubGlobal('chrome', {
+        storage: {
+          sync: { get: vi.fn((_keys, callback) => callback(preferences)), set },
+        },
+      });
+      const settings =
+        loader === 'popup'
+          ? await loadPopupSettings()
+          : await new SettingsManager().initialize();
+      expect(settings).toMatchObject(preferences);
+      saveSettings({ instagramHoverThumbnails: true });
+      expect(set).toHaveBeenCalledWith({ instagramHoverThumbnails: true });
+    }
+  );
 
   it('migrates dormant legacy children without activating them', async () => {
     const set = vi.fn();

@@ -14,8 +14,11 @@ it.each([
     const showSpeed = vi.fn();
     const showSkip = vi.fn();
     const toggleSkip = vi.fn();
+    const toggleThumbnails = vi.fn();
     const { container } = render(
       <Component
+        thumbnailPreviewEnabled={false}
+        onThumbnailPreviewEnabledChange={toggleThumbnails}
         autoSkip={false}
         extensionEnabled
         onAutoSkipChange={toggleSkip}
@@ -27,7 +30,11 @@ it.each([
         showPlaybackSpeed={false}
       />
     );
-    expect(container.querySelectorAll('.card-list-item')).toHaveLength(2);
+    expect(container.querySelectorAll('.card-list-item')).toHaveLength(3);
+    fireEvent.click(
+      screen.getByRole('switch', { name: `Hover Thumbnails on ${name}` })
+    );
+    expect(toggleThumbnails).toHaveBeenCalledWith(true, expect.anything());
     const speedVisibility = screen.getByRole('switch', {
       name: `Show ${name} playback speed on page`,
     });

@@ -1,0 +1,61 @@
+[
+  {
+    "error": "Cannot read properties of null (reading 'get')"
+  },
+  {
+    "label": "start",
+    "elapsed": 0.00008062500000050931,
+    "time": 3,
+    "overlays": 1,
+    "speed": ""
+  },
+  {
+    "label": "forward",
+    "elapsed": 1.9539083330000002,
+    "time": 11.566739,
+    "overlays": 1,
+    "speed": ""
+  },
+  {
+    "label": "backward",
+    "elapsed": 3.7971747080000005,
+    "time": 8.252391,
+    "overlays": 1,
+    "speed": ""
+  },
+  {
+    "label": "forward-again",
+    "elapsed": 6.2710799999999995,
+    "time": 11.265434,
+    "overlays": 1,
+    "speed": ""
+  },
+  {
+    "label": "rewind",
+    "elapsed": 8.828875667,
+    "time": 4.519565,
+    "overlays": 1,
+    "speed": ""
+  },
+  {
+    "label": "fast",
+    "elapsed": 11.557150500000002,
+    "time": 12.202826,
+    "overlays": 1,
+    "speed": "Fast seeking"
+  },
+  {
+    "label": "precision-back",
+    "elapsed": 15.282566708000001,
+    "time": 11.365869,
+    "overlays": 1,
+    "speed": "Slow seeking"
+  },
+  {
+    "label": "precision-forward",
+    "elapsed": 16.884668542,
+    "time": 11.834565,
+    "overlays": 1,
+    "speed": "Slow seeking"
+  }
+]

@@ -4,9 +4,12 @@ import { AppSwitch } from '@/components/app/app-switch';
 import { CardListItem } from '@/components/popup/card-list-item';
 import { CardListItemWrapper } from '@/components/popup/card-list-item-wrapper';
 import { INSTAGRAM_SPEEDS } from '@/helpers/instagram-settings';
+import { SocialThumbnailSetting } from './social-thumbnail-setting';
 
 export function InstagramSettings({
   extensionEnabled,
+  thumbnailPreviewEnabled,
+  onThumbnailPreviewEnabledChange,
   playbackSpeed,
   autoSkip,
   onPlaybackSpeedChange,
@@ -21,6 +24,8 @@ export function InstagramSettings({
   onShowPlaybackSpeedChange: (enabled: boolean) => void;
   onShowAutoSkipChange: (enabled: boolean) => void;
   extensionEnabled: boolean;
+  thumbnailPreviewEnabled: boolean;
+  onThumbnailPreviewEnabledChange: (enabled: boolean) => void;
   playbackSpeed: number;
   autoSkip: boolean;
   onPlaybackSpeedChange: (speed: number) => void;
@@ -32,6 +37,12 @@ export function InstagramSettings({
       disabled={!extensionEnabled}
     >
       <CardListItemWrapper>
+        <SocialThumbnailSetting
+          site="Instagram"
+          enabled={thumbnailPreviewEnabled}
+          disabled={!extensionEnabled}
+          onChange={onThumbnailPreviewEnabledChange}
+        />
         <CardListItem
           components={{
             BottomSlot: (

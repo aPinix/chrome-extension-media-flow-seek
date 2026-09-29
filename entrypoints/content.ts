@@ -217,6 +217,14 @@ export default defineContentScript({
         shouldReconcileOverlays = true;
       }
 
+      for (const key of ['instagramHoverThumbnails', 'tiktokHoverThumbnails'] as const) {
+        if (typeof changes[key]?.newValue !== 'boolean') continue;
+        settingsManager.updateSetting(key, changes[key].newValue);
+        overlayCreator.updateSeekbarThumbnailPreviewState();
+        overlayCreator.updateTimelineSeekingState();
+        shouldReconcileOverlays = true;
+      }
+
       const scrollSpeedFactor = changes.scrollSpeedFactor?.newValue;
       if (typeof scrollSpeedFactor === 'number') {
         settingsManager.updateSetting(

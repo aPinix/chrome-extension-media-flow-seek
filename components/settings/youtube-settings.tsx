@@ -8,6 +8,7 @@ import { ExtraFeaturePreviewTooltip } from '@/components/popup/extra-feature-pre
 import { cn } from '@/lib/utils';
 import { YouTubeBoostSetting } from './youtube-boost-setting';
 import { YouTubeLoopSetting } from './youtube-loop-setting';
+import { YouTubeInfoCardsSetting } from './youtube-info-cards-setting';
 
 export function YouTubeSettings({
   chapteredTimelineEnabled,
@@ -28,6 +29,7 @@ export function YouTubeSettings({
     >
       <YouTubeBoostSetting disabled={!extensionEnabled} />
       <YouTubeLoopSetting disabled={!extensionEnabled} />
+      <YouTubeInfoCardsSetting disabled={!extensionEnabled} />
       <CardListItem
         components={{
           RightSlot: (
@@ -76,15 +78,6 @@ export function YouTubeSettings({
           <span className="inline-flex items-center gap-1.5">
             Hover Thumbnails
             <ExtraFeaturePreviewTooltip featureName="Hover Thumbnails" />
-            <AppBetaBadge
-              featureName="Hover Thumbnails"
-              tooltip={
-                <>
-                  <strong>Frame previews</strong> are best effort and depend on
-                  preview availability for the YouTube video.
-                </>
-              }
-            />
           </span>
         }
       />

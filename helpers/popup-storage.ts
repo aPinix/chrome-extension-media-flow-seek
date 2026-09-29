@@ -45,6 +45,8 @@ export type PopupSettings = {
   tiktokShowAutoSkip: boolean;
   isYouTubeChapteredTimelineEnabled: boolean;
   isSeekbarThumbnailPreviewEnabled: boolean;
+  instagramHoverThumbnails: boolean;
+  tiktokHoverThumbnails: boolean;
   timelinePosition: 'top' | 'bottom';
   timelineHeight: number;
   timelineHeightUnit: 'px' | '%';
@@ -81,6 +83,8 @@ export const DEFAULT_SETTINGS: Omit<PopupSettings, 'domainRules'> = {
   tiktokShowAutoSkip: true,
   isYouTubeChapteredTimelineEnabled: true,
   isSeekbarThumbnailPreviewEnabled: true,
+  instagramHoverThumbnails: true,
+  tiktokHoverThumbnails: true,
   timelinePosition: 'bottom',
   timelineHeight: 6,
   timelineHeightUnit: 'px',
@@ -130,6 +134,8 @@ export const loadPopupSettings = (): Promise<PopupSettings> => {
         'tiktokShowAutoSkip',
         'isYouTubeChapteredTimelineEnabled',
         'isSeekbarThumbnailPreviewEnabled',
+        'instagramHoverThumbnails',
+        'tiktokHoverThumbnails',
         'timelinePosition',
         'timelineHeight',
         'timelineHeightUnit',
@@ -225,6 +231,12 @@ export const loadPopupSettings = (): Promise<PopupSettings> => {
           isSeekbarThumbnailPreviewEnabled:
             stored.isSeekbarThumbnailPreviewEnabled ??
             DEFAULT_SETTINGS.isSeekbarThumbnailPreviewEnabled,
+          instagramHoverThumbnails:
+            stored.instagramHoverThumbnails ??
+            DEFAULT_SETTINGS.instagramHoverThumbnails,
+          tiktokHoverThumbnails:
+            stored.tiktokHoverThumbnails ??
+            DEFAULT_SETTINGS.tiktokHoverThumbnails,
           timelinePosition:
             stored.timelinePosition ?? DEFAULT_SETTINGS.timelinePosition,
           timelineHeight:

@@ -1,5 +1,6 @@
 import { installNativePlayerSeekBridge } from '@/helpers/media';
 import { installYouTubeStoryboardBridge } from '@/helpers/youtube-storyboards';
+import { installSocialThumbnailBridge } from '@/helpers/social-thumbnails';
 
 export default defineContentScript({
   matches: ['<all_urls>'],
@@ -11,5 +12,6 @@ export default defineContentScript({
   main() {
     installNativePlayerSeekBridge(document);
     installYouTubeStoryboardBridge(document);
+    installSocialThumbnailBridge(document);
   },
 });

@@ -1,0 +1,15 @@
+{
+  "hyperframesCheck": "Passed: no lint, runtime, layout, or motion warnings; 58/58 contrast checks passed",
+  "finalExport": {
+    "durationSeconds": 25,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "video": "H.264",
+    "audio": "AAC 48000 Hz",
+    "bytes": 9294703
+  },
+  "actualSeekCapture": "Forward, backward, fast, and precision assertions passed",
+  "visualReview": "Inspected static layouts, five hero frames, capture contact sheets, and encoded output contact sheet",
+  "optionalAnimationMap": "Legacy plugin helper unavailable because @hyperframes/producer is not installed; integrated HyperFrames motion validation passed"
+}

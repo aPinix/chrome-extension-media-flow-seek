@@ -31,6 +31,14 @@ export const MEDIA_OVERLAY_STYLES = `
           transform: translateX(-50%) translateY(0);
         }
 
+        .mfs-seekbar-thumbnail-preview[data-mfs-image-visible="false"] {
+          width: max-content;
+        }
+
+        .mfs-seekbar-thumbnail-preview[data-mfs-image-visible="true"][data-mfs-portrait="true"] {
+          width: 124px;
+        }
+
         .mfs-thumbnail-frame {
           position: relative;
           display: none;
@@ -96,20 +104,11 @@ export const MEDIA_OVERLAY_STYLES = `
           display: inline-flex;
           flex: none;
           align-items: center;
+          min-height: 14px;
+          line-height: 14px;
           color: rgb(255 255 255 / 0.78);
           font-variant-numeric: tabular-nums;
           font-weight: 400;
-        }
-
-        .mfs-thumbnail-time-number {
-          display: inline-block;
-          --number-flow-mask-height: 0.15em;
-          --number-flow-mask-width: 0.25em;
-          line-height: 1;
-        }
-
-        .mfs-thumbnail-time-symbol {
-          display: inline-block;
         }
 
         .mfs-thumbnail-chapter-stage {

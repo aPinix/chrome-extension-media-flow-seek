@@ -7,6 +7,7 @@ import { YouTubeSettings } from './youtube-settings';
 
 vi.mock('./youtube-boost-setting', () => ({ YouTubeBoostSetting: () => null }));
 vi.mock('./youtube-loop-setting', () => ({ YouTubeLoopSetting: () => null }));
+vi.mock('./youtube-info-cards-setting', () => ({ YouTubeInfoCardsSetting: () => null }));
 
 afterEach(cleanup);
 

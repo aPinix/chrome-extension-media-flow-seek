@@ -53,8 +53,10 @@ describe('SettingsManager seek mode gates', () => {
     ['https://www.youtube.com/watch?v=example', true],
     ['https://m.youtube.com/shorts/example', true],
     ['https://www.youtube-nocookie.com/embed/example', true],
-    ['https://www.instagram.com/reels/example/', false],
-    ['https://www.tiktok.com/@example/video/1', false],
+    ['https://www.instagram.com/reels/example/', true],
+    ['https://www.tiktok.com/@example/video/1', true],
+    ['https://instagram.com.example.com/reels/example/', false],
+    ['https://tiktok.com.example.com/video/1', false],
     ['https://example.com/video', false],
     ['https://youtube.com.example.com/video', false],
   ])(
@@ -82,6 +84,8 @@ describe('SettingsManager seek mode gates', () => {
       );
 
       settings.updateSetting('isSeekbarThumbnailPreviewEnabled', false);
+      settings.updateSetting('instagramHoverThumbnails', false);
+      settings.updateSetting('tiktokHoverThumbnails', false);
       expect(settings.isSeekbarThumbnailPreviewEnabled()).toBe(false);
       expect(settings.shouldShowTimelineOnHover()).toBe(false);
       expect(settings.hasActiveVideoFeatures()).toBe(false);

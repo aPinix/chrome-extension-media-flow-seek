@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><title>Coastal escape · Video demo</title>
+<link rel="icon" href="../assets/icon.png"><style>
+*{box-sizing:border-box}body{margin:0;background:#181822;color:#f6f5ff;font-family:Arial,sans-serif;width:1280px;height:800px;overflow:hidden}
+.bar{height:54px;background:#282834;display:flex;align-items:center;padding:0 23px;gap:9px;border-bottom:1px solid #454452}.dot{width:11px;height:11px;border-radius:50%;background:#8e8a9e}.address{margin-left:30px;background:#1b1b26;border-radius:7px;padding:9px 18px;color:#c9c6d8;font-size:15px;flex:1}.icon{width:26px;height:26px;margin-left:10px}
+.head{height:67px;display:flex;align-items:center;justify-content:space-between;padding:0 42px}.head strong{font-size:21px}.head span{font-size:14px;color:#b8b6cf}video{display:block;width:1196px;height:673px;margin:0 42px;border-radius:11px;object-fit:cover;background:#181822}
+#cursor{position:fixed;left:0;top:0;width:33px;height:40px;z-index:2147483647;pointer-events:none;filter:drop-shadow(0 2px 3px #10101b)}
+</style></head><body><div class="bar"><i class="dot"></i><i class="dot"></i><i class="dot"></i><div class="address">Video demo · Coastal escape</div><img class="icon" src="../assets/icon.png"></div><div class="head"><strong>Coastal escape</strong><span>HTML5 video · Better Video Controls enabled</span></div><video id="film" src="../assets/ocean.mp4" muted playsinline controls></video><svg id="cursor" viewBox="0 0 33 40"><path d="M3 2 L4 31 L11 25 L18 38 L24 35 L17 23 L28 22 Z" fill="#f6f5ff" stroke="#181822" stroke-width="2"/></svg><script>addEventListener('pointermove',e=>{document.getElementById('cursor').style.transform=`translate(${e.clientX}px,${e.clientY}px)`})</script></body></html>

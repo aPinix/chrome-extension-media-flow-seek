@@ -1,7 +1,6 @@
 import { MousePointer2Icon } from 'lucide-react';
 import { type RefObject, useEffect, useRef, useState } from 'react';
 import { formatThumbnailPreviewTime } from '@/helpers/thumbnail-preview';
-import { ThumbnailPreviewTime } from '@/helpers/thumbnail-preview-time';
 import {
   DEFAULT_TIMELINE_PROGRESS_BACKGROUND,
   TIMELINE_TRACK_STYLE,
@@ -144,13 +143,13 @@ export function TimelineDetailPreview({
         )}
         <div className="mfs-thumbnail-copy">
           <span className="mfs-thumbnail-time">
-            <ThumbnailPreviewTime
-              value={formatThumbnailPreviewTime(sample.time)}
-            />
+            {formatThumbnailPreviewTime(sample.time)}
           </span>
-          <span className="whitespace-nowrap" key={chapter.title}>
-            {chapter.title}
-          </span>
+          {!thumbnail && (
+            <span className="whitespace-nowrap" key={chapter.title}>
+              {chapter.title}
+            </span>
+          )}
         </div>
       </div>
       <MousePointer2Icon

@@ -73,9 +73,21 @@ it.each(['instagram', 'tiktok'] as const)(
       article.style.backgroundColor = 'rgb(16, 16, 16)';
       document.dispatchEvent(new Event(`mfs-${site}-settings`));
       expect(toolbar?.dataset.appearance).toBe('dark');
-      expect(toolbar?.style.top).toBe('122px');
-      expect(toolbar?.style.left).toBe('408px');
-      expect(toolbar?.parentElement?.style.overflow).toBe('hidden');
+      expect(rail.firstElementChild).toBe(like);
+      if (site === 'tiktok') {
+        expect(toolbar?.parentElement).toBe(rail);
+        expect(rail.childElementCount).toBe(2);
+        expect(rail.style.position).toBe('relative');
+        expect(toolbar?.style.top).toBe('auto');
+        expect(toolbar?.style.bottom).toBe('calc(100% + 20px)');
+        expect(toolbar?.style.left).toBe('50%');
+        expect(document.querySelector('.mfs-viewport-portal')).toBeNull();
+      } else {
+        expect(rail.childElementCount).toBe(1);
+        expect(toolbar?.style.top).toBe('122px');
+        expect(toolbar?.style.left).toBe('408px');
+        expect(toolbar?.parentElement?.style.overflow).toBe('hidden');
+      }
       const speed = toolbar?.querySelector<HTMLButtonElement>(
         '[data-mfs-action="playback-speed"]'
       );
@@ -84,7 +96,7 @@ it.each(['instagram', 'tiktok'] as const)(
         '[role="menuitemradio"]'
       );
       expect(menu?.hidden).toBe(true);
-      speed?.click();
+      speed?.querySelector('span')?.click();
       expect(menu?.hidden).toBe(false);
       expect(document.activeElement?.textContent).toBe('1.5×');
       options?.[4]?.dispatchEvent(
@@ -104,7 +116,7 @@ it.each(['instagram', 'tiktok'] as const)(
       expect(menu?.hidden).toBe(true);
       expect(set).toHaveBeenCalledWith({ [`${site}PlaybackSpeed`]: 2 });
       const skip = toolbar?.querySelector<HTMLButtonElement>('[role="switch"]');
-      skip?.click();
+      skip?.querySelector<HTMLElement>('span:last-child')?.click();
       expect(set).toHaveBeenCalledWith({ [`${site}AutoSkip`]: true });
       expect(skip?.getAttribute('aria-checked')).toBe('true');
       Object.assign(settings, { [`${site}ShowPlaybackSpeed`]: false });
@@ -114,6 +126,7 @@ it.each(['instagram', 'tiktok'] as const)(
       Object.assign(settings, { [`${site}ShowAutoSkip`]: false });
       document.dispatchEvent(new Event(`mfs-${site}-settings`));
       expect(document.querySelector('.mfs-social-page-controls')).toBeNull();
+      expect(rail.style.position).toBe('');
       expect(settings[`${site}AutoSkip`]).toBe(true);
     } finally {
       controller.cleanup();
@@ -138,6 +151,40 @@ it('never shows a toolbar for an offscreen video', () => {
   }));
   expect(document.querySelector('.mfs-social-page-controls')).toBeNull();
   controller.cleanup();
+});
+
+it('places popup controls above native bottom buttons, ignoring an offscreen dialog', () => {
+  const popup = document.createElement('div');
+  popup.setAttribute('role', 'dialog');
+  popup.getBoundingClientRect = () => new DOMRect(0, 0, 900, 700);
+  const video = document.createElement('video');
+  video.getBoundingClientRect = () => new DOMRect(100, 0, 400, 650);
+  const native = document.createElement('div');
+  const pip = document.createElement('button');
+  const soundHost = document.createElement('div');
+  const sound = document.createElement('button');
+  sound.dataset.e2e = 'browse-sound';
+  sound.getBoundingClientRect = soundHost.getBoundingClientRect = () => new DOMRect(600, 610, 40, 40);
+  pip.getBoundingClientRect = () => new DOMRect(552, 610, 40, 40);
+  soundHost.append(sound);
+  native.append(pip, soundHost);
+  popup.append(video, native);
+  const hidden = document.createElement('div');
+  hidden.setAttribute('role', 'dialog');
+  hidden.getBoundingClientRect = () => new DOMRect(0, window.innerHeight, 550, 64);
+  document.body.append(popup, hidden);
+  const controller = setupSocialPageControls(video, 'tiktok', () => ({tiktokShowPlaybackSpeed: true, tiktokShowAutoSkip: true}));
+  try {
+    const toolbar = soundHost.querySelector<HTMLElement>('.mfs-social-page-controls');
+    expect(toolbar).not.toBeNull();
+    expect(toolbar?.style.flexDirection).toBe('row');
+    expect(toolbar?.style.right).toBe('0px');
+    expect(toolbar?.style.bottom).toBe('calc(100% + 12px)');
+    expect(toolbar?.querySelector<HTMLElement>('[role="menu"]')?.style.bottom).toBe('54px');
+  } finally {
+    controller.cleanup();
+  }
+  expect(soundHost.children).toHaveLength(1);
 });
 
 it.each(['instagram', 'tiktok'] as const)(
@@ -171,6 +218,22 @@ it.each(['instagram', 'tiktok'] as const)(
         height: 600,
       }) as DOMRect;
     document.body.append(video);
+    if (site === 'tiktok') {
+      const rail = document.createElement('aside');
+      const like = document.createElement('button');
+      like.setAttribute('aria-label', 'Like');
+      rail.getBoundingClientRect = like.getBoundingClientRect = () =>
+        ({
+          top: 250,
+          bottom: 620,
+          left: 410,
+          right: 458,
+          width: 48,
+          height: 370,
+        }) as DOMRect;
+      rail.append(like);
+      document.body.append(rail);
+    }
     const controller = setupSocialPageControls(video, site, () => settings);
     try {
       const toolbar = document.querySelector('.mfs-social-page-controls');
@@ -190,8 +253,7 @@ it.each(['instagram', 'tiktok'] as const)(
       expect(toolbar.isConnected).toBe(true);
       const dialog = document.createElement('div');
       dialog.setAttribute('role', 'dialog');
-      dialog.getClientRects = () =>
-        [video.getBoundingClientRect()] as unknown as DOMRectList;
+      dialog.getBoundingClientRect = video.getBoundingClientRect;
       document.body.append(dialog);
       await flush();
       expect(toolbar.isConnected).toBe(false);
@@ -208,3 +270,48 @@ it.each(['instagram', 'tiktok'] as const)(
     }
   }
 );
+
+it('keeps TikTok controls attached while the rail scrolls above the viewport and restores its styles', () => {
+  const video = document.createElement('video');
+  const rail = document.createElement('aside');
+  const like = document.createElement('button');
+  like.setAttribute('aria-label', 'Like');
+  rail.style.setProperty('position', 'static', 'important');
+  let offset = 0;
+  video.getBoundingClientRect = () =>
+    ({
+      top: 20 - offset,
+      bottom: 620 - offset,
+      left: 100,
+      right: 400,
+      width: 300,
+      height: 600,
+    }) as DOMRect;
+  rail.getBoundingClientRect = like.getBoundingClientRect = () =>
+    ({
+      top: 100 - offset,
+      bottom: 500 - offset,
+      left: 410,
+      right: 458,
+      width: 48,
+      height: 400,
+    }) as DOMRect;
+  rail.append(like);
+  document.body.append(video, rail);
+  const controller = setupSocialPageControls(video, 'tiktok', () => ({
+    tiktokShowPlaybackSpeed: true,
+    tiktokShowAutoSkip: true,
+  }));
+  const toolbar = rail.querySelector<HTMLElement>('.mfs-social-page-controls');
+  expect(toolbar).not.toBeNull();
+  const position = toolbar?.style.cssText;
+  offset = 300;
+  document.dispatchEvent(new Event('mfs-tiktok-settings'));
+  expect(toolbar?.parentElement).toBe(rail);
+  expect(toolbar?.style.cssText).toBe(position);
+  expect(rail.firstElementChild).toBe(like);
+  controller.cleanup();
+  expect(rail.style.position).toBe('static');
+  expect(rail.style.getPropertyPriority('position')).toBe('important');
+  expect(rail.childElementCount).toBe(1);
+});

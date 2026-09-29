@@ -1,4 +1,5 @@
 import { normalizeInstagramSpeed } from '@/helpers/instagram-settings';
+import { isVideoBlockedByDialog } from '@/helpers/page-dialogs';
 import {
   type SocialPlaybackSetting,
   setupSocialPageControls,
@@ -77,7 +78,7 @@ export function setupSocialVideo(
     return (
       area > 0 &&
       !Array.from(doc.querySelectorAll('video')).some(
-        (other) => other !== video && visibleArea(other) > area
+        (other) => other !== video && !isVideoBlockedByDialog(other) && visibleArea(other) > area
       )
     );
   };
@@ -135,9 +136,7 @@ export function setupSocialVideo(
       !autoSkipEnabled() ||
       !isActive() ||
       doc.visibilityState === 'hidden' ||
-      Array.from(
-        doc.querySelectorAll('[role="dialog"], [aria-modal="true"]')
-      ).some((dialog) => site !== 'tiktok' || !dialog.contains(video))
+      isVideoBlockedByDialog(video)
     )
       return;
     if (site === 'tiktok') {

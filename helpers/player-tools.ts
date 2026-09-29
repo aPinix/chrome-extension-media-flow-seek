@@ -746,7 +746,6 @@ export class PlayerTools {
     if (this.youtube) {
       for (const [key, label] of [
         ['hideCards', 'Hide info cards'],
-        ['hideEndScreens', 'Hide end screens'],
         ['miniPlayer', 'Mini player on scroll'],
         ['autoChapters', 'Detect description chapters'],
       ] as const) {

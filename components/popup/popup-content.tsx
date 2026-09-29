@@ -9,7 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppBetaBadge } from '@/components/app/app-beta-badge';
 import { AppKbd } from '@/components/app/app-kbd';
 import { AppSwitch } from '@/components/app/app-switch';
-import { XBrandIcon } from '@/components/icons/icons';
+import { InstagramBrandIcon, TikTokBrandIcon, XBrandIcon, YouTubeBrandIcon } from '@/components/icons/icons';
 import { CardListItem } from '@/components/popup/card-list-item';
 import { ExtraFeaturePreviewTooltip } from '@/components/popup/extra-feature-preview-tooltip';
 import { MinimalPlayerDescription } from '@/components/popup/minimal-player-description';
@@ -240,6 +240,8 @@ export function PopupContent() {
     isSeekbarThumbnailPreviewEnabled,
     setIsSeekbarThumbnailPreviewEnabled,
   ] = useState(DEFAULT_SETTINGS.isSeekbarThumbnailPreviewEnabled);
+  const [instagramHoverThumbnails, setInstagramHoverThumbnails] = useState(DEFAULT_SETTINGS.instagramHoverThumbnails);
+  const [tiktokHoverThumbnails, setTikTokHoverThumbnails] = useState(DEFAULT_SETTINGS.tiktokHoverThumbnails);
   const [timelinePosition, setTimelinePosition] = useState<'top' | 'bottom'>(
     'bottom'
   );
@@ -307,6 +309,8 @@ export function PopupContent() {
 
   // Check if settings are at defaults
   const isSettingsAtDefaults =
+    instagramHoverThumbnails === DEFAULT_SETTINGS.instagramHoverThumbnails &&
+    tiktokHoverThumbnails === DEFAULT_SETTINGS.tiktokHoverThumbnails &&
     tiktokShowAutoSkip === DEFAULT_SETTINGS.tiktokShowAutoSkip &&
     tiktokShowPlaybackSpeed === DEFAULT_SETTINGS.tiktokShowPlaybackSpeed &&
     instagramShowAutoSkip === DEFAULT_SETTINGS.instagramShowAutoSkip &&
@@ -345,6 +349,8 @@ export function PopupContent() {
     const loadSettings = async () => {
       const settings = await loadPopupSettings();
       setIsEnabled(settings.isEnabled);
+      setInstagramHoverThumbnails(settings.instagramHoverThumbnails);
+      setTikTokHoverThumbnails(settings.tiktokHoverThumbnails);
       setIsScrollSeekingEnabled(settings.isScrollSeekingEnabled);
       setInvertHorizontalScroll(settings.invertHorizontalScroll);
       setScrollSpeedFactor(settings.scrollSpeedFactor);
@@ -675,6 +681,8 @@ export function PopupContent() {
 
   const handleResetSettingsDefaults = () => {
     const defaultSettings = DEFAULT_SETTINGS;
+    setInstagramHoverThumbnails(defaultSettings.instagramHoverThumbnails);
+    setTikTokHoverThumbnails(defaultSettings.tiktokHoverThumbnails);
 
     setIsScrollSeekingEnabled(defaultSettings.isScrollSeekingEnabled);
     setInvertHorizontalScroll(defaultSettings.invertHorizontalScroll);
@@ -710,6 +718,8 @@ export function PopupContent() {
 
     // Save only settings-related values
     saveSettings({
+      instagramHoverThumbnails: defaultSettings.instagramHoverThumbnails,
+      tiktokHoverThumbnails: defaultSettings.tiktokHoverThumbnails,
       isScrollSeekingEnabled: defaultSettings.isScrollSeekingEnabled,
       invertHorizontalScroll: defaultSettings.invertHorizontalScroll,
       scrollSpeedFactor: defaultSettings.scrollSpeedFactor,
@@ -1064,7 +1074,7 @@ export function PopupContent() {
                 </div>
 
                 <div className="flex flex-none flex-col">
-                  <SectionTitle title="YouTube" />
+                  <SectionTitle title="YouTube" icon={YouTubeBrandIcon} />
                   <YouTubeSettings
                     chapteredTimelineEnabled={isYouTubeChapteredTimelineEnabled}
                     extensionEnabled={isEnabled}
@@ -1078,8 +1088,13 @@ export function PopupContent() {
                   />
                 </div>
                 <div className="flex flex-none flex-col">
-                  <SectionTitle title="Instagram" />
+                  <SectionTitle title="Instagram" icon={InstagramBrandIcon} />
                   <InstagramSettings
+                    thumbnailPreviewEnabled={instagramHoverThumbnails}
+                    onThumbnailPreviewEnabledChange={(value) => {
+                      setInstagramHoverThumbnails(value);
+                      saveSettings({ instagramHoverThumbnails: value });
+                    }}
                     autoSkip={instagramAutoSkip}
                     extensionEnabled={isEnabled}
                     onAutoSkipChange={(value) => {
@@ -1104,8 +1119,13 @@ export function PopupContent() {
                   />
                 </div>
                 <div className="flex flex-none flex-col">
-                  <SectionTitle title="TikTok" />
+                  <SectionTitle title="TikTok" icon={TikTokBrandIcon} />
                   <TikTokSettings
+                    thumbnailPreviewEnabled={tiktokHoverThumbnails}
+                    onThumbnailPreviewEnabledChange={(value) => {
+                      setTikTokHoverThumbnails(value);
+                      saveSettings({ tiktokHoverThumbnails: value });
+                    }}
                     autoSkip={tiktokAutoSkip}
                     extensionEnabled={isEnabled}
                     onAutoSkipChange={(value) => {
@@ -1168,16 +1188,23 @@ export function PopupContent() {
 
         {/* Persistent Tab Navigation */}
         <footer className="absolute inset-x-3 bottom-2 z-50 h-12 p-1">
-          <div aria-hidden={showDomainsView} inert={showDomainsView} className={cn('absolute right-1 bottom-[calc(100%+0.25rem)] left-1', showDomainsView && 'hidden')}>
+          <div
+            aria-hidden={showDomainsView}
+            inert={showDomainsView}
+            className={cn(
+              'absolute right-1 bottom-[calc(100%+0.25rem)] left-1 transition-opacity duration-200 ease-in-out motion-reduce:transition-none',
+              showDomainsView ? 'pointer-events-none opacity-0' : 'opacity-100'
+            )}
+          >
             <SettingsSearch contentRef={settingsContentRef} active={!showDomainsView} />
           </div>
           <div
             aria-hidden={!showDomainsView}
             className={cn(
-              'absolute right-1 bottom-[calc(100%+0.25rem)] left-1 z-0 transition-[translate,opacity] duration-300 ease-out motion-reduce:transition-none',
+              'absolute right-1 bottom-[calc(100%+0.25rem)] left-1 z-0 transition-opacity duration-200 ease-in-out motion-reduce:transition-none',
               showDomainsView
-                ? 'translate-y-0 opacity-100'
-                : 'pointer-events-none translate-y-[calc(100%+0.75rem)] opacity-0'
+                ? 'opacity-100'
+                : 'pointer-events-none opacity-0'
             )}
             data-active={showDomainsView}
             data-testid="domain-toolbar-dock"

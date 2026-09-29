@@ -3,10 +3,13 @@ import { AppSelect } from '@/components/app/app-select';
 import { AppSwitch } from '@/components/app/app-switch';
 import { CardListItem } from '@/components/popup/card-list-item';
 import { CardListItemWrapper } from '@/components/popup/card-list-item-wrapper';
+import { SocialThumbnailSetting } from './social-thumbnail-setting';
 import { TIKTOK_SPEEDS } from '@/helpers/tiktok-settings';
 
 export function TikTokSettings({
   extensionEnabled,
+  thumbnailPreviewEnabled,
+  onThumbnailPreviewEnabledChange,
   playbackSpeed,
   autoSkip,
   onPlaybackSpeedChange,
@@ -21,6 +24,8 @@ export function TikTokSettings({
   onShowPlaybackSpeedChange: (enabled: boolean) => void;
   onShowAutoSkipChange: (enabled: boolean) => void;
   extensionEnabled: boolean;
+  thumbnailPreviewEnabled: boolean;
+  onThumbnailPreviewEnabledChange: (enabled: boolean) => void;
   playbackSpeed: number;
   autoSkip: boolean;
   onPlaybackSpeedChange: (speed: number) => void;
@@ -32,6 +37,12 @@ export function TikTokSettings({
       disabled={!extensionEnabled}
     >
       <CardListItemWrapper>
+        <SocialThumbnailSetting
+          site="TikTok"
+          enabled={thumbnailPreviewEnabled}
+          disabled={!extensionEnabled}
+          onChange={onThumbnailPreviewEnabledChange}
+        />
         <CardListItem
           components={{
             BottomSlot: (

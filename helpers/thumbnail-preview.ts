@@ -4,10 +4,10 @@ import {
   type MediaSeekRangeT,
 } from '@/helpers/media';
 import {
-  THUMBNAIL_PREVIEW_TIME_CLEANUP_EVENT,
-  THUMBNAIL_PREVIEW_TIME_MOUNTED_ATTRIBUTE,
-  THUMBNAIL_PREVIEW_TIME_UPDATE_EVENT,
-} from '@/helpers/thumbnail-preview-time-events';
+  getSocialThumbnailFrame,
+  requestSocialThumbnailMetadata,
+  type SocialThumbnailMetadata,
+} from '@/helpers/social-thumbnails';
 import type { YouTubeChapterT } from '@/helpers/youtube-chapters';
 import {
   getYouTubeStoryboardFrame,
@@ -194,7 +194,9 @@ export class LazyVideoThumbnailSource {
     private readonly sourceVideo: HTMLVideoElement,
     private readonly previewVideo: HTMLVideoElement,
     private readonly onFrameReady: () => void,
-    private readonly onUnavailable: () => void
+    private readonly onUnavailable: () => void,
+    private readonly getSource: () => string | null = () =>
+      getDirectPreviewSource(sourceVideo)
   ) {
     previewVideo.addEventListener('loadedmetadata', this.applyPendingSeek);
     previewVideo.addEventListener('seeked', this.handleSeeked);
@@ -203,7 +205,7 @@ export class LazyVideoThumbnailSource {
   }
 
   request(time: number): boolean {
-    const nextSource = getDirectPreviewSource(this.sourceVideo);
+    const nextSource = this.getSource();
     if (!nextSource || nextSource === this.failedSource) return false;
 
     this.clearIdleTimeout();
@@ -220,10 +222,10 @@ export class LazyVideoThumbnailSource {
 
   releaseAfterIdle(): void {
     this.clearIdleTimeout();
-    this.idleTimeout = this.ownerWindow.setTimeout(
-      () => this.release(),
-      GENERIC_PREVIEW_IDLE_RELEASE_MS
-    );
+    this.idleTimeout = this.ownerWindow.setTimeout(() => {
+      this.release();
+      this.onUnavailable();
+    }, GENERIC_PREVIEW_IDLE_RELEASE_MS);
   }
 
   releaseNow(): void {
@@ -384,6 +386,9 @@ type SeekbarThumbnailPreviewControllerOptionsT = {
 };
 
 export class SeekbarThumbnailPreviewController {
+  private socialMetadata: SocialThumbnailMetadata | null = null;
+  private socialAttemptAt = 0;
+  private mediaKey = '';
   private currentChapterTitle: string | null = null;
   private currentImageRequest = '';
   private genericSource: LazyVideoThumbnailSource;
@@ -433,7 +438,19 @@ export class SeekbarThumbnailPreviewController {
       options.video,
       this.previewVideo,
       () => this.showGenericVideoFrame(),
-      () => this.hideImage()
+      () => {
+        // A failed/released decoder must not leave an empty black frame. Keep
+        // a previously loaded sprite when it is still the visible source.
+        if (
+          !this.previewVideo.hidden ||
+          this.options.preview.dataset.mfsImageVisible !== 'true'
+        )
+          this.hideImage();
+      },
+      () =>
+        getDirectPreviewSource(options.video) ??
+        this.socialMetadata?.source ??
+        null
     );
   }
 
@@ -445,10 +462,10 @@ export class SeekbarThumbnailPreviewController {
       ownerWindow.matchMedia('(any-hover: hover) and (any-pointer: fine)')
         .matches;
     if (
-      loopTime === undefined && (
-      !this.options.isEnabled() ||
-      !canHoverWithFinePointer ||
-      timeline.style.opacity !== '1')
+      loopTime === undefined &&
+      (!this.options.isEnabled() ||
+        !canHoverWithFinePointer ||
+        timeline.style.opacity !== '1')
     ) {
       this.hide();
       return;
@@ -463,7 +480,9 @@ export class SeekbarThumbnailPreviewController {
       clientY >= timelineRect.top && clientY <= timelineRect.bottom;
     if (
       !isWithinHorizontalBounds ||
-      (!isWithinVerticalBounds && !this.options.isScrubbing() && loopTime === undefined)
+      (!isWithinVerticalBounds &&
+        !this.options.isScrubbing() &&
+        loopTime === undefined)
     ) {
       this.hide();
       return;
@@ -485,11 +504,16 @@ export class SeekbarThumbnailPreviewController {
       return;
     }
 
+    const mediaKey = `${video.ownerDocument.location.href}|${video.currentSrc || video.src}|${video.poster}`;
+    if (mediaKey !== this.mediaKey) {
+      this.resetSources();
+      this.mediaKey = mediaKey;
+    }
     if (!this.restoreTextTracks) {
       this.restoreTextTracks = prepareThumbnailTextTracks(video);
     }
 
-    this.updateTimeLabel(formatThumbnailPreviewTime(target.time, range), loopTime !== undefined);
+    this.updateTimeLabel(formatThumbnailPreviewTime(target.time, range));
     const chapterTitle =
       this.getYouTubeChapterTitleAtPoint(clientX, target.time, timelineRect) ??
       getTextTrackChapterTitle(video, target.time);
@@ -516,18 +540,31 @@ export class SeekbarThumbnailPreviewController {
   cleanup(): void {
     this.resetSources();
     this.genericSource.cleanup();
-    this.timeElement.dispatchEvent(
-      new CustomEvent(THUMBNAIL_PREVIEW_TIME_CLEANUP_EVENT, { bubbles: true })
-    );
   }
 
   private updateFrame(time: number): void {
+    const video = this.options.video;
     const wrapperRect = this.options.wrapper.getBoundingClientRect();
     if (wrapperRect.width < 144 || wrapperRect.height < 120) {
       this.hideImage();
       return;
     }
 
+    if (!this.socialMetadata && Date.now() - this.socialAttemptAt > 1000) {
+      this.socialAttemptAt = Date.now();
+      this.socialMetadata = requestSocialThumbnailMetadata(video);
+    }
+    const socialFrame = getSocialThumbnailFrame(
+      this.socialMetadata,
+      time,
+      video.videoWidth / video.videoHeight
+    );
+    if (socialFrame) {
+      this.showBackgroundImage(socialFrame, () =>
+        this.updateTrackOrGenericFrame(time)
+      );
+      return;
+    }
     const storyboardFrame = this.getStoryboardMetadata()
       ? getYouTubeStoryboardFrame(
           this.storyboardMetadata as YouTubeStoryboardMetadataT,
@@ -564,10 +601,12 @@ export class SeekbarThumbnailPreviewController {
   }
 
   private updateGenericFrame(time: number): void {
-    this.imageElement.style.backgroundImage = '';
-    this.imageElement.hidden = true;
-    this.previewVideo.hidden = false;
-    if (!this.genericSource.request(time)) this.hideImage();
+    if (
+      !this.genericSource.request(time) &&
+      this.options.preview.dataset.mfsImageVisible !== 'true'
+    ) {
+      this.hideImage();
+    }
   }
 
   private getStoryboardMetadata(): YouTubeStoryboardMetadataT | null {
@@ -627,12 +666,11 @@ export class SeekbarThumbnailPreviewController {
     }`;
     if (requestKey === this.currentImageRequest) return;
     this.currentImageRequest = requestKey;
-    this.options.preview.dataset.mfsImageVisible = 'false';
-    this.previewVideo.hidden = true;
-    this.imageElement.hidden = false;
 
     const applyLoadedImage = () => {
       if (this.currentImageRequest !== requestKey) return;
+      this.previewVideo.hidden = true;
+      this.imageElement.hidden = false;
       let resolvedSize = backgroundSize;
       let resolvedPosition = backgroundPosition;
       if (
@@ -663,16 +701,19 @@ export class SeekbarThumbnailPreviewController {
           : crop
             ? `${crop.width} / ${crop.height}`
             : '16 / 9';
+      this.options.preview.dataset.mfsPortrait = String(
+        Boolean(width && height && width < height)
+      );
       this.options.preview.dataset.mfsImageVisible = 'true';
       this.reposition();
     };
     this.imageLoader.onload = applyLoadedImage;
     this.imageLoader.onerror = () => {
       if (this.currentImageRequest !== requestKey) return;
-      this.hideImage();
       onError();
     };
-    this.imageLoader.src = url;
+    if (this.imageLoader.getAttribute('src') !== url)
+      this.imageLoader.src = url;
     if (this.imageLoader.complete && this.imageLoader.naturalWidth > 0) {
       applyLoadedImage();
     }
@@ -681,7 +722,12 @@ export class SeekbarThumbnailPreviewController {
   private showGenericVideoFrame(): void {
     this.imageElement.hidden = true;
     this.previewVideo.hidden = false;
-    this.frameElement.style.aspectRatio = '16 / 9';
+    const { videoWidth, videoHeight } = this.previewVideo;
+    this.frameElement.style.aspectRatio =
+      videoWidth && videoHeight ? `${videoWidth} / ${videoHeight}` : '16 / 9';
+    this.options.preview.dataset.mfsPortrait = String(
+      videoWidth > 0 && videoWidth < videoHeight
+    );
     this.options.preview.dataset.mfsImageVisible = 'true';
     this.reposition();
   }
@@ -702,7 +748,10 @@ export class SeekbarThumbnailPreviewController {
     this.options.preview.style.maxWidth = `${Math.max(0, wrapperRect.width - 16)}px`;
     const previewWidth =
       this.options.preview.offsetWidth ||
-      Math.min(220, Math.max(0, wrapperRect.width - 16));
+      Math.min(
+        this.options.preview.dataset.mfsImageVisible === 'true' ? 220 : 56,
+        Math.max(0, wrapperRect.width - 16)
+      );
     const previewHeight =
       this.options.preview.offsetHeight ||
       (this.options.preview.dataset.mfsImageVisible === 'true' ? 158 : 32);
@@ -712,13 +761,21 @@ export class SeekbarThumbnailPreviewController {
       Math.max(relativeX, halfWidth + 8),
       wrapperRect.width - halfWidth - 8
     );
-    const desiredTop =
-      this.options.getTimelinePosition() === 'top'
-        ? timelineRect.bottom - wrapperRect.top + 8
-        : timelineRect.top - wrapperRect.top - previewHeight - 8;
-    const maxTop = Math.max(8, wrapperRect.height - previewHeight - 8);
-
-    const top = Math.min(Math.max(8, desiredTop), maxTop);
+    const aboveTimeline = this.options.getTimelinePosition() === 'bottom';
+    // Anchor the adjacent edge, not a top derived from a measured height.
+    // Image loading and chapter changes can alter the height after this call;
+    // CSS keeps the pill above the timeline even between pointer events.
+    // Use translate separately so the reveal animation never eases this anchor.
+    this.options.preview.style.translate = aboveTimeline ? '0 -100%' : '0 0';
+    const desiredAnchor = aboveTimeline
+      ? timelineRect.top - wrapperRect.top - 8
+      : timelineRect.bottom - wrapperRect.top + 8;
+    const minAnchor = aboveTimeline ? previewHeight + 8 : 8;
+    const maxAnchor = Math.max(
+      minAnchor,
+      wrapperRect.height - 8 - (aboveTimeline ? 0 : previewHeight)
+    );
+    const top = Math.min(Math.max(minAnchor, desiredAnchor), maxAnchor);
     const portalHost = this.options.preview.parentElement;
     if (this.options.preview.dataset.mfsPortaled === 'true' && portalHost) {
       const ownerWindow =
@@ -751,33 +808,10 @@ export class SeekbarThumbnailPreviewController {
     this.options.preview.style.top = `${top}px`;
   }
 
-  private updateTimeLabel(label: string, plainText = false): void {
-    // Loop previews can update while the animated renderer is hidden. Keep
-    // their timestamp readable without depending on custom-element animation.
-    if (plainText) {
-      if (this.timeElement.getAttribute(THUMBNAIL_PREVIEW_TIME_MOUNTED_ATTRIBUTE) === 'true')
-        this.timeElement.dispatchEvent(new CustomEvent(THUMBNAIL_PREVIEW_TIME_CLEANUP_EVENT, { bubbles: true }));
-      this.timeElement.textContent = label;
-      this.timeElement.dataset.mfsTime = label;
-      this.currentTimeLabel = '';
-      return;
-    }
+  private updateTimeLabel(label: string): void {
     if (label === this.currentTimeLabel) return;
     this.currentTimeLabel = label;
-    this.timeElement.dataset.mfsTime = label;
-    if (
-      this.timeElement.getAttribute(
-        THUMBNAIL_PREVIEW_TIME_MOUNTED_ATTRIBUTE
-      ) !== 'true'
-    ) {
-      this.timeElement.textContent = label;
-    }
-    this.timeElement.dispatchEvent(
-      new CustomEvent(THUMBNAIL_PREVIEW_TIME_UPDATE_EVENT, {
-        bubbles: true,
-        detail: { value: label },
-      })
-    );
+    this.timeElement.textContent = label;
   }
 
   private updateChapterTitle(title: string | null): void {
@@ -919,6 +953,8 @@ export class SeekbarThumbnailPreviewController {
   }
 
   private resetSources(): void {
+    this.socialMetadata = null;
+    this.socialAttemptAt = 0;
     this.clearChapterTransition();
     this.currentChapterTitle = null;
     this.chapterElement.textContent = '';

@@ -1,4 +1,5 @@
 import { EXT_URL } from '@/config/variables.config';
+import { PAGE_DIALOG_SELECTOR, visiblePageDialogs } from '@/helpers/page-dialogs';
 import { DOMUtils } from '@/helpers/dom-utils';
 import {
   getProgressColor,
@@ -31,6 +32,7 @@ import {
   isScrollSpeedHotkeyCode,
 } from '@/helpers/scroll-speed';
 import type { SettingsManager } from '@/helpers/settings-manager';
+import { isSocialThumbnailHost } from '@/helpers/social-thumbnails';
 import { setupSocialVideo } from '@/helpers/social-video';
 import {
   createSeekbarThumbnailPreviewElement,
@@ -72,13 +74,6 @@ const VIDEO_DRAG_START_THRESHOLD_PX = 5;
 const VOLUME_DRAG_START_THRESHOLD_PX = 3;
 const VOLUME_KEY_STEP = 0.05;
 const VOLUME_WHEEL_SENSITIVITY = 0.001;
-const PAGE_DIALOG_SELECTOR = [
-  'dialog[open]',
-  '[role="dialog" i]',
-  '[role="alertdialog" i]',
-  '[aria-modal="true" i]',
-  '[popover]',
-].join(',');
 const EXTENSION_UI_SELECTOR = [
   '.mfs-social-page-controls',
   '.scrub-wrapper',
@@ -474,7 +469,7 @@ export class OverlayCreator {
         ? this.createYouTubeChapterTooltipElement(ownerDocument)
         : undefined;
     const thumbnailPreview =
-      isYouTubeHostname(ownerDocument.location.hostname) &&
+      (isYouTubeHostname(ownerDocument.location.hostname) || isSocialThumbnailHost(ownerDocument.location.hostname)) &&
       !DOMUtils.isYouTubeHoverPreview(video)
         ? createSeekbarThumbnailPreviewElement(ownerDocument)
         : undefined;
@@ -504,6 +499,7 @@ export class OverlayCreator {
       wrapper: scrubWrapper,
       debugIndicator: debugIndicator,
       mediaControls,
+      seekSpeedLabel,
       youtubeChapterTooltip,
       thumbnailPreview,
       isHovering: false,
@@ -1132,12 +1128,7 @@ ${MEDIA_OVERLAY_STYLES}
           pointer-events: none !important;
         }
 
-        html[data-mfs-page-dialog-open="true"] .scrub-wrapper,
-        html[data-mfs-page-dialog-open="true"] .scrub-timeline[data-mfs-portaled="true"],
-        html[data-mfs-page-dialog-open="true"] .mfs-media-controls[data-mfs-portaled="true"],
-        html[data-mfs-page-dialog-open="true"] .mfs-seek-speed-label[data-mfs-portaled="true"],
-        html[data-mfs-page-dialog-open="true"] .mfs-youtube-chapter-tooltip,
-        html[data-mfs-page-dialog-open="true"] .mfs-seekbar-thumbnail-preview {
+        [data-mfs-dialog-blocked="true"] {
           visibility: hidden !important;
           pointer-events: none !important;
         }
@@ -1239,7 +1230,7 @@ ${MEDIA_OVERLAY_STYLES}
     }
 
     const isPageDialogOpen =
-      video.ownerDocument.documentElement.dataset.mfsPageDialogOpen === 'true';
+      timeline.dataset.mfsDialogBlocked === 'true';
     timeline.style.pointerEvents =
       isInteractive && !isPageDialogOpen ? 'auto' : 'none';
     timeline.style.cursor = isInteractive ? 'pointer' : '';
@@ -3184,7 +3175,8 @@ ${MEDIA_OVERLAY_STYLES}
         .some(
           (target) =>
             target instanceof ownerWindow.Element &&
-            target.matches('dialog, [role="dialog"], [aria-modal="true"]')
+            target.matches('dialog, [role="dialog"], [aria-modal="true"]') &&
+            !target.contains(video)
         );
 
     const isSiteInteractiveControlEvent = (event: MouseEvent): boolean =>
@@ -4544,55 +4536,10 @@ ${MEDIA_OVERLAY_STYLES}
     this.dialogGuardedDocuments.add(ownerDocument);
   }
 
-  private hasVisiblePageDialog(ownerDocument: Document): boolean {
-    const ownerWindow = ownerDocument.defaultView ?? window;
-    const candidates =
-      ownerDocument.querySelectorAll<HTMLElement>(PAGE_DIALOG_SELECTOR);
-
-    return Array.from(candidates).some((candidate) => {
-      if (
-        candidate.closest(
-          '.scrub-wrapper, .scrub-timeline, .mfs-media-controls, .mfs-seek-speed-label'
-        ) ||
-        candidate.hidden ||
-        candidate.getAttribute('aria-hidden') === 'true' ||
-        candidate.closest('[inert]')
-      ) {
-        return false;
-      }
-
-      if (candidate.hasAttribute('popover')) {
-        try {
-          if (!candidate.matches(':popover-open')) return false;
-        } catch {
-          if (!candidate.hasAttribute('open')) return false;
-        }
-      }
-
-      const rect = candidate.getBoundingClientRect();
-      if (
-        rect.width <= 0 ||
-        rect.height <= 0 ||
-        rect.right <= 0 ||
-        rect.bottom <= 0 ||
-        rect.left >= ownerWindow.innerWidth ||
-        rect.top >= ownerWindow.innerHeight
-      ) {
-        return false;
-      }
-
-      const style = ownerWindow.getComputedStyle(candidate);
-      return (
-        style.display !== 'none' &&
-        style.visibility !== 'hidden' &&
-        style.opacity !== '0' &&
-        style.pointerEvents !== 'none'
-      );
-    });
-  }
 
   private updateDocumentDialogGuard(ownerDocument: Document): void {
-    const isDialogOpen = this.hasVisiblePageDialog(ownerDocument);
+    const dialogs = visiblePageDialogs(ownerDocument);
+    const isDialogOpen = dialogs.length > 0;
     if (isDialogOpen) {
       ownerDocument.documentElement.setAttribute(
         'data-mfs-page-dialog-open',
@@ -4613,7 +4560,12 @@ ${MEDIA_OVERLAY_STYLES}
         return;
       }
 
-      if (isDialogOpen) {
+      const blocked = dialogs.some((dialog) => !dialog.contains(video));
+      for (const element of [state.wrapper, state.timeline, state.mediaControls, state.seekSpeedLabel, state.youtubeChapterTooltip, state.thumbnailPreview]) {
+        if (blocked) element?.setAttribute('data-mfs-dialog-blocked', 'true');
+        else element?.removeAttribute('data-mfs-dialog-blocked');
+      }
+      if (blocked) {
         state.hideThumbnailPreview?.();
         state.wrapper.style.setProperty('visibility', 'hidden', 'important');
         state.overlay.style.setProperty('pointer-events', 'none', 'important');
@@ -4643,7 +4595,7 @@ ${MEDIA_OVERLAY_STYLES}
     ownerDocument
       .querySelectorAll<HTMLElement>('.mfs-seek-speed-label')
       .forEach((label) => {
-        if (isDialogOpen) {
+        if (label.hasAttribute('data-mfs-dialog-blocked')) {
           label.style.setProperty('visibility', 'hidden', 'important');
           label.style.setProperty('pointer-events', 'none', 'important');
         } else {
@@ -4823,7 +4775,7 @@ ${MEDIA_OVERLAY_STYLES}
         return;
       }
 
-      if (ownerDocument.documentElement.dataset.mfsPageDialogOpen === 'true') {
+      if (state.wrapper.dataset.mfsDialogBlocked === 'true') {
         return;
       }
 

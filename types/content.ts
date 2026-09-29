@@ -9,6 +9,7 @@ export type VideoStateT = {
   wrapper: HTMLDivElement;
   debugIndicator: HTMLAnchorElement;
   mediaControls?: HTMLDivElement;
+  seekSpeedLabel?: HTMLDivElement;
   isHovering: boolean;
   isPointerHovering?: boolean;
   isWheelHovering?: boolean;
@@ -58,6 +59,8 @@ export type ContentSettingsT = {
   tiktokShowAutoSkip: boolean;
   isYouTubeChapteredTimelineEnabled: boolean;
   isSeekbarThumbnailPreviewEnabled: boolean;
+  instagramHoverThumbnails: boolean;
+  tiktokHoverThumbnails: boolean;
   timelinePosition: 'top' | 'bottom';
   timelineHeight: number;
   timelineHeightUnit: 'px' | '%';

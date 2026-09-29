@@ -57,6 +57,8 @@ export class SettingsManager {
           'tiktokShowAutoSkip',
           'isYouTubeChapteredTimelineEnabled',
           'isSeekbarThumbnailPreviewEnabled',
+          'instagramHoverThumbnails',
+          'tiktokHoverThumbnails',
           'timelinePosition',
           'timelineHeight',
           'timelineHeightUnit',
@@ -133,6 +135,12 @@ export class SettingsManager {
             isSeekbarThumbnailPreviewEnabled:
               stored.isSeekbarThumbnailPreviewEnabled ??
               this.defaultSettings.isSeekbarThumbnailPreviewEnabled,
+            instagramHoverThumbnails:
+              stored.instagramHoverThumbnails ??
+              this.defaultSettings.instagramHoverThumbnails,
+            tiktokHoverThumbnails:
+              stored.tiktokHoverThumbnails ??
+              this.defaultSettings.tiktokHoverThumbnails,
             timelinePosition:
               stored.timelinePosition ?? this.defaultSettings.timelinePosition,
             timelineHeight:
@@ -279,6 +287,11 @@ export class SettingsManager {
   }
 
   isSeekbarThumbnailPreviewEnabled(): boolean {
+    const hostname = window.location.hostname;
+    if (hostname === 'instagram.com' || hostname.endsWith('.instagram.com'))
+      return this.settings.instagramHoverThumbnails;
+    if (hostname === 'tiktok.com' || hostname.endsWith('.tiktok.com'))
+      return this.settings.tiktokHoverThumbnails;
     return (
       this.settings.isSeekbarThumbnailPreviewEnabled &&
       isYouTubeHostname(window.location.hostname)

@@ -2,6 +2,32 @@ import type { SVGProps } from 'react';
 
 type IconProps = SVGProps<SVGSVGElement>;
 
+export function YouTubeBrandIcon(props: IconProps) {
+  return (
+    <svg {...props} aria-hidden="true" fill="currentColor" viewBox="0 0 24 24" width="24" height="24">
+      <path fillRule="evenodd" d="M21.6 5.2C20.9 4 19.8 4 12 4s-8.9 0-9.6 1.2C1.7 6.4 1.5 8.5 1.5 12s.2 5.6.9 6.8C3.1 20 4.2 20 12 20s8.9 0 9.6-1.2c.7-1.2.9-3.3.9-6.8s-.2-5.6-.9-6.8ZM10 8v8l6-4-6-4Z" clipRule="evenodd" />
+    </svg>
+  );
+}
+
+export function InstagramBrandIcon(props: IconProps) {
+  return (
+    <svg {...props} aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" width="24" height="24">
+      <rect x="3" y="3" width="18" height="18" rx="5" />
+      <circle cx="12" cy="12" r="4" />
+      <circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+export function TikTokBrandIcon(props: IconProps) {
+  return (
+    <svg {...props} aria-hidden="true" fill="currentColor" viewBox="0 0 24 24" width="24" height="24">
+      <path d="M16.7 1h-3.6v15.4a3.1 3.1 0 1 1-2.7-3.1V9.6a6.8 6.8 0 1 0 6.3 6.8V8.6a9 9 0 0 0 5.3 1.7V6.7A5.7 5.7 0 0 1 16.7 1Z" />
+    </svg>
+  );
+}
+
 export function ChevronLeftIcon(props: IconProps) {
   return (
     <svg

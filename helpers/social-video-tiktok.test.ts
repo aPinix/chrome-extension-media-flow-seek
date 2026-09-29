@@ -149,6 +149,7 @@ it('applies independent TikTok speed and auto-skip changes immediately', () => {
     expect(video.loop).toBe(false);
     const dialog = document.createElement('div');
     dialog.setAttribute('role', 'dialog');
+    dialog.getBoundingClientRect = () => new DOMRect(100, 100, 300, 300);
     document.body.append(dialog);
     video.dispatchEvent(new Event('ended'));
     expect(scroller.scrollBy).not.toHaveBeenCalled();

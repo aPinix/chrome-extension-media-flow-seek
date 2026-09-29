@@ -535,6 +535,25 @@ describe('OverlayCreator keyboard handling', () => {
 });
 
 describe('OverlayCreator page dialog guard', () => {
+  it('keeps popup player layers active while hiding the background player', () => {
+    const manager = new VideoStateManager();
+    const creator = new OverlayCreator(createSettingsManager({ isTimelineSeekingEnabled: true }), manager, () => {});
+    const background = createVideoState();
+    const foreground = createVideoState();
+    const popup = document.createElement('div');
+    popup.setAttribute('role', 'dialog');
+    popup.getBoundingClientRect = () => new DOMRect(0, 0, 800, 600);
+    document.body.append(popup);
+    popup.append(foreground.video, foreground.state.wrapper);
+    manager.set(background.video, background.state);
+    manager.set(foreground.video, foreground.state);
+    (creator as unknown as {updateDocumentDialogGuard: (doc: Document) => void}).updateDocumentDialogGuard(document);
+    expect(background.state.wrapper.dataset.mfsDialogBlocked).toBe('true');
+    expect(foreground.state.wrapper.dataset.mfsDialogBlocked).toBeUndefined();
+    expect(foreground.state.wrapper.style.visibility).toBe('');
+    expect(foreground.state.timeline.style.pointerEvents).not.toBe('none');
+  });
+
   it('releases all player interaction while a visible site dialog is open', () => {
     const videoStateManager = new VideoStateManager();
     const overlayCreator = new OverlayCreator(

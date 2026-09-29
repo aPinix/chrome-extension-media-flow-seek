@@ -1,0 +1,7 @@
+# Render and validation caches
+.hyperframes/
+node_modules/
+snapshots/
+assets/frame-*.png
+assets/page@*.webm
+assets/usage-raw.webm
