@@ -9,7 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppBetaBadge } from '@/components/app/app-beta-badge';
 import { AppKbd } from '@/components/app/app-kbd';
 import { AppSwitch } from '@/components/app/app-switch';
-import { InstagramBrandIcon, TikTokBrandIcon, XBrandIcon, YouTubeBrandIcon } from '@/components/icons/icons';
+import { XBrandIcon, YouTubeBrandIcon } from '@/components/icons/icons';
 import { CardListItem } from '@/components/popup/card-list-item';
 import { ExtraFeaturePreviewTooltip } from '@/components/popup/extra-feature-preview-tooltip';
 import { MinimalPlayerDescription } from '@/components/popup/minimal-player-description';
@@ -19,9 +19,8 @@ import { SiteAccessView } from '@/components/popup/site-access-view';
 import { SettingsSearch } from '@/components/popup/settings-search';
 import { ViewTitle } from '@/components/popup/view-title';
 import { ArrowSeekSettings } from '@/components/settings/arrow-seek-settings';
-import { InstagramSettings } from '@/components/settings/instagram-settings';
+import { SharedVideoSettings } from '@/components/settings/shared-video-settings';
 import { SeekControlsSettings } from '@/components/settings/seek-controls-settings';
-import { TikTokSettings } from '@/components/settings/tiktok-settings';
 import { YouTubeSettings } from '@/components/settings/youtube-settings';
 import { useTheme } from '@/components/theme-provider';
 import { Button } from '@/components/ui/button';
@@ -240,8 +239,12 @@ export function PopupContent() {
     isSeekbarThumbnailPreviewEnabled,
     setIsSeekbarThumbnailPreviewEnabled,
   ] = useState(DEFAULT_SETTINGS.isSeekbarThumbnailPreviewEnabled);
-  const [instagramHoverThumbnails, setInstagramHoverThumbnails] = useState(DEFAULT_SETTINGS.instagramHoverThumbnails);
-  const [tiktokHoverThumbnails, setTikTokHoverThumbnails] = useState(DEFAULT_SETTINGS.tiktokHoverThumbnails);
+  const [instagramHoverThumbnails, setInstagramHoverThumbnails] = useState(
+    DEFAULT_SETTINGS.instagramHoverThumbnails
+  );
+  const [tiktokHoverThumbnails, setTikTokHoverThumbnails] = useState(
+    DEFAULT_SETTINGS.tiktokHoverThumbnails
+  );
   const [timelinePosition, setTimelinePosition] = useState<'top' | 'bottom'>(
     'bottom'
   );
@@ -304,8 +307,7 @@ export function PopupContent() {
   );
 
   // Check if extension settings are at defaults
-  const isExtensionAtDefaults =
-    isEnabled === DEFAULT_SETTINGS.isEnabled;
+  const isExtensionAtDefaults = isEnabled === DEFAULT_SETTINGS.isEnabled;
 
   // Check if settings are at defaults
   const isSettingsAtDefaults =
@@ -872,7 +874,10 @@ export function PopupContent() {
           >
             {/* Scrollable Content */}
             <ScrollArea className="flex-1 overflow-hidden **:data-[slot='scroll-area-viewport']:relative">
-              <div ref={settingsContentRef} className="flex flex-1 flex-col gap-6 p-6 pt-22 pb-36">
+              <div
+                ref={settingsContentRef}
+                className="flex flex-1 flex-col gap-6 p-6 pt-22 pb-36"
+              >
                 <ViewTitle
                   description="Customize video controls and scrolling"
                   title="Settings"
@@ -923,8 +928,6 @@ export function PopupContent() {
                       icon={PowerIcon}
                       title="Enable Extension"
                     />
-
-
                   </CardListItemWrapper>
                 </div>
 
@@ -1074,6 +1077,71 @@ export function PopupContent() {
                 </div>
 
                 <div className="flex flex-none flex-col">
+                  <SectionTitle title="Shared Video Features" />
+                  <SharedVideoSettings
+                    extensionEnabled={isEnabled}
+                    youtube={{
+                      thumbnailPreviewEnabled: isSeekbarThumbnailPreviewEnabled,
+                      onThumbnailPreviewEnabledChange:
+                        handleSeekbarThumbnailPreviewToggle,
+                    }}
+                    instagram={{
+                      thumbnailPreviewEnabled: instagramHoverThumbnails,
+                      onThumbnailPreviewEnabledChange: (value) => {
+                        setInstagramHoverThumbnails(value);
+                        saveSettings({ instagramHoverThumbnails: value });
+                      },
+                      autoSkip: instagramAutoSkip,
+                      onAutoSkipChange: (value) => {
+                        setInstagramAutoSkip(value);
+                        saveSettings({ instagramAutoSkip: value });
+                      },
+                      playbackSpeed: instagramPlaybackSpeed,
+                      onPlaybackSpeedChange: (value) => {
+                        setInstagramPlaybackSpeed(value);
+                        saveSettings({ instagramPlaybackSpeed: value });
+                      },
+                      showAutoSkip: instagramShowAutoSkip,
+                      onShowAutoSkipChange: (value) => {
+                        setInstagramShowAutoSkip(value);
+                        saveSettings({ instagramShowAutoSkip: value });
+                      },
+                      showPlaybackSpeed: instagramShowPlaybackSpeed,
+                      onShowPlaybackSpeedChange: (value) => {
+                        setInstagramShowPlaybackSpeed(value);
+                        saveSettings({ instagramShowPlaybackSpeed: value });
+                      },
+                    }}
+                    tiktok={{
+                      thumbnailPreviewEnabled: tiktokHoverThumbnails,
+                      onThumbnailPreviewEnabledChange: (value) => {
+                        setTikTokHoverThumbnails(value);
+                        saveSettings({ tiktokHoverThumbnails: value });
+                      },
+                      autoSkip: tiktokAutoSkip,
+                      onAutoSkipChange: (value) => {
+                        setTikTokAutoSkip(value);
+                        saveSettings({ tiktokAutoSkip: value });
+                      },
+                      playbackSpeed: tiktokPlaybackSpeed,
+                      onPlaybackSpeedChange: (value) => {
+                        setTikTokPlaybackSpeed(value);
+                        saveSettings({ tiktokPlaybackSpeed: value });
+                      },
+                      showAutoSkip: tiktokShowAutoSkip,
+                      onShowAutoSkipChange: (value) => {
+                        setTikTokShowAutoSkip(value);
+                        saveSettings({ tiktokShowAutoSkip: value });
+                      },
+                      showPlaybackSpeed: tiktokShowPlaybackSpeed,
+                      onShowPlaybackSpeedChange: (value) => {
+                        setTikTokShowPlaybackSpeed(value);
+                        saveSettings({ tiktokShowPlaybackSpeed: value });
+                      },
+                    }}
+                  />
+                </div>
+                <div className="flex flex-none flex-col">
                   <SectionTitle title="YouTube" icon={YouTubeBrandIcon} />
                   <YouTubeSettings
                     chapteredTimelineEnabled={isYouTubeChapteredTimelineEnabled}
@@ -1081,72 +1149,6 @@ export function PopupContent() {
                     onChapteredTimelineEnabledChange={
                       handleYouTubeChapteredTimelineToggle
                     }
-                    onThumbnailPreviewEnabledChange={
-                      handleSeekbarThumbnailPreviewToggle
-                    }
-                    thumbnailPreviewEnabled={isSeekbarThumbnailPreviewEnabled}
-                  />
-                </div>
-                <div className="flex flex-none flex-col">
-                  <SectionTitle title="Instagram" icon={InstagramBrandIcon} />
-                  <InstagramSettings
-                    thumbnailPreviewEnabled={instagramHoverThumbnails}
-                    onThumbnailPreviewEnabledChange={(value) => {
-                      setInstagramHoverThumbnails(value);
-                      saveSettings({ instagramHoverThumbnails: value });
-                    }}
-                    autoSkip={instagramAutoSkip}
-                    extensionEnabled={isEnabled}
-                    onAutoSkipChange={(value) => {
-                      setInstagramAutoSkip(value);
-                      saveSettings({ instagramAutoSkip: value });
-                    }}
-                    onPlaybackSpeedChange={(value) => {
-                      setInstagramPlaybackSpeed(value);
-                      saveSettings({ instagramPlaybackSpeed: value });
-                    }}
-                    onShowAutoSkipChange={(value) => {
-                      setInstagramShowAutoSkip(value);
-                      saveSettings({ instagramShowAutoSkip: value });
-                    }}
-                    onShowPlaybackSpeedChange={(value) => {
-                      setInstagramShowPlaybackSpeed(value);
-                      saveSettings({ instagramShowPlaybackSpeed: value });
-                    }}
-                    playbackSpeed={instagramPlaybackSpeed}
-                    showAutoSkip={instagramShowAutoSkip}
-                    showPlaybackSpeed={instagramShowPlaybackSpeed}
-                  />
-                </div>
-                <div className="flex flex-none flex-col">
-                  <SectionTitle title="TikTok" icon={TikTokBrandIcon} />
-                  <TikTokSettings
-                    thumbnailPreviewEnabled={tiktokHoverThumbnails}
-                    onThumbnailPreviewEnabledChange={(value) => {
-                      setTikTokHoverThumbnails(value);
-                      saveSettings({ tiktokHoverThumbnails: value });
-                    }}
-                    autoSkip={tiktokAutoSkip}
-                    extensionEnabled={isEnabled}
-                    onAutoSkipChange={(value) => {
-                      setTikTokAutoSkip(value);
-                      saveSettings({ tiktokAutoSkip: value });
-                    }}
-                    onPlaybackSpeedChange={(value) => {
-                      setTikTokPlaybackSpeed(value);
-                      saveSettings({ tiktokPlaybackSpeed: value });
-                    }}
-                    onShowAutoSkipChange={(value) => {
-                      setTikTokShowAutoSkip(value);
-                      saveSettings({ tiktokShowAutoSkip: value });
-                    }}
-                    onShowPlaybackSpeedChange={(value) => {
-                      setTikTokShowPlaybackSpeed(value);
-                      saveSettings({ tiktokShowPlaybackSpeed: value });
-                    }}
-                    playbackSpeed={tiktokPlaybackSpeed}
-                    showAutoSkip={tiktokShowAutoSkip}
-                    showPlaybackSpeed={tiktokShowPlaybackSpeed}
                   />
                 </div>
               </div>
@@ -1196,15 +1198,16 @@ export function PopupContent() {
               showDomainsView ? 'pointer-events-none opacity-0' : 'opacity-100'
             )}
           >
-            <SettingsSearch contentRef={settingsContentRef} active={!showDomainsView} />
+            <SettingsSearch
+              contentRef={settingsContentRef}
+              active={!showDomainsView}
+            />
           </div>
           <div
             aria-hidden={!showDomainsView}
             className={cn(
               'absolute right-1 bottom-[calc(100%+0.25rem)] left-1 z-0 transition-opacity duration-200 ease-in-out motion-reduce:transition-none',
-              showDomainsView
-                ? 'opacity-100'
-                : 'pointer-events-none opacity-0'
+              showDomainsView ? 'opacity-100' : 'pointer-events-none opacity-0'
             )}
             data-active={showDomainsView}
             data-testid="domain-toolbar-dock"

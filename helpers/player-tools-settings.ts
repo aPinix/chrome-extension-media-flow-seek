@@ -12,6 +12,7 @@ export const DEFAULT_FILTERS: VideoFilters = {
 };
 export type PlayerToolsSettings = {
   version: 1;
+  arrowKeySeekingEnabled: boolean;
   backward: number;
   forward: number;
   backwardShortcut: string;
@@ -20,6 +21,8 @@ export type PlayerToolsSettings = {
   youtubeLoop: boolean;
   youtubeBoost: number;
   youtubeBoostEnabled: boolean;
+  youtubeCinemaEnabled: boolean;
+  youtubeInfoCardsEnabled: boolean;
   youtubeAutoBoost: boolean;
   rememberYoutubeLoops: boolean;
   rememberYoutubeSpeed: boolean;
@@ -33,20 +36,23 @@ export type PlayerToolsSettings = {
 export const PLAYER_TOOLS_KEY = 'playerTools';
 export const DEFAULT_PLAYER_TOOLS: PlayerToolsSettings = {
   version: 1,
+  arrowKeySeekingEnabled: true,
   backward: 5,
   forward: 5,
   backwardShortcut: '',
   forwardShortcut: '',
   youtubeSpeed: 1,
-  youtubeLoop: false,
+  youtubeLoop: true,
   youtubeBoost: 2,
-  youtubeBoostEnabled: false,
+  youtubeBoostEnabled: true,
+  youtubeCinemaEnabled: true,
+  youtubeInfoCardsEnabled: true,
   youtubeAutoBoost: false,
   rememberYoutubeLoops: false,
   rememberYoutubeSpeed: false,
   hideCards: false,
   hideEndScreens: false,
-  miniPlayer: false,
+  miniPlayer: true,
   autoChapters: false,
   dimming: 80,
   siteFilters: {},
@@ -85,9 +91,12 @@ export function normalizePlayerTools(value: unknown): PlayerToolsSettings {
     : 5;
   return {
     version: 1,
-    youtubeLoop: v.youtubeLoop === true,
+    arrowKeySeekingEnabled: v.arrowKeySeekingEnabled !== false,
+    youtubeCinemaEnabled: v.youtubeCinemaEnabled !== false,
+    youtubeInfoCardsEnabled: v.youtubeInfoCardsEnabled !== false,
+    youtubeLoop: v.youtubeLoop !== false,
     youtubeAutoBoost: v.youtubeAutoBoost === true,
-    youtubeBoostEnabled: typeof v.youtubeBoostEnabled === 'boolean' ? v.youtubeBoostEnabled : Number.isInteger(v.youtubeBoost) && v.youtubeBoost! >= 2 && v.youtubeBoost! <= 10,
+    youtubeBoostEnabled: v.youtubeBoostEnabled !== false,
     youtubeBoost: Number.isInteger(v.youtubeBoost) && v.youtubeBoost! >= 2 && v.youtubeBoost! <= 10 ? v.youtubeBoost! : 2,
     rememberYoutubeLoops: v.rememberYoutubeLoops === true,
     backward: seekInterval,
@@ -99,7 +108,7 @@ export function normalizePlayerTools(value: unknown): PlayerToolsSettings {
     youtubeSpeed: Math.round(numeric(v.youtubeSpeed, 1, 0.25, 4) * 20) / 20,
     hideCards: v.hideCards === true,
     hideEndScreens: v.hideEndScreens === true,
-    miniPlayer: v.miniPlayer === true,
+    miniPlayer: v.miniPlayer !== false,
     autoChapters: v.autoChapters === true,
     dimming: numeric(v.dimming, 80, 0, 100),
     siteFilters,

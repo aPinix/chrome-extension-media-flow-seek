@@ -53,13 +53,18 @@ describe('player actions', () => {
       forward: 3,
     });
     expect(normalizePlayerTools(undefined)).toMatchObject({
+      arrowKeySeekingEnabled: true,
       backward: 5,
       forward: 5,
       youtubeSpeed: 1,
-      miniPlayer: false,
+      miniPlayer: true,
       autoChapters: false,
       hideCards: false,
     });
+    expect(
+      normalizePlayerTools({ arrowKeySeekingEnabled: false })
+        .arrowKeySeekingEnabled
+    ).toBe(false);
     expect(
       normalizePlayerTools({
         backward: NaN,
@@ -72,6 +77,37 @@ describe('player actions', () => {
       forward: 5,
       youtubeSpeed: 4,
       dimming: 100,
+    });
+  });
+  it('defaults new YouTube buttons on and preserves migrated card visibility and dimming', () => {
+    expect(normalizePlayerTools(undefined)).toMatchObject({
+      youtubeCinemaEnabled: true,
+      youtubeInfoCardsEnabled: true,
+      youtubeBoostEnabled: true,
+      youtubeLoop: true,
+      hideEndScreens: false,
+      dimming: 80,
+    });
+    expect(
+      normalizePlayerTools({ hideEndScreens: true, dimming: 65 })
+    ).toMatchObject({
+      youtubeCinemaEnabled: true,
+      youtubeInfoCardsEnabled: true,
+      hideEndScreens: true,
+      dimming: 65,
+    });
+    expect(
+      normalizePlayerTools({
+        youtubeCinemaEnabled: false,
+        youtubeInfoCardsEnabled: false,
+        hideEndScreens: true,
+        dimming: 0,
+      })
+    ).toMatchObject({
+      youtubeCinemaEnabled: false,
+      youtubeInfoCardsEnabled: false,
+      hideEndScreens: true,
+      dimming: 0,
     });
   });
   it('requires an exact shortcut modifier match', () => {

@@ -1,3 +1,10 @@
+import { getMediaSeekRange } from './media';
+import {
+  DEFAULT_MINI_PLAYER_GEOMETRY,
+  MINI_PLAYER_GEOMETRY_KEY,
+  type MiniPlayerGeometry,
+  normalizeMiniPlayerGeometry,
+} from './mini-player-settings';
 import {
   formatTime,
   type LoopRange,
@@ -8,22 +15,27 @@ import {
 import { clamp, type PlayerToolsSettings } from './player-tools-settings';
 import { button, element, TOOLS_STYLES } from './player-tools-ui';
 
-type Geometry = { x: number; y: number; width: number };
+type Geometry = MiniPlayerGeometry;
 export function clampMiniGeometry(
   g: Geometry,
   viewportWidth: number,
   viewportHeight: number,
-  aspect: number
+  aspect: number,
+  top = DEFAULT_MINI_PLAYER_GEOMETRY.y
 ): Geometry {
   const maxWidth = Math.max(
-    100,
-    Math.min(viewportWidth - 16, (viewportHeight - 64) * aspect)
+    1,
+    Math.min(viewportWidth - 16, (viewportHeight - top - 8) * aspect)
   );
   const width = clamp(g.width, Math.min(240, maxWidth), maxWidth);
   return {
     width,
     x: clamp(g.x, 8, Math.max(8, viewportWidth - width - 8)),
-    y: clamp(g.y, 40, Math.max(40, viewportHeight - width / aspect - 8)),
+    y: clamp(
+      g.y,
+      Math.min(top, Math.max(32, viewportHeight - width / aspect - 8)),
+      Math.max(top, viewportHeight - width / aspect - 8)
+    ),
   };
 }
 type DocumentPip = {
@@ -35,12 +47,25 @@ type PipWindow = Window & { documentPictureInPicture?: DocumentPip };
 export class FloatingPlayer {
   private doc: Document;
   private win: Window;
+  private overlayHost: HTMLElement;
   private placeholder: HTMLElement | null = null;
   private player: HTMLElement | null = null;
   private restoreStyles: (() => void) | null = null;
   private bar: HTMLElement;
   private resize: HTMLButtonElement;
-  private geometry: Geometry = { x: 10000, y: 10000, width: 360 };
+  private controls: HTMLElement;
+  private miniStatus: HTMLElement;
+  private play: HTMLButtonElement;
+  private backward: HTMLButtonElement;
+  private forward: HTMLButtonElement;
+  private mute: HTMLButtonElement;
+  private volume: HTMLInputElement;
+  private seek: HTMLInputElement;
+  private seekHint: HTMLElement;
+  private seekDrag: { x: number; y: number; time: number } | null = null;
+  private geometry: Geometry = { ...DEFAULT_MINI_PLAYER_GEOMETRY };
+  private renderedGeometry: Geometry = { ...DEFAULT_MINI_PLAYER_GEOMETRY };
+  private geometryReady = false;
   private suppressed = false;
   private pip: Window | null = null;
   private restorePip: (() => void) | null = null;
@@ -63,14 +88,32 @@ export class FloatingPlayer {
     private isYouTube: boolean,
     private report: (text: string) => void,
     private setSpeed: (speed: number) => void,
-    private getLoop: () => { range: LoopRange | null; enabled: boolean }
+    private getLoop: () => { range: LoopRange | null; enabled: boolean },
+    private onFloat: () => void = () => {}
   ) {
     this.doc = video.ownerDocument;
     this.win = this.doc.defaultView ?? window;
+    this.overlayHost = root.host as HTMLElement;
     this.bar = element(this.doc, 'div', 'mini-bar');
     this.bar.hidden = true;
-    this.bar.append(element(this.doc, 'span', '', 'Better Video Controls'));
-    button(
+    this.bar.tabIndex = 0;
+    this.bar.setAttribute('role', 'group');
+    this.bar.setAttribute(
+      'aria-label',
+      'Move mini player. Use arrow keys; Shift for fine adjustments.'
+    );
+    const back = button(
+      this.doc,
+      'Back to top',
+      () => {
+        this.restoreMini();
+        this.win.scrollTo({ top: 0, behavior: 'instant' });
+      },
+      this.bar
+    );
+    this.setIcon(back, 'Back to top', 'M5 19V5h14M5 5l14 14');
+    back.className = 'mini-return';
+    const close = button(
       this.doc,
       'Close',
       () => {
@@ -79,11 +122,82 @@ export class FloatingPlayer {
       },
       this.bar
     );
+    this.setIcon(close, 'Close mini player', 'M6 6l12 12M18 6 6 18');
+    close.className = 'mini-close';
+    close.append(element(this.doc, 'span', '', 'Close'));
+    this.controls = element(this.doc, 'div', 'mini-controls');
+    this.controls.hidden = true;
+    this.controls.setAttribute('role', 'group');
+    this.controls.setAttribute('aria-label', 'Mini player playback controls');
+    this.miniStatus = element(this.doc, 'p', 'mini-status');
+    this.miniStatus.setAttribute('role', 'status');
+    this.controls.append(this.miniStatus);
+    const middle = element(this.doc, 'div', 'mini-middle');
+    this.controls.append(middle);
+    this.play = button(
+      this.doc,
+      'Play',
+      () => {
+        if (this.video.paused)
+          void this.video
+            .play()
+            .catch(() => this.report('Playback could not start.'));
+        else this.video.pause();
+      },
+      middle
+    );
+    this.backward = button(
+      this.doc,
+      'Seek backward',
+      () => skipVideo(this.video, -this.settings().backward),
+      middle
+    );
+    this.forward = button(
+      this.doc,
+      'Seek forward',
+      () => skipVideo(this.video, this.settings().forward),
+      middle
+    );
+    this.play.className = 'mini-play';
+    this.backward.className = this.forward.className = 'mini-skip';
+    middle.replaceChildren(this.backward, this.play, this.forward);
+    const volumeControls = element(this.doc, 'div', 'mini-volume');
+    this.controls.append(volumeControls);
+    this.mute = button(
+      this.doc,
+      'Mute',
+      () => {
+        this.video.muted = !this.video.muted;
+      },
+      volumeControls
+    );
+    this.volume = element(this.doc, 'input');
+    this.volume.type = 'range';
+    this.volume.min = '0';
+    this.volume.max = '1';
+    this.volume.step = '.01';
+    this.volume.setAttribute('aria-label', 'Mini player volume');
+    volumeControls.append(this.volume);
+    this.volume.addEventListener('input', () => {
+      this.video.volume = this.volume.valueAsNumber;
+      this.video.muted = this.video.volume === 0;
+    });
+    this.seek = element(this.doc, 'input', 'mini-seek');
+    this.seek.type = 'range';
+    this.seek.step = '.1';
+    this.seek.setAttribute('aria-label', 'Mini player seek');
+    this.seek.addEventListener('input', () =>
+      seekVideo(this.video, this.seek.valueAsNumber)
+    );
+    this.controls.append(this.seek);
+    this.seekHint = element(this.doc, 'p', 'mini-seek-hint');
+    this.seekHint.hidden = true;
+    this.controls.append(this.seekHint);
     this.resize = element(this.doc, 'button', 'resize', '↘');
     this.resize.title = 'Resize mini player';
     this.resize.setAttribute('aria-label', this.resize.title);
     this.resize.hidden = true;
-    root.append(this.bar, this.resize);
+    root.append(this.bar, this.controls, this.resize);
     const listen = (
       target: EventTarget,
       type: string,
@@ -103,7 +217,7 @@ export class FloatingPlayer {
       this.drag = {
         x: e.clientX,
         y: e.clientY,
-        geometry: { ...this.geometry },
+        geometry: { ...this.renderedGeometry },
         resize: resizing,
       };
       (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
@@ -123,25 +237,265 @@ export class FloatingPlayer {
               y: old.y + e.clientY - this.drag.y,
             };
         this.layoutMini();
+        this.geometry = { ...this.renderedGeometry };
       });
       const finish = () => {
         if (!this.drag) return;
         this.drag = null;
-        void chrome.storage.local
-          .set({ miniPlayerGeometry: this.geometry })
-          .catch(() => this.report('Could not save mini player position.'));
+        this.saveGeometry();
       };
       listen(node, 'pointerup', finish);
       listen(node, 'pointercancel', finish);
+      listen(node, 'lostpointercapture', finish);
+      listen(node, 'keydown', (event) => {
+        const e = event as KeyboardEvent;
+        if (
+          e.target !== node ||
+          !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)
+        )
+          return;
+        e.preventDefault();
+        e.stopPropagation();
+        const delta =
+          (e.shiftKey ? 1 : 10) *
+          (e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 1);
+        this.geometry = { ...this.renderedGeometry };
+        if (node === this.resize) this.geometry.width += delta;
+        else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight')
+          this.geometry.x += delta;
+        else this.geometry.y += delta;
+        this.layoutMini();
+        this.geometry = { ...this.renderedGeometry };
+      });
+      listen(node, 'keyup', (event) => {
+        if (
+          ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(
+            (event as KeyboardEvent).key
+          )
+        )
+          this.saveGeometry();
+      });
     }
+    for (const type of [
+      'play',
+      'pause',
+      'volumechange',
+      'durationchange',
+      'loadedmetadata',
+      'timeupdate',
+      'progress',
+      'seeked',
+    ])
+      listen(video, type, () => {
+        this.update();
+        this.syncControls();
+      });
+    const keyboardMode = (enabled: boolean) => {
+      for (const node of [this.bar, this.controls, this.resize])
+        node.dataset.keyboard = String(enabled);
+    };
+    listen(this.doc, 'keydown', () => keyboardMode(true));
+    listen(this.doc, 'pointerdown', () => keyboardMode(false));
+    listen(this.seek, 'pointerdown', (event) => {
+      const e = event as PointerEvent;
+      const range = getMediaSeekRange(this.video);
+      if (e.button !== 0 || !range) return;
+      e.preventDefault();
+      const rect = this.seek.getBoundingClientRect();
+      const time =
+        range.start +
+        clamp((e.clientX - rect.left) / rect.width, 0, 1) *
+          (range.end - range.start);
+      seekVideo(this.video, time);
+      this.seekDrag = { x: e.clientX, y: e.clientY, time };
+      this.seek.setPointerCapture?.(e.pointerId);
+      this.controls.dataset.seeking = 'true';
+      this.seekHint.textContent = 'Drag upwards to seek precisely';
+      this.seekHint.hidden = false;
+      this.syncControls();
+    });
+    listen(this.seek, 'pointermove', (event) => {
+      if (!this.seekDrag) return;
+      const e = event as PointerEvent;
+      const range = getMediaSeekRange(this.video);
+      if (!range) return;
+      const upwards = Math.max(0, this.seekDrag.y - e.clientY);
+      const sensitivity = 1 / (1 + upwards / 24);
+      const delta =
+        ((e.clientX - this.seekDrag.x) /
+          this.seek.getBoundingClientRect().width) *
+        (range.end - range.start) *
+        sensitivity;
+      this.seekDrag.time = clamp(
+        this.seekDrag.time + delta,
+        range.start,
+        range.end
+      );
+      this.seekDrag.x = e.clientX;
+      seekVideo(this.video, this.seekDrag.time);
+      this.seekHint.textContent =
+        upwards >= 24 ? 'Precise seeking' : 'Drag upwards to seek precisely';
+      this.syncControls();
+    });
+    for (const type of ['pointerup', 'pointercancel', 'lostpointercapture'])
+      listen(this.seek, type, () => {
+        this.seekDrag = null;
+        this.controls.dataset.seeking = 'false';
+        this.seekHint.hidden = true;
+      });
+    const storageChanged = (
+      changes: Record<string, chrome.storage.StorageChange>,
+      area: string
+    ) => {
+      if (
+        area === 'local' &&
+        changes[MINI_PLAYER_GEOMETRY_KEY] &&
+        !this.disposed &&
+        !this.drag
+      ) {
+        this.geometry = normalizeMiniPlayerGeometry(
+          changes[MINI_PLAYER_GEOMETRY_KEY].newValue
+        );
+        this.update();
+      }
+    };
+    chrome.storage.onChanged?.addListener(storageChanged);
+    this.cleanupEvents.push(() =>
+      chrome.storage.onChanged?.removeListener(storageChanged)
+    );
     void chrome.storage.local
-      .get('miniPlayerGeometry')
+      .get(MINI_PLAYER_GEOMETRY_KEY)
       .then((data) => {
-        const g = data.miniPlayerGeometry as Geometry | undefined;
-        if (!this.disposed && g && [g.x, g.y, g.width].every(Number.isFinite))
-          this.geometry = g;
+        if (!this.disposed)
+          this.geometry = normalizeMiniPlayerGeometry(
+            data[MINI_PLAYER_GEOMETRY_KEY]
+          );
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        if (!this.disposed) {
+          this.geometryReady = true;
+          this.update();
+        }
+      });
+  }
+  private setIcon(node: HTMLButtonElement, label: string, path: string): void {
+    node.title = label;
+    node.setAttribute('aria-label', label);
+    const svg = this.doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '2');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    svg.setAttribute('aria-hidden', 'true');
+    const shape = this.doc.createElementNS(svg.namespaceURI, 'path');
+    shape.setAttribute('d', path);
+    svg.append(shape);
+    node.replaceChildren(svg);
+  }
+  private syncControls(): void {
+    this.setIcon(
+      this.play,
+      this.video.paused ? 'Play' : 'Pause',
+      this.video.paused
+        ? 'M3 3Q3 1 5 2l17 9q2 1 0 2L5 22q-2 1-2-1Z'
+        : 'M8 3v18M16 3v18'
+    );
+    this.setIcon(
+      this.backward,
+      `Seek backward ${this.settings().backward} seconds`,
+      'M9 4a8 8 0 1 0 6 0'
+    );
+    this.setIcon(
+      this.forward,
+      `Seek forward ${this.settings().forward} seconds`,
+      'M15 4a8 8 0 1 1-6 0'
+    );
+    for (const [node, interval] of [
+      [this.backward, this.settings().backward],
+      [this.forward, this.settings().forward],
+    ] as const) {
+      const arrow = this.doc.createElementNS(
+        'http://www.w3.org/2000/svg',
+        'path'
+      );
+      arrow.setAttribute(
+        'd',
+        node === this.backward ? 'M13 0 6 4l7 4Z' : 'M11 0l7 4-7 4Z'
+      );
+      arrow.setAttribute('fill', 'currentColor');
+      arrow.setAttribute('stroke', 'none');
+      node.querySelector('svg')?.append(arrow);
+      const text = this.doc.createElementNS(
+        'http://www.w3.org/2000/svg',
+        'text'
+      );
+      text.setAttribute('x', '12');
+      text.setAttribute('y', '12');
+      text.setAttribute('text-anchor', 'middle');
+      text.setAttribute('dominant-baseline', 'central');
+      text.setAttribute('fill', 'currentColor');
+      text.setAttribute('stroke', 'none');
+      text.setAttribute(
+        'font-size',
+        String(Math.min(8, 24 / String(interval).length))
+      );
+      text.setAttribute('font-weight', '700');
+      text.textContent = String(interval);
+      node.querySelector('svg')?.append(text);
+    }
+    this.setIcon(
+      this.mute,
+      this.video.muted ? 'Unmute' : 'Mute',
+      `M11 5 6 9H3v6h3l5 4V5Z${this.video.muted ? 'm16 9 5 6m0-6-5 6' : 'M15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14'}`
+    );
+    this.volume.value = String(this.video.muted ? 0 : this.video.volume);
+    const volumePercentage = this.video.muted ? 0 : this.video.volume * 100;
+    this.volume.style.setProperty(
+      '--seek-background',
+      `linear-gradient(to right,#fff ${volumePercentage}%,#ffffff55 ${volumePercentage}%)`
+    );
+    const range = getMediaSeekRange(this.video);
+    this.seek.disabled = !range;
+    if (range) {
+      this.seek.min = String(range.start);
+      this.seek.max = String(range.end);
+      this.seek.value = String(this.video.currentTime);
+      this.seek.setAttribute(
+        'aria-valuetext',
+        `${formatTime(this.video.currentTime)} of ${formatTime(range.end)}`
+      );
+      const percentage = clamp(
+        ((this.video.currentTime - range.start) / (range.end - range.start)) *
+          100,
+        0,
+        100
+      );
+      this.seek.style.setProperty(
+        '--seek-background',
+        `linear-gradient(to right,#fff ${percentage}%,#ffffff55 ${percentage}%)`
+      );
+    }
+  }
+  private saveGeometry(): void {
+    this.miniStatus.textContent = '';
+    void chrome.storage.local
+      .set({ [MINI_PLAYER_GEOMETRY_KEY]: { ...this.geometry } })
+      .catch(() => {
+        if (this.disposed) return;
+        this.miniStatus.textContent =
+          'Could not save mini player position and size.';
+        this.report(this.miniStatus.textContent);
+      });
+  }
+  private headerBottom(): number {
+    const header = this.doc.querySelector('ytd-masthead, #masthead-container');
+    return Math.max(0, header?.getBoundingClientRect().bottom || 64);
+  }
+  get inMini(): boolean {
+    return this.player !== null;
   }
   get inPip(): boolean {
     return Boolean(
@@ -154,28 +508,37 @@ export class FloatingPlayer {
     if (this.disposed) return;
     if (
       !this.isYouTube ||
+      this.doc.location.pathname !== '/watch' ||
+      !this.video.isConnected ||
       !this.settings().miniPlayer ||
       this.inPip ||
       this.doc.fullscreenElement ||
-      this.suppressed
+      this.video
+        .closest('#movie_player')
+        ?.matches('.ad-showing,.ad-interrupting')
     ) {
       this.restoreMini();
       return;
     }
-    const anchor = this.placeholder ?? this.video;
+    const anchor =
+      this.placeholder ?? this.video.closest('#movie_player') ?? this.video;
     const rect = anchor.getBoundingClientRect();
-    const outside = rect.bottom <= 0 || rect.top >= this.win.innerHeight;
+    const outside = rect.bottom <= this.headerBottom();
     if (!outside) {
+      this.suppressed = false;
       this.restoreMini();
       return;
     }
+    if (this.suppressed || !this.geometryReady) return;
     if (!this.player && !this.video.paused) this.startMini();
     this.layoutMini();
+    this.syncControls();
   }
   private startMini(): void {
     const player = this.video.closest<HTMLElement>('#movie_player');
-    if (!player || player.classList.contains('ad-showing')) return;
+    if (!player || player.matches('.ad-showing,.ad-interrupting')) return;
     this.player = player;
+    this.onFloat();
     const rect = player.getBoundingClientRect();
     this.placeholder = element(this.doc, 'div');
     this.placeholder.style.height = `${rect.height}px`;
@@ -204,10 +567,33 @@ export class FloatingPlayer {
       'height',
       'z-index',
       'margin',
+      'margin-top',
+      'margin-right',
+      'margin-bottom',
+      'margin-left',
       'max-width',
       'max-height',
+      'border-radius',
+      'overflow',
+      'border',
+      'padding',
+      ...['top', 'right', 'bottom', 'left'].flatMap((side) => [
+        `border-${side}-width`,
+        `border-${side}-style`,
+        `border-${side}-color`,
+        `padding-${side}`,
+      ]),
+      'border-image',
     ]);
-    preserve(this.video, ['width', 'height', 'left', 'top', 'object-fit']);
+    preserve(this.video, [
+      'width',
+      'height',
+      'max-width',
+      'max-height',
+      'left',
+      'top',
+      'object-fit',
+    ]);
     const videoContainer = this.video.closest<HTMLElement>(
       '.html5-video-container'
     );
@@ -219,17 +605,89 @@ export class FloatingPlayer {
     for (const [property, value] of Object.entries({
       width: '100%',
       height: '100%',
+      'max-width': 'none',
+      'max-height': 'none',
       left: '0',
       top: '0',
       'object-fit': 'contain',
     }))
       this.video.style.setProperty(property, value, 'important');
-    // YouTube's #player creates a stacking context below recommendation cards.
-    // Raise that context while floating, without reparenting the site's player.
-    const stackingHost = player.closest<HTMLElement>('#player');
-    if (stackingHost) {
-      preserve(stackingHost, ['z-index']);
-      stackingHost.style.setProperty('z-index', '2147483644', 'important');
+    let restoreLayers = () => {};
+    let promoted = false;
+    // The browser top layer keeps the same DOM/video nodes while escaping
+    // YouTube's clipping and stacking, without raising the full-size backdrop.
+    if (
+      typeof player.showPopover === 'function' &&
+      typeof this.overlayHost.showPopover === 'function' &&
+      !player.hasAttribute('popover') &&
+      !this.overlayHost.hasAttribute('popover')
+    ) {
+      const host = this.overlayHost;
+      const originalHostStyle = host.getAttribute('style');
+      for (const [property, value] of Object.entries({
+        margin: '0',
+        border: '0',
+        padding: '0',
+        width: '100vw',
+        height: '100vh',
+        background: 'transparent',
+      }))
+        host.style.setProperty(property, value, 'important');
+      player.setAttribute('popover', 'manual');
+      host.setAttribute('popover', 'manual');
+      const releasePromotion = () => {
+        for (const node of [host, player]) {
+          try {
+            node.hidePopover();
+          } catch {
+            // Navigation may have already disconnected or closed the popover.
+          }
+          node.removeAttribute('popover');
+        }
+        if (originalHostStyle === null) host.removeAttribute('style');
+        else host.setAttribute('style', originalHostStyle);
+      };
+      try {
+        player.showPopover();
+        host.showPopover();
+        promoted = true;
+        restoreLayers = releasePromotion;
+      } catch {
+        releasePromotion();
+      }
+    }
+    // Fallback for browsers without the top-layer API: escape ancestor contexts.
+    // Escape ancestor stacking/containing contexts instead of raising their
+    // full-size backgrounds above the header at the scroll transition.
+    for (
+      let ancestor = player.parentElement;
+      !promoted && ancestor && ancestor !== this.doc.documentElement;
+      ancestor = ancestor.parentElement
+    ) {
+      const style = this.win.getComputedStyle(ancestor);
+      if (
+        ['overflow-x', 'overflow-y'].some((property) =>
+          ['hidden', 'clip'].includes(style.getPropertyValue(property))
+        )
+      ) {
+        preserve(ancestor, ['overflow', 'overflow-x', 'overflow-y']);
+        ancestor.style.setProperty('overflow', 'visible', 'important');
+      }
+      for (const [property, neutral] of Object.entries({
+        'z-index': 'auto',
+        transform: 'none',
+        perspective: 'none',
+        filter: 'none',
+        'backdrop-filter': 'none',
+        contain: 'none',
+        'will-change': 'auto',
+        isolation: 'auto',
+      })) {
+        const value = style.getPropertyValue(property);
+        if (!value || value === neutral || value === 'normal') continue;
+        preserve(ancestor, [property]);
+        ancestor.style.setProperty(property, neutral, 'important');
+      }
     }
     const playerHost = player.closest<HTMLElement>('ytd-player');
     if (playerHost) {
@@ -237,28 +695,48 @@ export class FloatingPlayer {
       playerHost.style.setProperty('overflow', 'visible', 'important');
     }
     player.dataset.mfsMini = 'true';
+    this.doc.documentElement.dataset.mfsMiniPlayerActive = 'true';
     this.restoreStyles = () => {
+      restoreLayers();
       for (const { element, property, value, priority } of snapshots) {
         if (value) element.style.setProperty(property, value, priority);
         else element.style.removeProperty(property);
       }
       delete player.dataset.mfsMini;
+      delete this.doc.documentElement.dataset.mfsMiniPlayerActive;
     };
-    this.bar.hidden = this.resize.hidden = false;
+    this.bar.hidden = this.resize.hidden = this.controls.hidden = false;
   }
   private layoutMini(): void {
     if (!this.player) return;
+    // YouTube rewrites media dimensions after its own resize observer runs.
+    // Keep the existing media fitted to our container without reloading it.
+    const container = this.video.closest<HTMLElement>('.html5-video-container');
+    for (const node of [this.video, container]) {
+      if (!node) continue;
+      for (const [property, value] of Object.entries({
+        width: '100%',
+        height: '100%',
+      })) {
+        if (
+          node.style.getPropertyValue(property) !== value ||
+          node.style.getPropertyPriority(property) !== 'important'
+        )
+          node.style.setProperty(property, value, 'important');
+      }
+    }
     const aspect =
       this.video.videoWidth && this.video.videoHeight
         ? this.video.videoWidth / this.video.videoHeight
         : 16 / 9;
-    this.geometry = clampMiniGeometry(
+    this.renderedGeometry = clampMiniGeometry(
       this.geometry,
       this.win.innerWidth,
       this.win.innerHeight,
-      aspect
+      aspect,
+      this.headerBottom() + 8
     );
-    const { x, y, width } = this.geometry;
+    const { x, y, width } = this.renderedGeometry;
     const height = width / aspect;
     const signature = `${x}:${y}:${width}:${height}`;
     if (signature === this.geometrySignature) return;
@@ -273,10 +751,15 @@ export class FloatingPlayer {
       margin: '0',
       'max-width': 'none',
       'max-height': 'none',
+      'border-radius': '8px',
+      overflow: 'hidden',
+      border: '0',
+      padding: '0',
     }))
       this.player.style.setProperty(key, value, 'important');
-    this.bar.style.cssText = `left:${x}px;top:${y - 32}px;width:${width}px;height:32px`;
+    this.bar.style.cssText = `left:${x}px;top:${y}px;width:${width}px;height:${height}px;--mini-scale:${width / 310}`;
     this.resize.style.cssText = `left:${x + width - 25}px;top:${y + height - 25}px`;
+    this.controls.style.cssText = `left:${x}px;top:${y}px;width:${width}px;height:${height}px;--mini-scale:${width / 310}`;
   }
   restoreMini(): void {
     if (!this.player) return;
@@ -285,8 +768,12 @@ export class FloatingPlayer {
     this.placeholder?.remove();
     this.placeholder = null;
     this.player = null;
+    this.drag = null;
+    this.seekDrag = null;
+    this.controls.dataset.seeking = 'false';
+    this.seekHint.hidden = true;
     this.geometrySignature = '';
-    this.bar.hidden = this.resize.hidden = true;
+    this.bar.hidden = this.resize.hidden = this.controls.hidden = true;
   }
   async openPip(): Promise<void> {
     if (this.inPip) return;
@@ -490,5 +977,6 @@ export class FloatingPlayer {
     for (const clean of this.cleanupEvents) clean();
     this.bar.remove();
     this.resize.remove();
+    this.controls.remove();
   }
 }

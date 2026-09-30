@@ -207,27 +207,40 @@ export class PlayerTools {
     this.loopPanel.append(loopHeader, this.loopStatus);
     this.root.append(this.loopPanel);
     this.youtubeButtons = this.youtube
-      ? new YouTubePlayerButtons(video, () => {
-          if (!this.canLoop()) return;
-          if (!this.loop) {
-            const first = this.items.find(item => item.end !== undefined);
-            if (!first) { this.setLoopOpen(true); return; }
-            this.activateItem(first, true);
-          } else this.toggleLoop();
-          this.layout();
-        }, () => this.setLoopOpen(true), () => this.toggleBoost())
+      ? new YouTubePlayerButtons(video, {
+          onLoop: () => {
+            if (!this.canLoop()) return;
+            if (!this.loop) {
+              const first = this.items.find((item) => item.end !== undefined);
+              if (!first) {
+                this.setLoopOpen(true);
+                return;
+              }
+              this.activateItem(first, true);
+            } else this.toggleLoop();
+            this.layout();
+          },
+          onEdit: () => this.setLoopOpen(true),
+          onBoost: () => this.toggleBoost(),
+          onCinema: () => this.toggleCinema(),
+          onInfoCards: () => {
+            if (!this.settings.youtubeInfoCardsEnabled || this.isAd()) return;
+            this.preference('hideEndScreens', !this.settings.hideEndScreens);
+          },
+        })
       : null;
     this.floating = new FloatingPlayer(
       video,
       this.root,
-      () => this.settings,
+      () => ({ ...this.settings, miniPlayer: this.initialized && this.settings.miniPlayer }),
       this.youtube,
       (message) => this.report(message),
       (speed) => {
         if (this.youtube) this.preference('youtubeSpeed', speed);
         else this.video.playbackRate = speed;
       },
-      () => ({ range: this.loop, enabled: this.loopEnabled })
+      () => ({ range: this.loop, enabled: this.loopEnabled }),
+      () => { this.cinema = false; }
     );
     this.track = element(this.doc, 'div', 'timeline');
     this.track.setAttribute('aria-label', 'Loop timeline');
@@ -441,6 +454,10 @@ export class PlayerTools {
     this.cardStyle.textContent =
       '[data-mfs-mini="true"] :is(.ytp-chrome-bottom,.ytp-chrome-top,.ytp-gradient-bottom,.ytp-gradient-top){display:none!important}[data-mfs-hide-cards="true"] :is(.ytp-cards-button,.ytp-cards-teaser,.ytp-cards-teaser-box,.ytp-cards-card){display:none!important}[data-mfs-hide-end-screens="true"] :is(.ytp-ce-element,.ytp-endscreen-content){display:none!important}';
     this.doc.documentElement.append(this.cardStyle, this.host);
+    this.cardStyle.textContent +=
+      '[data-mfs-mini="true"] :is(.ytp-button,.branding-img-container,.ytp-cards-teaser,.ytp-title){display:none!important}html[data-mfs-mini-player-active="true"] :is(#cinematics,.ytp-cinematic-container,.scrub-wrapper,.scrub-timeline,.mfs-media-controls,.mfs-seek-speed-label,.mfs-youtube-chapter-tooltip,.mfs-seekbar-thumbnail-preview){display:none!important}';
+    this.cardStyle.textContent +=
+      '.mfs-player-tools::backdrop,[data-mfs-mini="true"]::backdrop{background:transparent!important;pointer-events:none!important}';
     this.buildViewing();
     this.listen(this.doc, 'pointermove', (event) => {
       const e = event as PointerEvent;
@@ -484,6 +501,10 @@ export class PlayerTools {
       this.sync();
     });
     this.listen(this.doc, 'fullscreenchange', () => this.layout());
+    this.listen(video, 'enterpictureinpicture', () => {
+      this.cinema = false;
+      this.layout();
+    });
     this.listen(this.doc, 'scroll', () => this.layout(), true);
     this.listen(this.win, 'resize', () => this.layout());
     this.listen(this.win, 'pagehide', () => this.cleanup());
@@ -717,15 +738,15 @@ export class PlayerTools {
   private buildViewing(): void {
     this.heading('Viewing');
     const row = this.row();
-    button(
-      this.doc,
-      'Cinema mode',
-      () => {
-        this.cinema = !this.cinema;
-        this.layout();
-      },
-      row
-    );
+    if (!this.youtube)
+      button(
+        this.doc,
+        'Cinema mode',
+        () => {
+          this.toggleCinema();
+        },
+        row
+      );
     button(
       this.doc,
       'Picture-in-Picture',
@@ -736,17 +757,18 @@ export class PlayerTools {
       },
       row
     );
-    const dim = numberInput(this.doc, 80, 0, 100, 1, (value) =>
-      this.preference('dimming', value)
-    );
-    field(this.doc, 'Cinema dimming (%)', dim, this.panel);
-    this.uiSync.push(() => {
-      dim.value = String(this.settings.dimming);
-    });
+    if (!this.youtube) {
+      const dim = numberInput(this.doc, 80, 0, 100, 1, (value) =>
+        this.preference('dimming', value)
+      );
+      field(this.doc, 'Cinema dimming (%)', dim, this.panel);
+      this.uiSync.push(() => {
+        dim.value = String(this.settings.dimming);
+      });
+    }
     if (this.youtube) {
       for (const [key, label] of [
         ['hideCards', 'Hide info cards'],
-        ['miniPlayer', 'Mini player on scroll'],
         ['autoChapters', 'Detect description chapters'],
       ] as const) {
         const input = this.check(label, false, (value) =>
@@ -759,6 +781,7 @@ export class PlayerTools {
     }
   }
   private applyPreferences(): void {
+    if (this.youtube && !this.settings.youtubeCinemaEnabled) this.cinema = false;
     if (!this.settings.youtubeBoostEnabled) {
       resetBoost(this.video);
       this.boostActive = false;
@@ -963,7 +986,7 @@ export class PlayerTools {
     this.saveLoopButton.textContent = this.activeSavedId
       ? 'Save changes'
       : 'Save loop';
-    this.youtubeButtons?.update(this.settings.youtubeLoop, this.canLoop(), this.loopOpen, this.loopEnabled, Boolean(this.loop) || this.items.some(item => item.end !== undefined), this.settings.youtubeBoostEnabled ? this.settings.youtubeBoost : 0, this.boostActive, !this.boostBusy && !this.boostUnavailable && !this.isAd());
+    this.updateYouTubeButtons();
     this.track.classList.toggle('editing', this.editing);
     const undo = this.track.querySelector<HTMLButtonElement>('.undo-loop-sections');
     const redo = this.track.querySelector<HTMLButtonElement>('.redo-loop-sections');
@@ -1593,6 +1616,7 @@ export class PlayerTools {
     )
       return;
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    if (!this.settings.arrowKeySeekingEnabled) return;
     const candidates = [...PlayerTools.instances].filter((tools) => {
       const rect = tools.video.getBoundingClientRect();
       return (
@@ -1731,14 +1755,7 @@ export class PlayerTools {
         : this.doc.documentElement;
     if (this.host.parentElement !== target) target.appendChild(this.host);
     this.floating.update();
-    this.youtubeButtons?.update(
-      this.settings.youtubeLoop,
-      this.canLoop(),
-      this.loopOpen,
-      this.loopEnabled,
-      Boolean(this.loop) || this.items.some(item => item.end !== undefined),
-      this.settings.youtubeBoostEnabled ? this.settings.youtubeBoost : 0, this.boostActive, !this.boostBusy && !this.boostUnavailable && !this.isAd()
-    );
+    this.updateYouTubeButtons();
     const r = this.video.getBoundingClientRect();
     const visible =
       r.width >= 120 &&
@@ -1748,9 +1765,9 @@ export class PlayerTools {
       !this.isAd() &&
       !this.floating.inPip;
     this.launcher.hidden =
-      !visible || (!this.hovering && !this.open && !this.editing);
-    this.panel.hidden = !this.open || !visible;
-    const showLoop = this.loopOpen && visible && this.canLoop();
+      this.floating.inMini || !visible || (!this.hovering && !this.open && !this.editing);
+    this.panel.hidden = this.floating.inMini || !this.open || !visible;
+    const showLoop = !this.floating.inMini && this.loopOpen && visible && this.canLoop();
     if (this.timeline.dataset.mfsLoopEditing !== String(showLoop)) {
       if (this.timeline.dataset.mfsLoopEditing !== undefined) {
         this.win.clearTimeout(this.loopAnimationTimer);
@@ -1770,11 +1787,51 @@ export class PlayerTools {
     this.panel.style.top = `${Math.max(8, Math.min(this.win.innerHeight - 180, r.top + 44))}px`;
     this.panel.style.maxHeight = `${Math.max(100, this.win.innerHeight - Number.parseFloat(this.panel.style.top) - 8)}px`;
     this.track.hidden =
-      !visible ||
+      this.floating.inMini || !visible ||
       !this.finite() ||
       (!this.editing && !this.loop && !this.items.some(item => item.end !== undefined) && !(this.hovering || this.open));
 
     this.layoutCinema(r, visible);
+  }
+  private toggleCinema(): void {
+    if (
+      this.isAd() ||
+      this.floating.inPip ||
+      (this.youtube && !this.settings.youtubeCinemaEnabled)
+    )
+      return;
+    this.cinema = !this.cinema;
+    this.layout();
+  }
+  private updateYouTubeButtons(): void {
+    this.youtubeButtons?.update({
+      loop: {
+        enabled: this.settings.youtubeLoop,
+        available: this.canLoop(),
+        expanded: this.loopOpen,
+        active: this.loopEnabled,
+        hasSections:
+          Boolean(this.loop) ||
+          this.items.some((item) => item.end !== undefined),
+      },
+      boost: {
+        level: this.settings.youtubeBoostEnabled
+          ? this.settings.youtubeBoost
+          : 0,
+        active: this.boostActive,
+        available: !this.boostBusy && !this.boostUnavailable && !this.isAd(),
+      },
+      cinema: {
+        enabled: this.settings.youtubeCinemaEnabled,
+        active: this.cinema,
+        available: !this.isAd() && !this.floating.inPip,
+      },
+      infoCards: {
+        enabled: this.settings.youtubeInfoCardsEnabled,
+        visible: !this.settings.hideEndScreens,
+        available: !this.isAd(),
+      },
+    });
   }
   private layoutCinema(r: DOMRect, visible: boolean): void {
     if (!this.cinema || !visible) {

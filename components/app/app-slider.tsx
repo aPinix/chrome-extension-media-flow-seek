@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 
 export function AppSlider({
   'aria-label': ariaLabel,
+  'aria-valuetext': ariaValueText,
   className,
   defaultValue,
   max = 100,
@@ -60,6 +61,7 @@ export function AppSlider({
                 ? `${ariaLabel} ${index + 1}`
                 : ariaLabel
             }
+            aria-valuetext={ariaValueText}
             className={cn(
               "relative block h-8 w-7 shrink-0 bg-transparent outline-hidden transition-[inset-inline-start,bottom] duration-200 ease-out after:pointer-events-none after:absolute after:top-1/2 after:left-1/2 after:h-2 after:w-1.5 after:-translate-x-1/2 after:-translate-y-1/2 after:rounded-full after:bg-white after:shadow-sm after:ring-1 after:ring-black/10 after:transition-[box-shadow,background-color] after:content-[''] hover:after:ring-4 hover:after:ring-ring/30 focus-visible:after:ring-4 focus-visible:after:ring-ring/30 disabled:pointer-events-none disabled:opacity-50 data-dragging:transition-none",
               thumbClassName

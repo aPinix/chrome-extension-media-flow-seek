@@ -6,22 +6,27 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { YouTubeSettings } from './youtube-settings';
 
 vi.mock('./youtube-boost-setting', () => ({ YouTubeBoostSetting: () => null }));
+vi.mock('./youtube-cinema-setting', () => ({
+  YouTubeCinemaSetting: () => null,
+}));
 vi.mock('./youtube-loop-setting', () => ({ YouTubeLoopSetting: () => null }));
-vi.mock('./youtube-info-cards-setting', () => ({ YouTubeInfoCardsSetting: () => null }));
+vi.mock('./youtube-info-cards-setting', () => ({
+  YouTubeInfoCardsSetting: () => null,
+}));
+vi.mock('./youtube-mini-player-setting', () => ({
+  YouTubeMiniPlayerSetting: () => null,
+}));
 
 afterEach(cleanup);
 
 describe('YouTubeSettings', () => {
   it('renders the chaptered timeline copy and accessible switch', () => {
     const onChange = vi.fn();
-    const onThumbnailChange = vi.fn();
     render(
       <YouTubeSettings
         chapteredTimelineEnabled={false}
         extensionEnabled
         onChapteredTimelineEnabledChange={onChange}
-        onThumbnailPreviewEnabledChange={onThumbnailChange}
-        thumbnailPreviewEnabled={false}
       />
     );
 
@@ -32,7 +37,9 @@ describe('YouTubeSettings', () => {
       }).textContent
     ).toBe('Beta');
     expect(
-      screen.getByText('Show YouTube chapter divisions and names')
+      screen.getByText(
+        'Timeline feature: show YouTube chapter divisions and names'
+      )
     ).toBeTruthy();
     fireEvent.click(
       screen.getByRole('switch', {
@@ -40,11 +47,7 @@ describe('YouTubeSettings', () => {
       })
     );
     expect(onChange.mock.calls[0]?.[0]).toBe(true);
-    expect(screen.getByText('Hover Thumbnails')).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole('switch', { name: 'Show hover thumbnails on YouTube' })
-    );
-    expect(onThumbnailChange.mock.calls[0]?.[0]).toBe(true);
+    expect(screen.queryByText('Hover Thumbnails')).toBeNull();
   });
 
   it('disables the switch when the extension is disabled', () => {
@@ -53,8 +56,6 @@ describe('YouTubeSettings', () => {
         chapteredTimelineEnabled
         extensionEnabled={false}
         onChapteredTimelineEnabledChange={vi.fn()}
-        onThumbnailPreviewEnabledChange={vi.fn()}
-        thumbnailPreviewEnabled
       />
     );
 
@@ -63,11 +64,6 @@ describe('YouTubeSettings', () => {
         .getByRole('switch', {
           name: 'Use chaptered timeline on YouTube',
         })
-        .getAttribute('aria-disabled')
-    ).toBe('true');
-    expect(
-      screen
-        .getByRole('switch', { name: 'Show hover thumbnails on YouTube' })
         .getAttribute('aria-disabled')
     ).toBe('true');
   });

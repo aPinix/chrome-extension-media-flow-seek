@@ -26,18 +26,20 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
-it('defaults off and persists enabling Loop without losing other preferences', async () => {
+it('defaults on and persists disabling Loop without losing other preferences', async () => {
   render(<YouTubeLoopSetting />);
-  const toggle = screen.getByRole('switch', { name: 'Enable Loop Sections on YouTube' });
+  const toggle = screen.getByRole('switch', {
+    name: 'Show Loop Sections button on YouTube',
+  });
   await waitFor(() =>
     expect(toggle.getAttribute('aria-disabled')).not.toBe('true')
   );
-  expect(toggle.getAttribute('aria-checked')).toBe('false');
+  expect(toggle.getAttribute('aria-checked')).toBe('true');
   fireEvent.click(toggle);
   await waitFor(() =>
     expect(set).toHaveBeenCalledWith({
       playerTools: expect.objectContaining({
-        youtubeLoop: true,
+        youtubeLoop: false,
         backward: 8,
         miniPlayer: true,
       }),
@@ -47,8 +49,10 @@ it('defaults off and persists enabling Loop without losing other preferences', a
 it('keeps Loop disabled when the extension is disabled', async () => {
   render(<YouTubeLoopSetting disabled />);
   await waitFor(() =>
-    expect(screen.getByRole('switch').getAttribute('aria-disabled')).toBe(
-      'true'
-    )
+    expect(
+      screen
+        .getByRole('switch', { name: 'Show Loop Sections button on YouTube' })
+        .getAttribute('aria-disabled')
+    ).toBe('true')
   );
 });

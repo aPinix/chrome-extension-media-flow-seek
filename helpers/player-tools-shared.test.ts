@@ -27,6 +27,9 @@ it('never exposes Loop on other websites even when the YouTube preference is ena
     const root = document.querySelector('.mfs-player-tools')?.shadowRoot;
     if (!root) throw new Error('Missing player tools');
     expect(document.querySelector('.mfs-loop-button')).toBeNull();
+    expect(document.querySelector('.mfs-youtube-controls')).toBeNull();
+    expect(root.textContent).toContain('Cinema mode');
+    expect(root.textContent).toContain('Cinema dimming (%)');
     expect(
       root.querySelector('[aria-label="Video tools"].panel')?.textContent
     ).not.toContain('loop');

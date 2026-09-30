@@ -71,3 +71,47 @@ it('resets both directions to five seconds from the single input', async () => {
   await waitFor(() => expect(preferences.backward).toBe(5));
   expect(preferences.forward).toBe(5);
 });
+
+it('persists the toggle without losing the interval or other preferences', async () => {
+  render(<ArrowSeekSettings />);
+  const toggle = screen.getByRole('switch', {
+    name: 'Enable Arrow Key Seeking',
+  });
+  const interval = screen.getByLabelText(
+    'Seek interval (secs)'
+  ) as HTMLInputElement;
+  await waitFor(() => expect(interval.value).toBe('3'));
+  fireEvent.click(toggle);
+  await waitFor(() => expect(preferences.arrowKeySeekingEnabled).toBe(false));
+  expect(interval.disabled).toBe(true);
+  expect(interval.value).toBe('3');
+  expect(preferences.backward).toBe(3);
+  expect(preferences.miniPlayer).toBe(true);
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'Reset seek interval to 5 seconds',
+      }) as HTMLButtonElement
+    ).disabled
+  ).toBe(true);
+  fireEvent.click(toggle);
+  await waitFor(() => expect(preferences.arrowKeySeekingEnabled).toBe(true));
+  expect(interval.disabled).toBe(false);
+  expect(interval.value).toBe('3');
+});
+
+it('loads a saved disabled preference and respects the extension state', async () => {
+  preferences.arrowKeySeekingEnabled = false;
+  const { rerender } = render(<ArrowSeekSettings />);
+  const toggle = screen.getByRole('switch', {
+    name: 'Enable Arrow Key Seeking',
+  });
+  await waitFor(() =>
+    expect(toggle.getAttribute('aria-checked')).toBe('false')
+  );
+  expect(
+    (screen.getByLabelText('Seek interval (secs)') as HTMLInputElement).disabled
+  ).toBe(true);
+  rerender(<ArrowSeekSettings disabled />);
+  expect(toggle.getAttribute('aria-disabled')).toBe('true');
+});

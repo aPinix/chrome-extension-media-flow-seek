@@ -98,7 +98,7 @@ describe('SeekControlsPreview', () => {
     );
 
     const preview = screen.getByRole('region');
-    expect(preview.className).toContain('aspect-[2/1]');
+    expect(preview.className).toContain('aspect-[3/1]');
     expect(preview.className).not.toContain('border');
     expect(preview.className).not.toContain('shadow-inner');
     expect(preview.getAttribute('aria-label')).toContain(

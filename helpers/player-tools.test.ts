@@ -94,12 +94,160 @@ afterEach(() => {
 });
 
 describe('player tools integration', () => {
+  it('starts Cinema inactive and supports button, Escape, backdrop and PiP exit paths', () => {
+    const cinema = document.querySelector(
+      '.mfs-cinema-button'
+    ) as HTMLButtonElement;
+    expect(cinema.getAttribute('aria-pressed')).toBe('false');
+    expect(root.querySelector('.shade')).toBeNull();
+    expect(root.textContent).not.toContain('Cinema mode');
+    expect(root.textContent).not.toContain('Cinema dimming (%)');
+    cinema.click();
+    expect(cinema.getAttribute('aria-pressed')).toBe('true');
+    expect(root.querySelectorAll('.shade')).toHaveLength(4);
+    expect((root.querySelector('.shade') as HTMLElement).style.opacity).toBe(
+      '0.8'
+    );
+    cinema.click();
+    expect(root.querySelector('.shade')).toBeNull();
+    cinema.click();
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
+    );
+    expect(cinema.getAttribute('aria-pressed')).toBe('false');
+    expect(root.querySelector('.shade')).toBeNull();
+    cinema.click();
+    (root.querySelector('.shade') as HTMLElement).click();
+    expect(cinema.getAttribute('aria-pressed')).toBe('false');
+    cinema.click();
+    video.dispatchEvent(new Event('enterpictureinpicture'));
+    expect(cinema.getAttribute('aria-pressed')).toBe('false');
+    expect(root.querySelector('.shade')).toBeNull();
+  });
+  it('exits Cinema when its button is removed, and applies saved dimming', () => {
+    const cinema = document.querySelector(
+      '.mfs-cinema-button'
+    ) as HTMLButtonElement;
+    const storage = changed.addListener.mock.calls.at(-1)?.[0];
+    storage(
+      { playerTools: { newValue: { ...DEFAULT_PLAYER_TOOLS, dimming: 65 } } },
+      'sync'
+    );
+    cinema.click();
+    expect((root.querySelector('.shade') as HTMLElement).style.opacity).toBe(
+      '0.65'
+    );
+    storage(
+      {
+        playerTools: {
+          newValue: {
+            ...DEFAULT_PLAYER_TOOLS,
+            youtubeCinemaEnabled: false,
+            dimming: 65,
+          },
+        },
+      },
+      'sync'
+    );
+    expect(root.querySelector('.shade')).toBeNull();
+    expect(document.querySelector('.mfs-cinema-button')).toBeNull();
+    expect(document.querySelector('.mfs-info-cards-button')).not.toBeNull();
+    cinema.click();
+    expect(root.querySelector('.shade')).toBeNull();
+    storage({ playerTools: { newValue: DEFAULT_PLAYER_TOOLS } }, 'sync');
+    expect(cinema.getAttribute('aria-pressed')).toBe('false');
+  });
+  it('toggles only end-of-video recommendations and preserves visibility when its button is removed', async () => {
+    const cards = document.querySelector(
+      '.mfs-info-cards-button'
+    ) as HTMLButtonElement;
+    const player = video.closest('#movie_player') as HTMLElement;
+    expect(cards.getAttribute('aria-pressed')).toBe('true');
+    cards.click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(player.dataset.mfsHideEndScreens).toBe('true');
+    expect(player.dataset.mfsHideCards).toBe('false');
+    expect(cards.getAttribute('aria-pressed')).toBe('false');
+    expect(cards.nextElementSibling?.textContent).toBe('Show Info Cards');
+    expect(chrome.storage.sync.set).toHaveBeenCalledWith({
+      playerTools: expect.objectContaining({
+        hideEndScreens: true,
+        youtubeInfoCardsEnabled: true,
+      }),
+    });
+    const storage = changed.addListener.mock.calls.at(-1)?.[0];
+    storage(
+      {
+        playerTools: {
+          newValue: {
+            ...DEFAULT_PLAYER_TOOLS,
+            youtubeInfoCardsEnabled: false,
+            hideEndScreens: true,
+          },
+        },
+      },
+      'sync'
+    );
+    expect(document.querySelector('.mfs-info-cards-button')).toBeNull();
+    expect(player.dataset.mfsHideEndScreens).toBe('true');
+    storage(
+      {
+        playerTools: {
+          newValue: { ...DEFAULT_PLAYER_TOOLS, hideEndScreens: true },
+        },
+      },
+      'sync'
+    );
+    expect(cards.getAttribute('aria-pressed')).toBe('false');
+    cards.click();
+    expect(player.dataset.mfsHideEndScreens).toBe('false');
+    expect(cards.getAttribute('aria-pressed')).toBe('true');
+  });
+  it('keeps both new buttons unavailable during ads and removes them and shades on cleanup', async () => {
+    const cinema = document.querySelector(
+      '.mfs-cinema-button'
+    ) as HTMLButtonElement;
+    const cards = document.querySelector(
+      '.mfs-info-cards-button'
+    ) as HTMLButtonElement;
+    video.parentElement?.classList.add('ad-showing');
+    await vi.advanceTimersByTimeAsync(350);
+    expect(cinema.disabled).toBe(true);
+    expect(cards.disabled).toBe(true);
+    cinema.click();
+    cards.click();
+    expect(root.querySelector('.shade')).toBeNull();
+    expect(chrome.storage.sync.set).not.toHaveBeenCalled();
+    video.parentElement?.classList.remove('ad-showing');
+    await vi.advanceTimersByTimeAsync(350);
+    expect(cinema.disabled).toBe(false);
+    expect(cards.disabled).toBe(false);
+    cinema.click();
+    tools?.cleanup();
+    expect(document.querySelector('.mfs-youtube-controls')).toBeNull();
+    expect(document.querySelector('.mfs-player-tools')).toBeNull();
+    expect(
+      video.parentElement?.getAttribute('data-mfs-hide-end-screens')
+    ).toBeNull();
+  });
+  it('reports storage errors from the Info Cards player action', async () => {
+    vi.mocked(chrome.storage.sync.set).mockRejectedValueOnce(
+      new Error('Storage unavailable')
+    );
+    (
+      document.querySelector('.mfs-info-cards-button') as HTMLButtonElement
+    ).click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(root.querySelector('.status')?.textContent).toBe(
+      'Storage unavailable'
+    );
+  });
   it('opens Loop from the native control container and removes it when disabled', async () => {
     const native = document.querySelector(
       '.mfs-loop-button'
     ) as HTMLButtonElement;
     expect(native).not.toBeNull();
-    expect(native.parentElement?.nextElementSibling?.className).toBe(
+    expect(native.closest('.mfs-youtube-controls')?.nextElementSibling?.className).toBe(
       'ytp-autonav-toggle'
     );
     expect(
@@ -110,7 +258,7 @@ describe('player tools integration', () => {
       true
     );
     expect(document.querySelector('#timeline')?.getAttribute('data-mfs-loop-editing')).toBe('true');
-    expect(document.querySelector('.mfs-loop-tooltip')?.textContent).toBe('Loop Sections');
+    expect(document.querySelector('.mfs-youtube-buttons .mfs-loop-tooltip')?.textContent).toBe('Loop Sections');
     findButton('Enable loop').click();
     const storage = changed.addListener.mock.calls.at(-1)?.[0];
     storage(
@@ -196,14 +344,15 @@ describe('player tools integration', () => {
     const storage = changed.addListener.mock.calls.at(-1)?.[0];
     storage({ playerTools: { newValue: { ...DEFAULT_PLAYER_TOOLS, youtubeLoop: true, youtubeBoostEnabled: true, youtubeBoost: 4 } } }, 'sync');
     const boost = document.querySelector('.mfs-youtube-boost') as HTMLElement;
-    expect(boost.nextElementSibling?.className).toBe('mfs-youtube-buttons');
+    expect(boost.nextElementSibling?.className).toBe('mfs-youtube-cinema');
+    expect(boost.nextElementSibling?.nextElementSibling?.className).toBe('mfs-youtube-buttons');
     expect(boost.querySelector('button')?.getAttribute('aria-pressed')).toBe('false');
     expect(boost.textContent).toContain('4×');
     expect(root.textContent).not.toContain('Extra volume (%)');
     storage({ playerTools: { newValue: { ...DEFAULT_PLAYER_TOOLS, youtubeLoop: false, youtubeBoostEnabled: true, youtubeBoost: 10 } } }, 'sync');
     expect(document.querySelector('.mfs-youtube-buttons')).toBeNull();
     expect(document.querySelector('.mfs-youtube-boost')?.textContent).toContain('10×');
-    storage({ playerTools: { newValue: DEFAULT_PLAYER_TOOLS } }, 'sync');
+    storage({ playerTools: { newValue: { ...DEFAULT_PLAYER_TOOLS, youtubeBoostEnabled: false } } }, 'sync');
     expect(document.querySelector('.mfs-youtube-boost')).toBeNull();
   });
   it('reattaches a single button container after YouTube replaces its controls', async () => {
@@ -213,9 +362,24 @@ describe('player tools integration', () => {
     controls.innerHTML = '<button class="ytp-subtitles-button"></button>';
     await vi.advanceTimersByTimeAsync(350);
     expect(controls.querySelectorAll('.mfs-youtube-buttons')).toHaveLength(1);
-    expect(controls.firstElementChild?.className).toBe('mfs-youtube-buttons');
+    expect(controls.firstElementChild?.className).toBe('mfs-youtube-controls');
     tools?.cleanup();
     expect(controls.querySelector('.mfs-youtube-buttons')).toBeNull();
+  });
+  it('leaves arrow keys to the site while disabled and resumes after a live settings change', () => {
+    const storage = changed.addListener.mock.calls.at(-1)?.[0];
+    storage({ playerTools: { newValue: { ...DEFAULT_PLAYER_TOOLS, arrowKeySeekingEnabled: false } } }, 'sync');
+    const native = vi.fn();
+    video.addEventListener('keydown', native);
+    const right = new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true });
+    video.dispatchEvent(right);
+    expect(video.currentTime).toBe(25);
+    expect(right.defaultPrevented).toBe(false);
+    expect(native).toHaveBeenCalledOnce();
+    storage({ playerTools: { newValue: { ...DEFAULT_PLAYER_TOOLS, arrowKeySeekingEnabled: true } } }, 'sync');
+    video.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true }));
+    expect(video.currentTime).toBe(20);
+    expect(native).toHaveBeenCalledOnce();
   });
   it('prevents a native key handler from seeking a second time and preserves modifier keys', () => {
     const native = vi.fn();

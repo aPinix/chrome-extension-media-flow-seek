@@ -1,7 +1,24 @@
 import { describe, expect, it } from 'vitest';
+import {
+  DEFAULT_MINI_PLAYER_GEOMETRY,
+  normalizeMiniPlayerGeometry,
+} from './mini-player-settings';
 import { clampMiniGeometry } from './player-floating';
 
 describe('mini player geometry', () => {
+  it('falls back to defaults for missing or invalid saved geometry', () => {
+    for (const geometry of [
+      undefined,
+      null,
+      {},
+      { x: NaN, y: 72, width: 360 },
+      { x: 16, y: 72, width: -1 },
+    ]) {
+      expect(normalizeMiniPlayerGeometry(geometry)).toEqual(
+        DEFAULT_MINI_PLAYER_GEOMETRY
+      );
+    }
+  });
   it('restores off-screen saved positions within the current viewport', () => {
     const geometry = clampMiniGeometry(
       { x: 2000, y: 1500, width: 400 },
@@ -21,6 +38,6 @@ describe('mini player geometry', () => {
     );
     expect(geometry.width).toBeLessThanOrEqual(304);
     expect(geometry.x).toBe(8);
-    expect(geometry.y).toBe(40);
+    expect(geometry.y).toBe(72);
   });
 });

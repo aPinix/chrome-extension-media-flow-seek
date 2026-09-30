@@ -628,7 +628,7 @@ export function SeekControlsPreview({
         aria-label={previewLabel}
         aria-roledescription="interactive video preview"
         className={cn(
-          'relative aspect-[2/1] overflow-hidden rounded-xl bg-black outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-inset',
+          'relative aspect-[3/1] overflow-hidden rounded-xl bg-black outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-inset',
           focusedMethod === 'drag' && 'cursor-ew-resize touch-none'
         )}
         data-focused-method={focusedMethod}

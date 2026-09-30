@@ -33,7 +33,8 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 describe('floating player lifecycle', () => {
-  it('sizes the YouTube video container while floating and restores its styles', () => {
+  it('sizes the YouTube video container while floating and restores its styles', async () => {
+    window.history.replaceState(null, '', '/watch?v=test');
     floating.cleanup();
     const player = video.parentElement as HTMLElement;
     player.id = 'movie_player';
@@ -43,6 +44,12 @@ describe('floating player lifecycle', () => {
     player.append(container);
     container.append(video);
     vi.spyOn(video, 'getBoundingClientRect').mockReturnValue({
+      top: -400,
+      bottom: -40,
+      width: 640,
+      height: 360,
+    } as DOMRect);
+    vi.spyOn(player, 'getBoundingClientRect').mockReturnValue({
       top: -400,
       bottom: -40,
       width: 640,
@@ -62,6 +69,9 @@ describe('floating player lifecycle', () => {
       () => {},
       () => ({ range: null, enabled: false })
     );
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
     floating.update();
     expect(container.style.height).toBe('100%');
     expect(video.style.height).toBe('100%');
