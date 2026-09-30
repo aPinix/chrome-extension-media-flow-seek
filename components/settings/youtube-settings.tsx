@@ -13,10 +13,12 @@ import {
 import { cn } from '@/lib/utils';
 import { YouTubeBoostSetting } from './youtube-boost-setting';
 import { YouTubeCinemaSetting } from './youtube-cinema-setting';
+import { YouTubeFiltersSetting } from './youtube-filters-setting';
 import { YouTubeInfoCardsSetting } from './youtube-info-cards-setting';
 import { YouTubeLoopSetting } from './youtube-loop-setting';
 import { YouTubeMiniPlayerSetting } from './youtube-mini-player-setting';
 import { YouTubePlayerButtonPreview } from './youtube-player-button-preview';
+import { YouTubeScreenshotSetting } from './youtube-screenshot-setting';
 
 export function YouTubeSettings({
   chapteredTimelineEnabled,
@@ -67,6 +69,8 @@ export function YouTubeSettings({
         <YouTubeCinemaSetting disabled={!extensionEnabled} />
         <YouTubeLoopSetting disabled={!extensionEnabled} />
         <YouTubeInfoCardsSetting disabled={!extensionEnabled} />
+        <YouTubeScreenshotSetting disabled={!extensionEnabled} />
+        <YouTubeFiltersSetting disabled={!extensionEnabled} />
         <YouTubeMiniPlayerSetting disabled={!extensionEnabled} />
         <CardListItem
           components={{

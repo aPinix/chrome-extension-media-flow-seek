@@ -18,7 +18,7 @@ export function YouTubePlayerButtonPreview({
         aria-label={
           feature
             ? `YouTube player controls with ${YOUTUBE_CONTROL_LABELS[feature]} highlighted`
-            : 'YouTube player controls: Boost Volume, Cinema Mode, Loop Sections, Info Cards'
+            : `YouTube player controls: ${YOUTUBE_CONTROL_ORDER.map((control) => YOUTUBE_CONTROL_LABELS[control]).join(', ')}`
         }
         className="relative h-18 overflow-hidden rounded-lg bg-black text-white"
         role="img"
@@ -86,7 +86,7 @@ export function YouTubePlayerButtonPreview({
             },
           ].map(({ name, path }) => (
             <span
-              className="flex h-9 w-7 shrink-0 items-center justify-center"
+              className="flex h-9 w-7 shrink-0 items-center justify-center opacity-50"
               key={name}
             >
               <svg

@@ -16,6 +16,12 @@ vi.mock('./youtube-info-cards-setting', () => ({
 vi.mock('./youtube-mini-player-setting', () => ({
   YouTubeMiniPlayerSetting: () => null,
 }));
+vi.mock('./youtube-screenshot-setting', () => ({
+  YouTubeScreenshotSetting: () => null,
+}));
+vi.mock('./youtube-filters-setting', () => ({
+  YouTubeFiltersSetting: () => null,
+}));
 
 afterEach(cleanup);
 

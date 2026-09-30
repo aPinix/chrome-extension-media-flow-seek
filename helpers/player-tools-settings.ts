@@ -23,6 +23,9 @@ export type PlayerToolsSettings = {
   youtubeBoostEnabled: boolean;
   youtubeCinemaEnabled: boolean;
   youtubeInfoCardsEnabled: boolean;
+  youtubeScreenshotEnabled: boolean;
+  youtubeScreenshotIncludeFilters: boolean;
+  youtubeFiltersEnabled: boolean;
   youtubeAutoBoost: boolean;
   rememberYoutubeLoops: boolean;
   rememberYoutubeSpeed: boolean;
@@ -31,6 +34,8 @@ export type PlayerToolsSettings = {
   miniPlayer: boolean;
   autoChapters: boolean;
   dimming: number;
+  cinemaColor: string;
+  cinemaColorCustom: boolean;
   siteFilters: Record<string, VideoFilters>;
 };
 export const PLAYER_TOOLS_KEY = 'playerTools';
@@ -47,6 +52,9 @@ export const DEFAULT_PLAYER_TOOLS: PlayerToolsSettings = {
   youtubeBoostEnabled: true,
   youtubeCinemaEnabled: true,
   youtubeInfoCardsEnabled: true,
+  youtubeScreenshotEnabled: true,
+  youtubeScreenshotIncludeFilters: false,
+  youtubeFiltersEnabled: true,
   youtubeAutoBoost: false,
   rememberYoutubeLoops: false,
   rememberYoutubeSpeed: false,
@@ -55,6 +63,8 @@ export const DEFAULT_PLAYER_TOOLS: PlayerToolsSettings = {
   miniPlayer: true,
   autoChapters: false,
   dimming: 80,
+  cinemaColor: '#000000',
+  cinemaColorCustom: false,
   siteFilters: {},
 };
 export const clamp = (value: number, min: number, max: number) =>
@@ -94,6 +104,9 @@ export function normalizePlayerTools(value: unknown): PlayerToolsSettings {
     arrowKeySeekingEnabled: v.arrowKeySeekingEnabled !== false,
     youtubeCinemaEnabled: v.youtubeCinemaEnabled !== false,
     youtubeInfoCardsEnabled: v.youtubeInfoCardsEnabled !== false,
+    youtubeScreenshotEnabled: v.youtubeScreenshotEnabled !== false,
+    youtubeScreenshotIncludeFilters: v.youtubeScreenshotIncludeFilters === true,
+    youtubeFiltersEnabled: v.youtubeFiltersEnabled !== false,
     youtubeLoop: v.youtubeLoop !== false,
     youtubeAutoBoost: v.youtubeAutoBoost === true,
     youtubeBoostEnabled: v.youtubeBoostEnabled !== false,
@@ -111,6 +124,8 @@ export function normalizePlayerTools(value: unknown): PlayerToolsSettings {
     miniPlayer: v.miniPlayer !== false,
     autoChapters: v.autoChapters === true,
     dimming: numeric(v.dimming, 80, 0, 100),
+    cinemaColor: typeof v.cinemaColor === 'string' && /^#[0-9a-f]{6}$/i.test(v.cinemaColor) ? v.cinemaColor.toLowerCase() : DEFAULT_PLAYER_TOOLS.cinemaColor,
+    cinemaColorCustom: v.cinemaColorCustom === true,
     siteFilters,
   };
 }

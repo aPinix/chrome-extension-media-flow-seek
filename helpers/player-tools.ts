@@ -13,6 +13,7 @@ import {
   seekVideo,
   skipVideo,
 } from './player-actions';
+import { CinemaBackdrop } from './player-cinema';
 import { FloatingPlayer } from './player-floating';
 import {
   DEFAULT_FILTERS,
@@ -38,9 +39,19 @@ import {
   type SavedMoment,
 } from './saved-media';
 import {
+  YouTubeAdvancedMenu,
+  type YouTubeAdvancedPreferences,
+} from './youtube-advanced-menu';
+import {
   extractYouTubeChapterModel,
   isYouTubeHostname,
 } from './youtube-chapters';
+import {
+  YOUTUBE_CONTROL_SHORTCUTS,
+  type YouTubeAdvancedControl,
+  type YouTubeControl,
+} from './youtube-control-icons';
+import { YouTubeFiltersMenu } from './youtube-filters-menu';
 import { YouTubePlayerButtons } from './youtube-player-buttons';
 
 type LoopHistory = { sections: SavedMoment[]; activeId: string | null; enabled: boolean };
@@ -72,10 +83,14 @@ export class PlayerTools {
   private loopItemsNode: HTMLDivElement;
   private loopOpen = false;
   private loopClosing = false;
-  private loopWasShown = false;
+  private loopCloseTimer: number | undefined;
   private loopAnimationTimer: number | undefined;
   private rememberingLoops = false;
   private youtubeButtons: YouTubePlayerButtons | null;
+  private screenshotBusy = false;
+  private filtersMenu: YouTubeFiltersMenu | null;
+  private advancedMenu: YouTubeAdvancedMenu | null = null;
+  private advancedSaveQueue: Promise<void> = Promise.resolve();
   private editToggle: HTMLButtonElement;
   private settings = { ...DEFAULT_PLAYER_TOOLS };
   private filters: VideoFilters = { ...DEFAULT_FILTERS };
@@ -106,7 +121,7 @@ export class PlayerTools {
   private open = false;
   private hovering = false;
   private cinema = false;
-  private shades: HTMLDivElement[] = [];
+  private cinemaBackdrop: CinemaBackdrop | null = null;
   private cleanupFns: Array<() => void> = [];
   private loopTimer: number | undefined;
   private originalFilter: string;
@@ -227,6 +242,46 @@ export class PlayerTools {
             if (!this.settings.youtubeInfoCardsEnabled || this.isAd()) return;
             this.preference('hideEndScreens', !this.settings.hideEndScreens);
           },
+          onScreenshot: () => {
+            void this.takeYouTubeScreenshot();
+          },
+          onFilters: () => {
+            if (
+              !this.youtubeButtons ||
+              !this.initialized ||
+              !this.settings.youtubeFiltersEnabled ||
+              this.isAd()
+            )
+              return;
+            this.advancedMenu?.close();
+            if (!this.filtersMenu?.isOpen) {
+              if (this.open) this.setOpen(false);
+              this.setLoopOpen(false);
+            }
+            this.filtersMenu?.toggle(this.youtubeButtons.filtersButton);
+          },
+          onAdvanced: (kind) => this.openAdvanced(kind),
+        })
+      : null;
+    this.filtersMenu = this.youtube
+      ? new YouTubeFiltersMenu(video, {
+          onChange: (filters) => {
+            this.filters = filters;
+            this.applyFilters();
+          },
+          onSave: (filters) => this.saveFilterPreset(filters),
+          onForget: () => this.saveFilterPreset(null),
+          onOpenChange: () => this.updateYouTubeButtons(),
+        })
+      : null;
+    this.advancedMenu = this.youtube
+      ? new YouTubeAdvancedMenu(video, {
+          onPreview: (patch) => {
+            this.settings = normalizePlayerTools({ ...this.settings, ...patch });
+            this.applyPreferences();
+          },
+          onSave: (patch) => this.saveAdvancedPreferences(patch),
+          onOpenChange: () => this.updateYouTubeButtons(),
         })
       : null;
     this.floating = new FloatingPlayer(
@@ -371,9 +426,9 @@ export class PlayerTools {
     loopRoot.append(loopStyle, this.track);
     this.timeline.append(this.loopSurface);
     const barStyle = element(this.doc, 'style');
-    barStyle.textContent = '.scrub-timeline[data-mfs-loop-animating=true]{transition:height 220ms ease,top 220ms ease,opacity 300ms ease!important}.scrub-timeline[data-mfs-loop-editing=true]{overflow:visible!important;clip-path:none!important;opacity:1!important;pointer-events:auto!important;visibility:visible!important}@media(prefers-reduced-motion:reduce){.scrub-timeline{transition:none!important}}';
+    barStyle.textContent = '.scrub-timeline[data-mfs-loop-animating=true]{transition:height 220ms ease,top 220ms ease,opacity 300ms ease!important}.scrub-timeline[data-mfs-loop-editing=true],.scrub-timeline[data-mfs-loop-closing=true]{overflow:visible!important;clip-path:none!important;opacity:1!important;visibility:visible!important}.scrub-timeline[data-mfs-loop-editing=true]{pointer-events:auto!important}@media(prefers-reduced-motion:reduce){.scrub-timeline{transition:none!important}}';
     this.doc.documentElement.append(barStyle);
-    this.cleanupFns.push(() => { this.loopSurface.remove(); barStyle.remove(); delete this.timeline.dataset.mfsLoopEditing; delete this.timeline.dataset.mfsLoopAnimating; });
+    this.cleanupFns.push(() => { this.loopSurface.remove(); barStyle.remove(); delete this.timeline.dataset.mfsLoopEditing; delete this.timeline.dataset.mfsLoopAnimating; delete this.timeline.dataset.mfsLoopClosing; });
     for (const type of ['click', 'dblclick', 'pointerdown', 'wheel'])
       this.listen(loopRoot, type, (event) => event.stopPropagation());
     this.buildPlayback();
@@ -654,6 +709,7 @@ export class PlayerTools {
     );
   }
   private buildVisuals(): void {
+    if (this.youtube) return;
     this.heading('Video filters');
     for (const key of [
       'brightness',
@@ -817,6 +873,8 @@ export class PlayerTools {
     });
     if (!this.youtube || !this.settings.youtubeLoop) {
       this.loopOpen = false;
+      this.loopClosing = false;
+      this.win.clearTimeout(this.loopCloseTimer);
       this.editing = false;
       this.loopEnabled = false;
       this.loop = null;
@@ -847,6 +905,7 @@ export class PlayerTools {
     const css = filterCSS(this.filters);
     this.video.style.setProperty('filter', css, 'important');
     this.lastAppliedFilter = css;
+    this.updateYouTubeButtons();
   }
   private applyFilterPreset(): void {
     this.filters = {
@@ -861,6 +920,8 @@ export class PlayerTools {
   }
   private setOpen(value: boolean): void {
     if (value) {
+      this.filtersMenu?.close();
+      this.advancedMenu?.close();
       this.loopOpen = false;
       this.editing = false;
     }
@@ -907,6 +968,21 @@ export class PlayerTools {
   }
   private setLoopOpen(value: boolean): void {
     if (value && !this.canLoop()) return;
+    if (value || this.loopOpen) {
+      this.win.clearTimeout(this.loopCloseTimer);
+      this.loopClosing = !value && !this.win.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      if (this.loopClosing) {
+        this.loopCloseTimer = this.win.setTimeout(() => {
+          this.loopClosing = false;
+          this.renderLoop();
+          this.layout();
+        }, 240);
+      }
+    }
+    if (value) {
+      this.filtersMenu?.close();
+      this.advancedMenu?.close();
+    }
     if (value) this.setOpen(false);
     if (!value) this.loopPreview?.(null);
     if (value && !this.loopOpen) {
@@ -988,6 +1064,9 @@ export class PlayerTools {
       : 'Save loop';
     this.updateYouTubeButtons();
     this.track.classList.toggle('editing', this.editing);
+    this.track.classList.toggle('closing', this.loopClosing);
+    const actions = this.track.querySelector<HTMLElement>('.loop-editor-actions');
+    if (actions) actions.inert = !this.editing;
     const undo = this.track.querySelector<HTMLButtonElement>('.undo-loop-sections');
     const redo = this.track.querySelector<HTMLButtonElement>('.redo-loop-sections');
     if (undo) undo.disabled = this.historyBusy || !this.undoLoops.length;
@@ -1585,6 +1664,12 @@ export class PlayerTools {
       return;
     }
     if (event.key === 'Escape') {
+      // Keep the page and general keyboard suspension from hiding the timeline
+      // before its closing animation finishes, including repeated Escape presses.
+      if (this.loopOpen || this.loopClosing) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
       this.setLoopOpen(false);
       this.cinema = false;
       this.editing = false;
@@ -1602,10 +1687,63 @@ export class PlayerTools {
               'input,textarea,select,[role="textbox"],[role="slider"],[role="menuitem"],[role="tab"]'
             ) ||
               node === this.host ||
+              node.matches(
+                '.mfs-youtube-advanced-popup,.mfs-youtube-filters-popup'
+              ) ||
               (node as HTMLElement).isContentEditable)
         )
     )
       return;
+    if (
+      this.youtube &&
+      this.youtubeButtons &&
+      this.initialized &&
+      !this.floating.inMini &&
+      !this.floating.inPip &&
+      !event.defaultPrevented &&
+      !event.isComposing &&
+      !event.repeat &&
+      !event.altKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !this.isAd()
+    ) {
+      const control = (
+        Object.keys(YOUTUBE_CONTROL_SHORTCUTS) as YouTubeControl[]
+      ).find(
+        (kind) => YOUTUBE_CONTROL_SHORTCUTS[kind] === event.key.toLowerCase()
+      );
+      const player = this.video.closest('#movie_player, .html5-video-player');
+      const main =
+        player?.querySelector('video.html5-main-video') ??
+        player?.querySelector('video');
+      const rect = this.video.getBoundingClientRect();
+      if (
+        control &&
+        main === this.video &&
+        rect.width > 0 &&
+        rect.height > 0 &&
+        rect.bottom > 0 &&
+        rect.top < this.win.innerHeight &&
+        rect.right > 0 &&
+        rect.left < this.win.innerWidth
+      ) {
+        const target = this.youtubeControl(control);
+        const advanced =
+          control === 'boost' || control === 'cinema' || control === 'screenshot';
+        if (
+          target?.isConnected &&
+          !target.disabled &&
+          (!event.shiftKey || advanced)
+        ) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          if (event.shiftKey && advanced) this.openAdvanced(control);
+          else target.click();
+          return;
+        }
+      }
+    }
     if (
       event.defaultPrevented ||
       event.altKey ||
@@ -1768,6 +1906,8 @@ export class PlayerTools {
       this.floating.inMini || !visible || (!this.hovering && !this.open && !this.editing);
     this.panel.hidden = this.floating.inMini || !this.open || !visible;
     const showLoop = !this.floating.inMini && this.loopOpen && visible && this.canLoop();
+    const closing = this.loopClosing && !this.floating.inMini && visible && this.canLoop();
+    this.timeline.dataset.mfsLoopClosing = String(closing);
     if (this.timeline.dataset.mfsLoopEditing !== String(showLoop)) {
       if (this.timeline.dataset.mfsLoopEditing !== undefined) {
         this.win.clearTimeout(this.loopAnimationTimer);
@@ -1789,7 +1929,7 @@ export class PlayerTools {
     this.track.hidden =
       this.floating.inMini || !visible ||
       !this.finite() ||
-      (!this.editing && !this.loop && !this.items.some(item => item.end !== undefined) && !(this.hovering || this.open));
+      (!this.editing && !closing && !this.loop && !this.items.some(item => item.end !== undefined) && !(this.hovering || this.open));
 
     this.layoutCinema(r, visible);
   }
@@ -1803,7 +1943,49 @@ export class PlayerTools {
     this.cinema = !this.cinema;
     this.layout();
   }
+  private async takeYouTubeScreenshot(): Promise<void> {
+    if (
+      !this.initialized ||
+      !this.settings.youtubeScreenshotEnabled ||
+      this.screenshotBusy ||
+      this.isAd() ||
+      this.disposed
+    )
+      return;
+    this.screenshotBusy = true;
+    this.updateYouTubeButtons();
+    try {
+      if (this.settings.youtubeScreenshotIncludeFilters)
+        await screenshotVideo(this.video, { ...this.filters });
+      else await screenshotVideo(this.video);
+      this.youtubeButtons?.reportScreenshot('Screenshot saved.');
+      this.report('Screenshot saved.');
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Screenshot could not be saved.';
+      this.youtubeButtons?.reportScreenshot(message);
+      this.report(message);
+    } finally {
+      this.screenshotBusy = false;
+      if (!this.disposed) this.updateYouTubeButtons();
+    }
+  }
   private updateYouTubeButtons(): void {
+    if (this.disposed) return;
+    const filtersAvailable =
+      this.initialized &&
+      !this.isAd() &&
+      !this.floating.inPip &&
+      !this.floating.inMini &&
+      this.video.readyState >= 2 &&
+      this.video.isConnected;
+    this.filtersMenu?.update({
+      filters: this.filters,
+      enabled: this.settings.youtubeFiltersEnabled,
+      available: filtersAvailable,
+      hasPreset: Boolean(this.settings.siteFilters[this.doc.location.hostname]),
+    });
+    this.advancedMenu?.update(this.settings, filtersAvailable);
     this.youtubeButtons?.update({
       loop: {
         enabled: this.settings.youtubeLoop,
@@ -1831,46 +2013,72 @@ export class PlayerTools {
         visible: !this.settings.hideEndScreens,
         available: !this.isAd(),
       },
+      screenshot: {
+        enabled: this.settings.youtubeScreenshotEnabled,
+        available:
+          this.initialized &&
+          !this.screenshotBusy &&
+          !this.isAd() &&
+          this.video.readyState >= 2 &&
+          this.video.videoWidth > 0 &&
+          this.video.videoHeight > 0 &&
+          !this.video.mediaKeys,
+      },
+      filters: {
+        enabled: this.settings.youtubeFiltersEnabled,
+        available: filtersAvailable,
+        expanded: this.filtersMenu?.isOpen ?? false,
+      },
     });
   }
-  private layoutCinema(r: DOMRect, visible: boolean): void {
-    if (!this.cinema || !visible) {
-      this.shades.forEach((shade) => {
-        shade.remove();
+  private youtubeControl(kind: YouTubeControl): HTMLButtonElement | undefined {
+    return this.youtubeButtons?.[`${kind}Button`];
+  }
+  private openAdvanced(kind: YouTubeAdvancedControl): void {
+    const anchor = this.youtubeControl(kind);
+    if (!anchor || !this.advancedMenu || anchor.disabled) return;
+    this.filtersMenu?.close();
+    if (this.open) this.setOpen(false);
+    this.setLoopOpen(false);
+    this.advancedMenu.open(kind, anchor);
+  }
+  private saveAdvancedPreferences(
+    patch: Partial<YouTubeAdvancedPreferences>
+  ): Promise<void> {
+    const save = this.advancedSaveQueue
+      .catch(() => {})
+      .then(async () => {
+        if (this.disposed) return;
+        const current = await loadPlayerTools();
+        if (this.disposed) return;
+        const next = normalizePlayerTools({ ...current, ...patch });
+        await savePlayerTools(next);
+        if (this.disposed) return;
+        this.settings = next;
+        this.applyPreferences();
       });
-      this.shades = [];
-      return;
-    }
-    if (!this.shades.length)
-      for (let i = 0; i < 4; i++) {
-        const shade = element(this.doc, 'div', 'shade');
-        shade.onclick = () => {
-          this.cinema = false;
-          this.layout();
-        };
-        this.root.prepend(shade);
-        this.shades.push(shade);
-      }
-    const rects = [
-      [0, 0, this.win.innerWidth, Math.max(0, r.top)],
-      [
-        0,
-        r.bottom,
-        this.win.innerWidth,
-        Math.max(0, this.win.innerHeight - r.bottom),
-      ],
-      [0, Math.max(0, r.top), Math.max(0, r.left), r.height],
-      [
-        r.right,
-        Math.max(0, r.top),
-        Math.max(0, this.win.innerWidth - r.right),
-        r.height,
-      ],
-    ];
-    this.shades.forEach((shade, i) => {
-      const [x, y, width, height] = rects[i] ?? [0, 0, 0, 0];
-      shade.style.cssText = `left:${x}px;top:${y}px;width:${width}px;height:${height}px;opacity:${this.settings.dimming / 100}`;
-    });
+    this.advancedSaveQueue = save;
+    return save;
+  }
+  private async saveFilterPreset(filters: VideoFilters | null): Promise<void> {
+    const current = await loadPlayerTools();
+    if (this.disposed) return;
+    const presets = { ...current.siteFilters };
+    if (filters) presets[this.doc.location.hostname] = { ...filters };
+    else delete presets[this.doc.location.hostname];
+    const next = normalizePlayerTools({ ...current, siteFilters: presets });
+    await savePlayerTools(next);
+    if (this.disposed) return;
+    this.settings = next;
+    this.applyPreferences();
+  }
+  private layoutCinema(r: DOMRect, visible: boolean): void {
+    if (!this.cinemaBackdrop && this.cinema && visible)
+      this.cinemaBackdrop = new CinemaBackdrop(this.video, this.root, () => {
+        this.cinema = false;
+        this.layout();
+      });
+    this.cinemaBackdrop?.update(this.cinema && visible, r, this.settings.dimming / 100, this.settings.cinemaColor);
   }
   private restoreFilter(): void {
     if (
@@ -1888,6 +2096,8 @@ export class PlayerTools {
     this.lastAppliedFilter = null;
   }
   private resetMedia(): void {
+    this.filtersMenu?.reset();
+    this.advancedMenu?.close();
     this.autoBoostSuppressed = false;
     this.boostActive = false;
     this.boostUnavailable = false;
@@ -1901,6 +2111,8 @@ export class PlayerTools {
     this.identityGeneration++;
     this.loopOpen = false;
     this.activeSavedId = null;
+    this.loopClosing = false;
+    this.win.clearTimeout(this.loopCloseTimer);
     this.claimedKey = '';
     this.loop = null;
     this.loopEnabled = false;
@@ -1921,8 +2133,12 @@ export class PlayerTools {
     PlayerTools.instances.delete(this);
     if (this.disposed) return;
     this.disposed = true;
+    this.filtersMenu?.cleanup();
+    this.advancedMenu?.cleanup();
+    this.cinemaBackdrop?.cleanup();
     this.youtubeButtons?.cleanup();
     this.win.clearTimeout(this.loopAnimationTimer);
+    this.win.clearTimeout(this.loopCloseTimer);
     this.win.clearTimeout(this.loopTimer);
     this.floating.cleanup();
     this.restoreFilter();

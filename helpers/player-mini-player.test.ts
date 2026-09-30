@@ -129,6 +129,53 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 describe('YouTube mini player', () => {
+  it.each([
+    [1920, 800],
+    [900, 1600],
+  ])(
+    'fits %s × %s video dimensions and repairs YouTube sizing offsets',
+    async (width, height) => {
+      floating.reset();
+      const container = video.closest('.html5-video-container') as HTMLElement;
+      video.style.cssText =
+        'left:80px;top:50px;max-width:640px;object-fit:contain';
+      container.style.cssText = 'left:40px;top:25px;max-height:360px';
+      const videoStyle = video.getAttribute('style');
+      const containerStyle = container.getAttribute('style');
+      Object.defineProperties(video, {
+        videoWidth: { configurable: true, value: width },
+        videoHeight: { configurable: true, value: height },
+      });
+      floating.update();
+      await ready();
+      expect(
+        Number.parseFloat(player.style.width) /
+          Number.parseFloat(player.style.height)
+      ).toBeCloseTo(width / height);
+      video.style.setProperty('left', '200px', 'important');
+      video.style.setProperty('top', '100px', 'important');
+      container.style.setProperty('max-height', '100px', 'important');
+      video.dispatchEvent(new Event('resize'));
+      expect(video.style.left).toBe('0px');
+      expect(video.style.top).toBe('0px');
+      expect(video.style.objectFit).toBe('cover');
+      expect(container.style.maxHeight).toBe('none');
+      Object.defineProperties(video, {
+        videoWidth: { configurable: true, value: 1200 },
+        videoHeight: { configurable: true, value: 900 },
+      });
+      video.dispatchEvent(new Event('resize'));
+      expect(
+        Number.parseFloat(player.style.width) /
+          Number.parseFloat(player.style.height)
+      ).toBeCloseTo(4 / 3);
+      originalBottom = 400;
+      floating.update();
+      expect(video.getAttribute('style')).toBe(videoStyle);
+      expect(container.getAttribute('style')).toBe(containerStyle);
+      expect(video.currentTime).toBe(30);
+    }
+  );
   it('floats the same player at the top left and restores original styles without interrupting playback', async () => {
     floating.reset();
     const parent = player.parentNode;

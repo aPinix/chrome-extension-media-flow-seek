@@ -94,7 +94,7 @@ afterEach(() => {
 });
 
 describe('player tools integration', () => {
-  it('starts Cinema inactive and supports button, Escape, backdrop and PiP exit paths', () => {
+  it('starts Cinema inactive and supports button, Escape, backdrop and PiP exit paths', async () => {
     const cinema = document.querySelector(
       '.mfs-cinema-button'
     ) as HTMLButtonElement;
@@ -104,39 +104,44 @@ describe('player tools integration', () => {
     expect(root.textContent).not.toContain('Cinema dimming (%)');
     cinema.click();
     expect(cinema.getAttribute('aria-pressed')).toBe('true');
-    expect(root.querySelectorAll('.shade')).toHaveLength(4);
+    expect(root.querySelectorAll('.shade')).toHaveLength(1);
     expect((root.querySelector('.shade') as HTMLElement).style.opacity).toBe(
       '0.8'
     );
     cinema.click();
+    expect((root.querySelector('.shade') as HTMLElement).style.opacity).toBe('0');
+    await vi.advanceTimersByTimeAsync(240);
     expect(root.querySelector('.shade')).toBeNull();
     cinema.click();
     document.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
     );
     expect(cinema.getAttribute('aria-pressed')).toBe('false');
+    await vi.advanceTimersByTimeAsync(240);
     expect(root.querySelector('.shade')).toBeNull();
     cinema.click();
-    (root.querySelector('.shade') as HTMLElement).click();
+    root.querySelector('.shade path')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(cinema.getAttribute('aria-pressed')).toBe('false');
     cinema.click();
     video.dispatchEvent(new Event('enterpictureinpicture'));
     expect(cinema.getAttribute('aria-pressed')).toBe('false');
+    await vi.advanceTimersByTimeAsync(240);
     expect(root.querySelector('.shade')).toBeNull();
   });
-  it('exits Cinema when its button is removed, and applies saved dimming', () => {
+  it('exits Cinema when its button is removed, and applies saved dimming', async () => {
     const cinema = document.querySelector(
       '.mfs-cinema-button'
     ) as HTMLButtonElement;
     const storage = changed.addListener.mock.calls.at(-1)?.[0];
     storage(
-      { playerTools: { newValue: { ...DEFAULT_PLAYER_TOOLS, dimming: 65 } } },
+      { playerTools: { newValue: { ...DEFAULT_PLAYER_TOOLS, dimming: 65, cinemaColor: '#172554' } } },
       'sync'
     );
     cinema.click();
     expect((root.querySelector('.shade') as HTMLElement).style.opacity).toBe(
       '0.65'
     );
+    expect(root.querySelector('.shade path')?.getAttribute('fill')).toBe('#172554');
     storage(
       {
         playerTools: {
@@ -149,6 +154,7 @@ describe('player tools integration', () => {
       },
       'sync'
     );
+    await vi.advanceTimersByTimeAsync(240);
     expect(root.querySelector('.shade')).toBeNull();
     expect(document.querySelector('.mfs-cinema-button')).toBeNull();
     expect(document.querySelector('.mfs-info-cards-button')).not.toBeNull();
@@ -168,7 +174,8 @@ describe('player tools integration', () => {
     expect(player.dataset.mfsHideEndScreens).toBe('true');
     expect(player.dataset.mfsHideCards).toBe('false');
     expect(cards.getAttribute('aria-pressed')).toBe('false');
-    expect(cards.nextElementSibling?.textContent).toBe('Show Info Cards');
+    expect(cards.nextElementSibling?.querySelector('.mfs-tooltip-label')?.textContent).toBe('Show Info Cards');
+    expect(cards.nextElementSibling?.querySelector('.ytp-tooltip-keyboard-shortcut')?.textContent).toBe('E');
     expect(chrome.storage.sync.set).toHaveBeenCalledWith({
       playerTools: expect.objectContaining({
         hideEndScreens: true,
@@ -258,7 +265,7 @@ describe('player tools integration', () => {
       true
     );
     expect(document.querySelector('#timeline')?.getAttribute('data-mfs-loop-editing')).toBe('true');
-    expect(document.querySelector('.mfs-youtube-buttons .mfs-loop-tooltip')?.textContent).toBe('Loop Sections');
+    expect(document.querySelector('.mfs-youtube-buttons .mfs-tooltip-label')?.textContent).toBe('Loop Sections');
     findButton('Enable loop').click();
     const storage = changed.addListener.mock.calls.at(-1)?.[0];
     storage(
@@ -276,6 +283,71 @@ describe('player tools integration', () => {
     expect(findButton('Enable loop').disabled).toBe(true);
     await vi.advanceTimersByTimeAsync(350);
     expect(document.querySelector('.mfs-youtube-buttons')).toBeNull();
+  });
+  it.each(['button', 'Escape'])('animates loop closing via %s and can reopen before it finishes', async (method) => {
+    const button = document.querySelector('.mfs-loop-button') as HTMLButtonElement;
+    button.click();
+    const track = document.querySelector('.mfs-loop-surface')?.shadowRoot?.querySelector('.timeline') as HTMLElement;
+    if (method === 'button') (track.querySelector('.close-loop-editor') as HTMLButtonElement).click();
+    else document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(track.classList.contains('editing')).toBe(false);
+    expect(track.classList.contains('closing')).toBe(true);
+    expect(track.hidden).toBe(false);
+    expect((track.querySelector('.loop-editor-actions') as HTMLElement).inert).toBe(true);
+    expect(document.querySelector('#timeline')?.getAttribute('data-mfs-loop-closing')).toBe('true');
+    await vi.advanceTimersByTimeAsync(120);
+    button.click();
+    expect(track.classList.contains('closing')).toBe(false);
+    expect(track.classList.contains('editing')).toBe(true);
+    await vi.advanceTimersByTimeAsync(300);
+    expect(track.classList.contains('editing')).toBe(true);
+    (track.querySelector('.close-loop-editor') as HTMLButtonElement).click();
+    await vi.advanceTimersByTimeAsync(240);
+    expect(track.classList.contains('closing')).toBe(false);
+    expect(document.querySelector('#timeline')?.getAttribute('data-mfs-loop-closing')).toBe('false');
+  });
+  it('consumes Escape before page keyboard suspension can cancel the closing animation', async () => {
+    const timeline = document.querySelector('#timeline') as HTMLElement;
+    const suspend = vi.fn(() => {
+      delete timeline.dataset.mfsLoopAnimating;
+      timeline.style.display = 'none';
+    });
+    document.addEventListener('keydown', suspend);
+    try {
+      (document.querySelector('.mfs-loop-button') as HTMLButtonElement).click();
+      const dismissKey = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true });
+      document.dispatchEvent(dismissKey);
+      expect(dismissKey.defaultPrevented).toBe(true);
+      expect(suspend).not.toHaveBeenCalled();
+      expect(timeline.dataset.mfsLoopClosing).toBe('true');
+      expect(timeline.dataset.mfsLoopAnimating).toBe('true');
+      await vi.advanceTimersByTimeAsync(120);
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, repeat: true }));
+      expect(suspend).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(120);
+      expect(timeline.dataset.mfsLoopClosing).toBe('false');
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      expect(suspend).toHaveBeenCalledOnce();
+    } finally {
+      document.removeEventListener('keydown', suspend);
+    }
+  });
+  it('closes immediately when reduced motion is requested and cleans up during a closing animation', () => {
+    const media = vi.fn().mockReturnValue({ matches: true });
+    vi.stubGlobal('matchMedia', media);
+    const button = document.querySelector('.mfs-loop-button') as HTMLButtonElement;
+    button.click();
+    const track = document.querySelector('.mfs-loop-surface')?.shadowRoot?.querySelector('.timeline') as HTMLElement;
+    (track.querySelector('.close-loop-editor') as HTMLButtonElement).click();
+    expect(track.classList.contains('closing')).toBe(false);
+    media.mockReturnValue({ matches: false } as MediaQueryList);
+    button.click();
+    (track.querySelector('.close-loop-editor') as HTMLButtonElement).click();
+    expect(track.classList.contains('closing')).toBe(true);
+    tools?.cleanup();
+    expect(document.querySelector('#timeline')?.hasAttribute('data-mfs-loop-closing')).toBe(false);
+    expect(document.querySelector('.mfs-loop-surface')).toBeNull();
+    vi.unstubAllGlobals();
   });
   it('separates playback from editing and retains collapsed sections', async () => {
     const native = document.querySelector('.mfs-loop-button') as HTMLButtonElement;
@@ -629,7 +701,9 @@ describe('player tools integration', () => {
     expect(root.textContent).toContain('Enable loop');
   });
   it('restores filters and removes owned DOM/listeners on cleanup', () => {
-    const brightness = inputFor('Brightness');
+    const filtersRoot = document.querySelector('.mfs-youtube-filters-popup')?.shadowRoot;
+    const brightness = filtersRoot?.querySelector<HTMLInputElement>('input[aria-label="Brightness"]');
+    if (!brightness) throw new Error('Brightness control missing');
     brightness.value = '150';
     brightness.dispatchEvent(new Event('input'));
     expect(video.style.filter).toContain('brightness(150%)');

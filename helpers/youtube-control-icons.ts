@@ -1,10 +1,18 @@
-export type YouTubeControl = 'boost' | 'cinema' | 'loop' | 'infoCards';
+export type YouTubeControl =
+  | 'boost'
+  | 'cinema'
+  | 'loop'
+  | 'infoCards'
+  | 'screenshot'
+  | 'filters';
 
 export const YOUTUBE_CONTROL_ORDER: YouTubeControl[] = [
   'boost',
   'cinema',
   'loop',
   'infoCards',
+  'screenshot',
+  'filters',
 ];
 
 export const YOUTUBE_CONTROL_LABELS: Record<YouTubeControl, string> = {
@@ -12,7 +20,19 @@ export const YOUTUBE_CONTROL_LABELS: Record<YouTubeControl, string> = {
   cinema: 'Cinema Mode',
   loop: 'Loop Sections',
   infoCards: 'Info Cards',
+  screenshot: 'Screenshot',
+  filters: 'Video Filters',
 };
+
+export const YOUTUBE_CONTROL_SHORTCUTS: Record<YouTubeControl, string> = {
+  boost: 'b',
+  cinema: 'd',
+  loop: 'r',
+  infoCards: 'e',
+  screenshot: 's',
+  filters: 'v',
+};
+export type YouTubeAdvancedControl = 'boost' | 'cinema' | 'screenshot';
 
 type IconShape = { tag: 'path' | 'rect'; attributes: Record<string, string> };
 export const YOUTUBE_CONTROL_ICONS: Record<
@@ -24,8 +44,8 @@ export const YOUTUBE_CONTROL_ICONS: Record<
       tag: 'path',
       attributes: {
         d: 'm13 3-5 8h4l-1 6 5-8h-4Z',
-        fill: 'currentColor',
-        stroke: 'none',
+        strokeWidth: '1.5',
+        className: 'mfs-toggle-fill',
       },
     },
     {
@@ -40,10 +60,12 @@ export const YOUTUBE_CONTROL_ICONS: Record<
     {
       tag: 'path',
       attributes: {
-        d: 'M9 16h6M10 19h4M8.5 12.5a6 6 0 1 1 7 0C14.5 13.3 14 14 14 16h-4c0-2-.5-2.7-1.5-3.5',
+        d: 'M8.5 12.5a6 6 0 1 1 7 0C14.5 13.3 14 14 14 16h-4c0-2-.5-2.7-1.5-3.5Z',
         strokeWidth: '2',
+        className: 'mfs-toggle-fill',
       },
     },
+    { tag: 'path', attributes: { d: 'M9 16h6M10 19h4', strokeWidth: '2' } },
   ],
   loop: [
     {
@@ -77,6 +99,7 @@ export const YOUTUBE_CONTROL_ICONS: Record<
         height: '16',
         rx: '2',
         strokeWidth: '2',
+        className: 'mfs-toggle-fill',
       },
     },
     {
@@ -88,6 +111,7 @@ export const YOUTUBE_CONTROL_ICONS: Record<
         height: '8',
         rx: '1',
         strokeWidth: '1.6',
+        className: 'mfs-toggle-detail',
       },
     },
     {
@@ -99,6 +123,32 @@ export const YOUTUBE_CONTROL_ICONS: Record<
         height: '8',
         rx: '1',
         strokeWidth: '1.6',
+        className: 'mfs-toggle-detail',
+      },
+    },
+  ],
+  screenshot: [
+    {
+      tag: 'path',
+      attributes: {
+        d: 'M3 5h4l2-3h6l2 3h4a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z',
+        strokeWidth: '2',
+      },
+    },
+    {
+      tag: 'path',
+      attributes: {
+        d: 'M16 11a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z',
+        strokeWidth: '2',
+      },
+    },
+  ],
+  filters: [
+    {
+      tag: 'path',
+      attributes: {
+        d: 'M1 4h5m4 0h13M1 10h13m4 0h5M1 16h5m4 0h13M10 4a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM18 10a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM10 16a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z',
+        strokeWidth: '2',
       },
     },
   ],

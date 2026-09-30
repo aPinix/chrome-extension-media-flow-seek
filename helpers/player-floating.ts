@@ -282,6 +282,7 @@ export class FloatingPlayer {
       'volumechange',
       'durationchange',
       'loadedmetadata',
+      'resize',
       'timeupdate',
       'progress',
       'seeked',
@@ -598,7 +599,14 @@ export class FloatingPlayer {
       '.html5-video-container'
     );
     if (videoContainer) {
-      preserve(videoContainer, ['width', 'height']);
+      preserve(videoContainer, [
+        'width',
+        'height',
+        'max-width',
+        'max-height',
+        'left',
+        'top',
+      ]);
       videoContainer.style.setProperty('width', '100%', 'important');
       videoContainer.style.setProperty('height', '100%', 'important');
     }
@@ -609,7 +617,7 @@ export class FloatingPlayer {
       'max-height': 'none',
       left: '0',
       top: '0',
-      'object-fit': 'contain',
+      'object-fit': 'cover',
     }))
       this.video.style.setProperty(property, value, 'important');
     let restoreLayers = () => {};
@@ -717,6 +725,11 @@ export class FloatingPlayer {
       for (const [property, value] of Object.entries({
         width: '100%',
         height: '100%',
+        'max-width': 'none',
+        'max-height': 'none',
+        left: '0px',
+        top: '0px',
+        ...(node === this.video ? { 'object-fit': 'cover' } : {}),
       })) {
         if (
           node.style.getPropertyValue(property) !== value ||
