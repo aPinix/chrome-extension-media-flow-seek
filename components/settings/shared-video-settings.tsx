@@ -1,5 +1,6 @@
 import { GaugeIcon, ImagesIcon, SkipForwardIcon } from 'lucide-react';
 import { type ElementType, useId } from 'react';
+import { AppSelect } from '@/components/app/app-select';
 import { AppSlider } from '@/components/app/app-slider';
 import { AppSwitch } from '@/components/app/app-switch';
 import {
@@ -11,6 +12,7 @@ import { CardListItem } from '@/components/popup/card-list-item';
 import { CardListItemWrapper } from '@/components/popup/card-list-item-wrapper';
 import { ExtraFeaturePreviewTooltip } from '@/components/popup/extra-feature-preview-tooltip';
 import { INSTAGRAM_SPEEDS } from '@/helpers/instagram-settings';
+import type { ThumbnailTimeDisplay } from '@/helpers/thumbnail-time';
 
 export interface SocialVideoPreferences {
   thumbnailPreviewEnabled: boolean;
@@ -50,7 +52,11 @@ export function SharedVideoSettings({
   youtube,
   instagram,
   tiktok,
+  thumbnailTimeDisplay = 'time',
+  onThumbnailTimeDisplayChange,
 }: {
+  thumbnailTimeDisplay?: ThumbnailTimeDisplay;
+  onThumbnailTimeDisplayChange?: (value: ThumbnailTimeDisplay) => void;
   extensionEnabled: boolean;
   youtube: Pick<
     SocialVideoPreferences,
@@ -100,6 +106,24 @@ export function SharedVideoSettings({
                       />
                     </label>
                   ))}
+                  <div className="flex items-center justify-between gap-3 py-3">
+                    <span className="text-slate-500 dark:text-slate-400">
+                      Time below thumbnail
+                    </span>
+                    <AppSelect
+                      items={[
+                        { value: 'none', label: 'None' },
+                        { value: 'time', label: 'Time' },
+                        { value: 'remaining', label: 'Remaining time' },
+                        { value: 'both', label: 'Both' },
+                      ]}
+                      label="Time below thumbnail"
+                      onValueChange={(value) =>
+                        onThumbnailTimeDisplayChange?.(value)
+                      }
+                      value={thumbnailTimeDisplay}
+                    />
+                  </div>
                 </div>
               ),
             }}
@@ -108,7 +132,10 @@ export function SharedVideoSettings({
             title={
               <span className="inline-flex items-center gap-1.5">
                 Hover Thumbnails
-                <ExtraFeaturePreviewTooltip featureName="Hover Thumbnails" />
+                <ExtraFeaturePreviewTooltip
+                  featureName="Hover Thumbnails"
+                  thumbnailTimeDisplay={thumbnailTimeDisplay}
+                />
               </span>
             }
           />

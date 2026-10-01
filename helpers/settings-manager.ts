@@ -11,6 +11,7 @@ import {
   normalizeScrollSpeedFactor,
 } from '@/helpers/scroll-speed';
 import { migrateSeekSettings } from '@/helpers/settings-migration';
+import { normalizeThumbnailTimeDisplay } from '@/helpers/thumbnail-time';
 import { normalizeTikTokSpeed } from '@/helpers/tiktok-settings';
 import { isYouTubeHostname } from '@/helpers/youtube-chapters';
 import type { ContentSettingsT } from '@/types/content';
@@ -57,6 +58,7 @@ export class SettingsManager {
           'tiktokShowAutoSkip',
           'isYouTubeChapteredTimelineEnabled',
           'isSeekbarThumbnailPreviewEnabled',
+          'thumbnailTimeDisplay',
           'instagramHoverThumbnails',
           'tiktokHoverThumbnails',
           'timelinePosition',
@@ -138,6 +140,9 @@ export class SettingsManager {
             instagramHoverThumbnails:
               stored.instagramHoverThumbnails ??
               this.defaultSettings.instagramHoverThumbnails,
+            thumbnailTimeDisplay: normalizeThumbnailTimeDisplay(
+              stored.thumbnailTimeDisplay
+            ),
             tiktokHoverThumbnails:
               stored.tiktokHoverThumbnails ??
               this.defaultSettings.tiktokHoverThumbnails,

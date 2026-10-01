@@ -100,6 +100,11 @@ export const MEDIA_OVERLAY_STYLES = `
           margin-top: 7px;
         }
 
+        .mfs-thumbnail-time[hidden],
+        .mfs-thumbnail-copy:has(> .mfs-thumbnail-time[hidden]):has(> .mfs-thumbnail-chapter-stage[hidden]) {
+          display: none;
+        }
+
         .mfs-thumbnail-time {
           display: inline-flex;
           flex: none;

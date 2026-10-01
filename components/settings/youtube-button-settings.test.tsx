@@ -316,7 +316,7 @@ describe('YouTube button settings', () => {
     await readySwitch('Show Info Cards button on YouTube');
     const featureSwitches = screen
       .getAllByRole('switch')
-      .filter((node) => node.getAttribute('aria-label')?.startsWith('Show '));
+      .filter((node) => node.hasAttribute('data-youtube-control'));
     expect(
       featureSwitches.map((node) => node.getAttribute('aria-label'))
     ).toEqual([

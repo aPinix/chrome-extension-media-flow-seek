@@ -59,6 +59,7 @@ export type ContentSettingsT = {
   tiktokShowAutoSkip: boolean;
   isYouTubeChapteredTimelineEnabled: boolean;
   isSeekbarThumbnailPreviewEnabled: boolean;
+  thumbnailTimeDisplay: import('@/helpers/thumbnail-time').ThumbnailTimeDisplay;
   instagramHoverThumbnails: boolean;
   tiktokHoverThumbnails: boolean;
   timelinePosition: 'top' | 'bottom';

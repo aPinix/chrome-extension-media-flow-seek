@@ -66,8 +66,10 @@ function PreviewVideo({
 
 export function ExtraFeaturePreview({
   featureName,
+  thumbnailTimeDisplay,
 }: {
   featureName: ExtraFeaturePreviewNameT;
+  thumbnailTimeDisplay?: import('@/helpers/thumbnail-time').ThumbnailTimeDisplay;
 }) {
   const thumbnail = featureName === 'Hover Thumbnails';
   const minimal = featureName === 'Minimal Player';
@@ -163,7 +165,11 @@ export function ExtraFeaturePreview({
         )}
       </div>
       {(thumbnail || chaptered) && (
-        <TimelineDetailPreview thumbnail={thumbnail} videoRef={videoRef} />
+        <TimelineDetailPreview
+          thumbnail={thumbnail}
+          thumbnailTimeDisplay={thumbnailTimeDisplay}
+          videoRef={videoRef}
+        />
       )}
       {colorDemo && <SiteColorPreview index={siteIndex} />}
       {minimal && (

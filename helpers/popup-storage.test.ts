@@ -11,6 +11,32 @@ import { SETTINGS_SCHEMA_VERSION } from '@/helpers/settings-migration';
 import { DomainSortE } from '@/types/domains';
 
 describe('timeline seeking storage', () => {
+  it.each([undefined, 'none', 'time', 'remaining', 'both', 'invalid'])(
+    'normalizes thumbnail time preference %s in popup and content storage',
+    async (value) => {
+      const set = vi.fn();
+      vi.stubGlobal('chrome', {
+        storage: {
+          sync: {
+            get: vi.fn((_keys, callback) =>
+              callback({ thumbnailTimeDisplay: value })
+            ),
+            set,
+          },
+        },
+      });
+      const expected =
+        value === 'none' || value === 'remaining' || value === 'both'
+          ? value
+          : 'time';
+      expect((await loadPopupSettings()).thumbnailTimeDisplay).toBe(expected);
+      expect(
+        (await new SettingsManager().initialize()).thumbnailTimeDisplay
+      ).toBe(expected);
+      saveSettings({ thumbnailTimeDisplay: expected });
+      expect(set).toHaveBeenCalledWith({ thumbnailTimeDisplay: expected });
+    }
+  );
   afterEach(() => {
     vi.unstubAllGlobals();
   });

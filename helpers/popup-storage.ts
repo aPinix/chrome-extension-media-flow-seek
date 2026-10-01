@@ -15,6 +15,7 @@ import {
   migrateSeekSettings,
   SETTINGS_SCHEMA_VERSION,
 } from '@/helpers/settings-migration';
+import { normalizeThumbnailTimeDisplay } from '@/helpers/thumbnail-time';
 import { normalizeTikTokSpeed } from '@/helpers/tiktok-settings';
 import type { DomainConfigT, DomainSortT } from '@/types/domains';
 import { DomainSortE } from '@/types/domains';
@@ -45,6 +46,7 @@ export type PopupSettings = {
   tiktokShowAutoSkip: boolean;
   isYouTubeChapteredTimelineEnabled: boolean;
   isSeekbarThumbnailPreviewEnabled: boolean;
+  thumbnailTimeDisplay: import('@/helpers/thumbnail-time').ThumbnailTimeDisplay;
   instagramHoverThumbnails: boolean;
   tiktokHoverThumbnails: boolean;
   timelinePosition: 'top' | 'bottom';
@@ -83,6 +85,7 @@ export const DEFAULT_SETTINGS: Omit<PopupSettings, 'domainRules'> = {
   tiktokShowAutoSkip: true,
   isYouTubeChapteredTimelineEnabled: true,
   isSeekbarThumbnailPreviewEnabled: true,
+  thumbnailTimeDisplay: 'time',
   instagramHoverThumbnails: true,
   tiktokHoverThumbnails: true,
   timelinePosition: 'bottom',
@@ -134,6 +137,7 @@ export const loadPopupSettings = (): Promise<PopupSettings> => {
         'tiktokShowAutoSkip',
         'isYouTubeChapteredTimelineEnabled',
         'isSeekbarThumbnailPreviewEnabled',
+        'thumbnailTimeDisplay',
         'instagramHoverThumbnails',
         'tiktokHoverThumbnails',
         'timelinePosition',
@@ -231,6 +235,9 @@ export const loadPopupSettings = (): Promise<PopupSettings> => {
           isSeekbarThumbnailPreviewEnabled:
             stored.isSeekbarThumbnailPreviewEnabled ??
             DEFAULT_SETTINGS.isSeekbarThumbnailPreviewEnabled,
+          thumbnailTimeDisplay: normalizeThumbnailTimeDisplay(
+            stored.thumbnailTimeDisplay
+          ),
           instagramHoverThumbnails:
             stored.instagramHoverThumbnails ??
             DEFAULT_SETTINGS.instagramHoverThumbnails,

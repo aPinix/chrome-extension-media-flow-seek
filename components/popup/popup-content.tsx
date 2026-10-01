@@ -40,6 +40,7 @@ import {
   subscribeToEnabledChanges,
 } from '@/helpers/popup-storage';
 import type { ScrollHotkeyT } from '@/helpers/scroll-speed';
+import type { ThumbnailTimeDisplay } from '@/helpers/thumbnail-time';
 import { getCurrentDomain } from '@/lib/popup-utils';
 import { cn } from '@/lib/utils';
 import { getExtensionVersion } from '@/lib/version';
@@ -242,6 +243,8 @@ export function PopupContent() {
   const [instagramHoverThumbnails, setInstagramHoverThumbnails] = useState(
     DEFAULT_SETTINGS.instagramHoverThumbnails
   );
+  const [thumbnailTimeDisplay, setThumbnailTimeDisplay] =
+    useState<ThumbnailTimeDisplay>(DEFAULT_SETTINGS.thumbnailTimeDisplay);
   const [tiktokHoverThumbnails, setTikTokHoverThumbnails] = useState(
     DEFAULT_SETTINGS.tiktokHoverThumbnails
   );
@@ -337,6 +340,7 @@ export function PopupContent() {
       DEFAULT_SETTINGS.isYouTubeChapteredTimelineEnabled &&
     isSeekbarThumbnailPreviewEnabled ===
       DEFAULT_SETTINGS.isSeekbarThumbnailPreviewEnabled &&
+    thumbnailTimeDisplay === DEFAULT_SETTINGS.thumbnailTimeDisplay &&
     timelinePosition === DEFAULT_SETTINGS.timelinePosition &&
     timelineHeight === DEFAULT_SETTINGS.timelineHeight &&
     timelineHeightUnit === DEFAULT_SETTINGS.timelineHeightUnit &&
@@ -379,6 +383,7 @@ export function PopupContent() {
         settings.isSeekbarThumbnailPreviewEnabled
       );
       setTimelinePosition(settings.timelinePosition);
+      setThumbnailTimeDisplay(settings.thumbnailTimeDisplay);
       setTimelineHeight(settings.timelineHeight);
       setTimelineHeightUnit(settings.timelineHeightUnit);
       setDomainRules(settings.domainRules);
@@ -712,6 +717,7 @@ export function PopupContent() {
       defaultSettings.isSeekbarThumbnailPreviewEnabled
     );
     setTimelinePosition(defaultSettings.timelinePosition);
+    setThumbnailTimeDisplay(defaultSettings.thumbnailTimeDisplay);
     setTimelineHeight(defaultSettings.timelineHeight);
     setTimelineHeightUnit(defaultSettings.timelineHeightUnit);
     setActionArea(defaultSettings.actionArea);
@@ -746,6 +752,7 @@ export function PopupContent() {
       isSeekbarThumbnailPreviewEnabled:
         defaultSettings.isSeekbarThumbnailPreviewEnabled,
       timelinePosition: defaultSettings.timelinePosition,
+      thumbnailTimeDisplay: defaultSettings.thumbnailTimeDisplay,
       timelineHeight: defaultSettings.timelineHeight,
       timelineHeightUnit: defaultSettings.timelineHeightUnit,
       actionArea: defaultSettings.actionArea,
@@ -1080,6 +1087,11 @@ export function PopupContent() {
                   <SectionTitle title="Shared Video Features" />
                   <SharedVideoSettings
                     extensionEnabled={isEnabled}
+                    thumbnailTimeDisplay={thumbnailTimeDisplay}
+                    onThumbnailTimeDisplayChange={(value) => {
+                      setThumbnailTimeDisplay(value);
+                      saveSettings({ thumbnailTimeDisplay: value });
+                    }}
                     youtube={{
                       thumbnailPreviewEnabled: isSeekbarThumbnailPreviewEnabled,
                       onThumbnailPreviewEnabledChange:

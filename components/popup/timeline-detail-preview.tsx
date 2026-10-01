@@ -1,6 +1,7 @@
 import { MousePointer2Icon } from 'lucide-react';
 import { type RefObject, useEffect, useRef, useState } from 'react';
-import { formatThumbnailPreviewTime } from '@/helpers/thumbnail-preview';
+import { formatThumbnailTimeLabel } from '@/helpers/thumbnail-preview';
+import type { ThumbnailTimeDisplay } from '@/helpers/thumbnail-time';
 import {
   DEFAULT_TIMELINE_PROGRESS_BACKGROUND,
   TIMELINE_TRACK_STYLE,
@@ -17,14 +18,21 @@ const CHAPTERS = [
 export function TimelineDetailPreview({
   thumbnail,
   videoRef,
+  thumbnailTimeDisplay = 'time',
 }: {
   thumbnail: boolean;
+  thumbnailTimeDisplay?: ThumbnailTimeDisplay;
   videoRef: RefObject<HTMLVideoElement | null>;
 }) {
   const frameRef = useRef<HTMLVideoElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const cursorRef = useRef<SVGSVGElement>(null);
-  const [sample, setSample] = useState({ hover: 0.25, time: 0, progress: 0 });
+  const [sample, setSample] = useState({
+    hover: 0.25,
+    time: 0,
+    progress: 0,
+    duration: 0,
+  });
 
   useEffect(() => {
     let frame = 0;
@@ -61,6 +69,7 @@ export function TimelineDetailPreview({
         setSample({
           hover,
           time,
+          duration,
           progress: duration > 0 ? (video?.currentTime ?? 0) / duration : 0,
         });
         const preview = frameRef.current;
@@ -141,16 +150,22 @@ export function TimelineDetailPreview({
             />
           </div>
         )}
-        <div className="mfs-thumbnail-copy">
-          <span className="mfs-thumbnail-time">
-            {formatThumbnailPreviewTime(sample.time)}
-          </span>
-          {!thumbnail && (
-            <span className="whitespace-nowrap" key={chapter.title}>
-              {chapter.title}
+        {(!thumbnail || thumbnailTimeDisplay !== 'none') && (
+          <div className="mfs-thumbnail-copy">
+            <span className="mfs-thumbnail-time">
+              {formatThumbnailTimeLabel(
+                sample.time,
+                { start: 0, end: sample.duration, duration: sample.duration },
+                thumbnail ? thumbnailTimeDisplay : 'time'
+              )}
             </span>
-          )}
-        </div>
+            {!thumbnail && (
+              <span className="whitespace-nowrap" key={chapter.title}>
+                {chapter.title}
+              </span>
+            )}
+          </div>
+        )}
       </div>
       <MousePointer2Icon
         aria-hidden="true"

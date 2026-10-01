@@ -13,6 +13,34 @@ import {
 afterEach(cleanup);
 
 describe('ExtraFeaturePreviewTooltip', () => {
+  it('reflects the selected thumbnail time mode in the animation', () => {
+    const { container, rerender } = render(
+      <ExtraFeaturePreview
+        featureName="Hover Thumbnails"
+        thumbnailTimeDisplay="both"
+      />
+    );
+    expect(container.querySelector('.mfs-thumbnail-time')?.textContent).toBe(
+      '0:00 / −0:00'
+    );
+    rerender(
+      <ExtraFeaturePreview
+        featureName="Hover Thumbnails"
+        thumbnailTimeDisplay="remaining"
+      />
+    );
+    expect(container.querySelector('.mfs-thumbnail-time')?.textContent).toBe(
+      '−0:00'
+    );
+    rerender(
+      <ExtraFeaturePreview
+        featureName="Hover Thumbnails"
+        thumbnailTimeDisplay="none"
+      />
+    );
+    expect(container.querySelector('.mfs-thumbnail-copy')).toBeNull();
+    expect(container.querySelector('.mfs-thumbnail-frame')).not.toBeNull();
+  });
   it.each(EXTRA_FEATURE_PREVIEW_NAMES)(
     'composes %s without a screenshot',
     (featureName) => {

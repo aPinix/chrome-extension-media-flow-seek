@@ -1,9 +1,49 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, expect, it, vi } from 'vitest';
 import { SharedVideoSettings } from './shared-video-settings';
 
 afterEach(cleanup);
+
+it('places the thumbnail time selector inside Hover Thumbnails and selects Time by default', async () => {
+  const user = userEvent.setup();
+  const { rerender } = render(
+    <SharedVideoSettings
+      extensionEnabled
+      instagram={preferences()}
+      tiktok={preferences()}
+      youtube={preferences()}
+    />
+  );
+  const section = screen.getByRole('region', { name: 'Hover Thumbnails' });
+  const selector = within(section).getByRole('combobox', {
+    name: 'Time below thumbnail',
+  });
+  expect(selector.textContent).toContain('Time');
+  const onChange = vi.fn();
+  rerender(
+    <SharedVideoSettings
+      extensionEnabled
+      instagram={preferences()}
+      onThumbnailTimeDisplayChange={onChange}
+      thumbnailTimeDisplay="both"
+      tiktok={preferences()}
+      youtube={preferences()}
+    />
+  );
+  expect(selector.textContent).toContain('Both');
+  await user.click(selector);
+  expect(screen.getByRole('option', { name: 'None' })).toBeTruthy();
+  await user.click(screen.getByRole('option', { name: 'None' }));
+  expect(onChange).toHaveBeenCalledWith('none');
+});
 
 function preferences() {
   return {

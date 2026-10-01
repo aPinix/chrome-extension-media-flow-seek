@@ -8,6 +8,7 @@ import {
   requestSocialThumbnailMetadata,
   type SocialThumbnailMetadata,
 } from '@/helpers/social-thumbnails';
+import type { ThumbnailTimeDisplay } from '@/helpers/thumbnail-time';
 import type { YouTubeChapterT } from '@/helpers/youtube-chapters';
 import {
   getYouTubeStoryboardFrame,
@@ -71,6 +72,19 @@ export const formatThumbnailPreviewTime = (
     ? `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
     : clock;
 };
+
+export function formatThumbnailTimeLabel(
+  time: number,
+  range: MediaSeekRangeT,
+  mode: ThumbnailTimeDisplay = 'time'
+): string {
+  if (mode === 'none') return '';
+  const timestamp = formatThumbnailPreviewTime(time, range);
+  // DVR previews already show the distance from the live edge.
+  if (mode === 'time' || range.start > 0) return timestamp;
+  const remaining = `−${formatThumbnailPreviewTime(Math.max(0, range.end - time))}`;
+  return mode === 'both' ? `${timestamp} / ${remaining}` : remaining;
+}
 
 export const getTextTrackChapterTitle = (
   video: HTMLVideoElement,
@@ -375,6 +389,7 @@ export const createSeekbarThumbnailPreviewElement = (
 };
 
 type SeekbarThumbnailPreviewControllerOptionsT = {
+  getTimeDisplay?: () => ThumbnailTimeDisplay;
   getTimelinePosition: () => 'top' | 'bottom';
   getYouTubeChapters: () => YouTubeChapterT[] | undefined;
   isEnabled: () => boolean;
@@ -408,6 +423,7 @@ export class SeekbarThumbnailPreviewController {
   private readonly imageLoader: HTMLImageElement;
   private readonly previewVideo: HTMLVideoElement;
   private currentTimeLabel = '';
+  private previewTime: number | null = null;
   private readonly timeElement: HTMLElement;
 
   constructor(
@@ -513,7 +529,14 @@ export class SeekbarThumbnailPreviewController {
       this.restoreTextTracks = prepareThumbnailTextTracks(video);
     }
 
-    this.updateTimeLabel(formatThumbnailPreviewTime(target.time, range));
+    this.previewTime = target.time;
+    this.updateTimeLabel(
+      formatThumbnailTimeLabel(
+        target.time,
+        range,
+        this.options.getTimeDisplay?.()
+      )
+    );
     const chapterTitle =
       this.getYouTubeChapterTitleAtPoint(clientX, target.time, timelineRect) ??
       getTextTrackChapterTitle(video, target.time);
@@ -526,6 +549,17 @@ export class SeekbarThumbnailPreviewController {
 
   updateEnabled(): void {
     if (!this.options.isEnabled()) this.hide(true);
+    else if (this.previewTime !== null) {
+      const range = getMediaSeekRange(this.options.video);
+      if (range)
+        this.updateTimeLabel(
+          formatThumbnailTimeLabel(
+            this.previewTime,
+            range,
+            this.options.getTimeDisplay?.()
+          )
+        );
+    }
   }
 
   hide(releaseImmediately = false): void {
@@ -809,6 +843,7 @@ export class SeekbarThumbnailPreviewController {
   }
 
   private updateTimeLabel(label: string): void {
+    this.timeElement.hidden = !label;
     if (label === this.currentTimeLabel) return;
     this.currentTimeLabel = label;
     this.timeElement.textContent = label;

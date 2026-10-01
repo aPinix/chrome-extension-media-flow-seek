@@ -550,6 +550,8 @@ export class OverlayCreator {
 
     const thumbnailPreviewController = thumbnailPreview
       ? new SeekbarThumbnailPreviewController({
+          getTimeDisplay: () =>
+            this.settingsManager.getSettings().thumbnailTimeDisplay,
           getTimelinePosition: () => this.settingsManager.getTimelinePosition(),
           getYouTubeChapters: () =>
             this.youtubePreviewChapterModels.get(scrubTimeline),

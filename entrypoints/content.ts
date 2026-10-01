@@ -6,6 +6,7 @@ import { normalizeInstagramSpeed } from '@/helpers/instagram-settings';
 import { OverlayCreator } from '@/helpers/overlay-creator';
 import { normalizeScrollSpeedFactor } from '@/helpers/scroll-speed';
 import { SettingsManager } from '@/helpers/settings-manager';
+import { normalizeThumbnailTimeDisplay } from '@/helpers/thumbnail-time';
 import { normalizeTikTokSpeed } from '@/helpers/tiktok-settings';
 import { VideoStateManager } from '@/helpers/video-state';
 import { MessageHandler } from '@/lib/message-handler';
@@ -207,6 +208,13 @@ export default defineContentScript({
 
       const isSeekbarThumbnailPreviewEnabled =
         changes.isSeekbarThumbnailPreviewEnabled?.newValue;
+      if (changes.thumbnailTimeDisplay) {
+        settingsManager.updateSetting(
+          'thumbnailTimeDisplay',
+          normalizeThumbnailTimeDisplay(changes.thumbnailTimeDisplay.newValue)
+        );
+        overlayCreator.updateSeekbarThumbnailPreviewState();
+      }
       if (typeof isSeekbarThumbnailPreviewEnabled === 'boolean') {
         settingsManager.updateSetting(
           'isSeekbarThumbnailPreviewEnabled',

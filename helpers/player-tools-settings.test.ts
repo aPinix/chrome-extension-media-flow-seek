@@ -3,7 +3,6 @@ import {
   DEFAULT_PLAYER_TOOLS,
   normalizePlayerTools,
 } from './player-tools-settings';
-
 it('enables Boost Volume and Loop Sections by default without starting automatic boost', () => {
   for (const settings of [
     DEFAULT_PLAYER_TOOLS,

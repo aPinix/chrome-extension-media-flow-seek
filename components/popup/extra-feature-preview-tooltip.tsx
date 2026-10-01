@@ -5,6 +5,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import type { ThumbnailTimeDisplay } from '@/helpers/thumbnail-time';
 import { ExtraFeaturePreview } from './extra-feature-preview';
 import { LoopSectionsPreview } from './loop-sections-preview';
 
@@ -22,10 +23,12 @@ export type ExtraFeaturePreviewNameT =
 
 interface ExtraFeaturePreviewTooltipPropsI {
   featureName: ExtraFeaturePreviewNameT;
+  thumbnailTimeDisplay?: ThumbnailTimeDisplay;
 }
 
 export function ExtraFeaturePreviewTooltip({
   featureName,
+  thumbnailTimeDisplay,
 }: ExtraFeaturePreviewTooltipPropsI) {
   return (
     <TooltipProvider>
@@ -48,7 +51,14 @@ export function ExtraFeaturePreviewTooltip({
           side="top"
           sideOffset={8}
         >
-          {featureName === 'Loop Sections' ? <LoopSectionsPreview /> : <ExtraFeaturePreview featureName={featureName} />}
+          {featureName === 'Loop Sections' ? (
+            <LoopSectionsPreview />
+          ) : (
+            <ExtraFeaturePreview
+              featureName={featureName}
+              thumbnailTimeDisplay={thumbnailTimeDisplay}
+            />
+          )}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createSeekbarThumbnailPreviewElement,
   formatThumbnailPreviewTime,
+  formatThumbnailTimeLabel,
   getTextTrackThumbnailFrame,
   LazyVideoThumbnailSource,
   SeekbarThumbnailPreviewController,
@@ -36,6 +37,75 @@ afterEach(() => {
 });
 
 describe('thumbnail preview labels and metadata', () => {
+  it('defaults to the hovered time and supports remaining time or both', () => {
+    const range = { start: 0, end: 265, duration: 265 };
+    expect(formatThumbnailTimeLabel(65, range)).toBe('1:05');
+    expect(formatThumbnailTimeLabel(65, range, 'none')).toBe('');
+    expect(formatThumbnailTimeLabel(65, range, 'remaining')).toBe('−3:20');
+    expect(formatThumbnailTimeLabel(65, range, 'both')).toBe('1:05 / −3:20');
+    expect(formatThumbnailTimeLabel(265, range, 'remaining')).toBe('−0:00');
+    expect(
+      formatThumbnailTimeLabel(
+        200,
+        { start: 100, end: 200, duration: 100 },
+        'both'
+      )
+    ).toBe('LIVE');
+  });
+
+  it('updates the visible thumbnail label without seeking the playing video', () => {
+    const video = document.createElement('video');
+    video.currentTime = 12;
+    Object.defineProperty(video, 'duration', { value: 100 });
+    const wrapper = document.createElement('div');
+    const timeline = document.createElement('div');
+    timeline.style.opacity = '1';
+    const preview = createSeekbarThumbnailPreviewElement(document);
+    const decoder = preview.querySelector('video') as HTMLVideoElement;
+    decoder.load = vi.fn();
+    wrapper.append(timeline, preview);
+    document.body.append(wrapper);
+    wrapper.getBoundingClientRect = () => rect(0, 0, 120, 100);
+    timeline.getBoundingClientRect = () => rect(10, 90, 100, 6);
+    let mode: 'none' | 'time' | 'remaining' | 'both' = 'time';
+    const controller = new SeekbarThumbnailPreviewController({
+      getTimeDisplay: () => mode,
+      getTimelinePosition: () => 'bottom',
+      getYouTubeChapters: () => undefined,
+      isEnabled: () => true,
+      isScrubbing: () => false,
+      preview,
+      timeline,
+      video,
+      wrapper,
+    });
+    controller.updateAtPoint(35, 92);
+    expect(preview.querySelector('.mfs-thumbnail-time')?.textContent).toBe(
+      '0:25'
+    );
+    mode = 'both';
+    controller.updateEnabled();
+    expect(preview.querySelector('.mfs-thumbnail-time')?.textContent).toBe(
+      '0:25 / −1:15'
+    );
+    mode = 'remaining';
+    controller.updateEnabled();
+    expect(preview.querySelector('.mfs-thumbnail-time')?.textContent).toBe(
+      '−1:15'
+    );
+    expect(video.currentTime).toBe(12);
+    mode = 'none';
+    controller.updateEnabled();
+    expect(
+      (preview.querySelector('.mfs-thumbnail-time') as HTMLElement).hidden
+    ).toBe(true);
+    mode = 'time';
+    controller.updateEnabled();
+    expect(
+      (preview.querySelector('.mfs-thumbnail-time') as HTMLElement).hidden
+    ).toBe(false);
+    controller.cleanup();
+  });
   it('formats VOD and DVR times', () => {
     expect(formatThumbnailPreviewTime(65)).toBe('1:05');
     expect(formatThumbnailPreviewTime(3_665)).toBe('1:01:05');
