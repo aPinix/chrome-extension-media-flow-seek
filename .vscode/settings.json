@@ -37,5 +37,8 @@
   // }
 
   // i18n
-  "i18n-ally-next.localesPaths": ["src/locales", "src/lib/i18n"]
+  "i18n-ally-next.localesPaths": ["src/locales", "src/lib/i18n"],
+
+  // json
+  "json.schemaDownload.enable": true
 }
