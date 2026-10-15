@@ -2,35 +2,43 @@ export type YouTubeControl =
   | 'boost'
   | 'cinema'
   | 'loop'
+  | 'bookmarks'
   | 'infoCards'
   | 'screenshot'
-  | 'filters';
+  | 'filters'
+  | 'pip';
 
 export const YOUTUBE_CONTROL_ORDER: YouTubeControl[] = [
   'boost',
   'cinema',
   'loop',
+  'bookmarks',
   'infoCards',
   'screenshot',
   'filters',
+  'pip',
 ];
 
 export const YOUTUBE_CONTROL_LABELS: Record<YouTubeControl, string> = {
   boost: 'Boost Volume',
   cinema: 'Cinema Mode',
   loop: 'Loop Sections',
+  bookmarks: 'Bookmarks',
   infoCards: 'Info Cards',
   screenshot: 'Screenshot',
   filters: 'Video Filters',
+  pip: 'Picture-in-Picture',
 };
 
 export const YOUTUBE_CONTROL_SHORTCUTS: Record<YouTubeControl, string> = {
   boost: 'b',
   cinema: 'd',
   loop: 'r',
+  bookmarks: 'w',
   infoCards: 'e',
   screenshot: 's',
   filters: 'v',
+  pip: 'p',
 };
 export type YouTubeAdvancedControl = 'boost' | 'cinema' | 'screenshot';
 
@@ -39,6 +47,37 @@ export const YOUTUBE_CONTROL_ICONS: Record<
   YouTubeControl | 'edit',
   IconShape[]
 > = {
+  bookmarks: [
+    {
+      tag: 'path',
+      attributes: { d: 'M6 1h12v18l-6-4-6 4Z', strokeWidth: '2' },
+    },
+  ],
+  pip: [
+    {
+      tag: 'rect',
+      attributes: {
+        x: '1',
+        y: '1',
+        width: '22',
+        height: '18',
+        rx: '2',
+        strokeWidth: '2',
+      },
+    },
+    {
+      tag: 'rect',
+      attributes: {
+        x: '12',
+        y: '10',
+        width: '8',
+        height: '6',
+        rx: '1',
+        strokeWidth: '1.5',
+        fill: 'currentColor',
+      },
+    },
+  ],
   boost: [
     {
       tag: 'path',

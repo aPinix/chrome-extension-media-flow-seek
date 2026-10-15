@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PlayerTools } from './player-tools';
 import { DEFAULT_PLAYER_TOOLS } from './player-tools-settings';
+import { validMoment } from './saved-media';
 
 let tools: PlayerTools | undefined;
 let video: HTMLVideoElement;
@@ -94,6 +95,148 @@ afterEach(() => {
 });
 
 describe('player tools integration', () => {
+  it.each([5, 25, 40])('starts playback inside a newly drawn loop after editing while paused (position: %s)', async (position) => {
+    video.currentTime = position;
+    const track = document.querySelector('.mfs-loop-surface')?.shadowRoot?.querySelector('.timeline') as HTMLElement;
+    track.getBoundingClientRect = video.getBoundingClientRect;
+    findButton('Edit loop').click();
+    for (const [type, x] of [['pointerdown', 64], ['pointermove', 192], ['pointerup', 192]] as const) {
+      const event = new MouseEvent(type, { bubbles: true, clientX: x, button: 0 });
+      Object.defineProperty(event, 'pointerId', { value: 1 });
+      track.dispatchEvent(event);
+    }
+    expect(video.paused).toBe(true);
+    expect(video.currentTime).toBe(position);
+    (track.querySelector('.close-loop-editor') as HTMLButtonElement).click();
+    await vi.advanceTimersByTimeAsync(240);
+    expect(video.paused).toBe(true);
+    Object.defineProperty(video, 'paused', { value: false, configurable: true });
+    video.dispatchEvent(new Event('play'));
+    expect(video.currentTime).toBe(position >= 10 && position < 30 ? position : 10);
+    expect(video.paused).toBe(false);
+    findButton('Disable loop').click();
+    Object.defineProperty(video, 'paused', { value: true, configurable: true });
+    video.currentTime = 5;
+    Object.defineProperty(video, 'paused', { value: false, configurable: true });
+    video.dispatchEvent(new Event('play'));
+    expect(video.currentTime).toBe(5);
+  });
+  it('hides bookmarks during loop editing and enables the containing section without restarting playback', async () => {
+    const base = { mediaKey: 'youtube:test-video', url: document.location.href, title: 'Test', createdAt: 1 };
+    const sections = [
+      { ...base, id: 'first', name: 'First', start: 10, end: 20 },
+      { ...base, id: 'second', name: 'Second', start: 30, end: 50 },
+      { ...base, id: 'bookmark', name: 'Bookmark', start: 25 },
+    ];
+    send.mockImplementation(async ({ command }) => command.op === 'list'
+      ? { library: { version: 1, items: sections } } : {});
+    const toggle = document.querySelector<HTMLButtonElement>('.mfs-loop-button');
+    if (!toggle) throw new Error('Loop controls missing');
+    toggle.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter',shiftKey:true,bubbles:true})); await vi.advanceTimersByTimeAsync(0);
+    const track = document.querySelector('.mfs-loop-surface')?.shadowRoot;
+    expect(track?.querySelector('.marker')).toBeNull();
+    expect(track?.querySelectorAll('.saved-range .handle')).toHaveLength(4);
+    video.currentTime = 40;
+    toggle.click();
+    expect(video.currentTime).toBe(40);
+    expect(inputFor('A (seconds)').valueAsNumber).toBe(30);
+    toggle.click(); video.currentTime = 45; toggle.click();
+    expect(video.currentTime).toBe(45);
+    toggle.click(); video.currentTime = 80; toggle.click();
+    expect(video.currentTime).toBe(30);
+  });
+  it('adds from the player, edits the same saved bookmark, and exits on preference changes and navigation', async () => {
+    const bookmark = document.querySelector<HTMLButtonElement>('.mfs-bookmarks-button');
+    if (!bookmark) throw new Error('Bookmark button missing');
+    bookmark.click(); await vi.advanceTimersByTimeAsync(0);
+    const saved = send.mock.calls.find(([message]) => message.command.op === 'put')?.[0].command.item;
+    expect(saved).toMatchObject({name:'Moment 0:25',start:25});
+    expect(saved.end).toBeUndefined();
+    send.mockClear();
+    bookmark.dispatchEvent(new MouseEvent('pointerdown',{button:0,bubbles:true}));
+    await vi.advanceTimersByTimeAsync(600);
+    bookmark.dispatchEvent(new Event('pointerup',{bubbles:true}));bookmark.click();
+    expect(send.mock.calls.filter(([message])=>message.command.op==='put')).toHaveLength(0);
+    const editor=document.querySelector('.mfs-youtube-bookmarks-editor') as HTMLElement;
+    expect(editor.hidden).toBe(false);
+    expect(bookmark.getAttribute('aria-expanded')).toBe('true');
+    expect(document.querySelector('#timeline')?.getAttribute('data-mfs-loop-editing')).toBe('true');
+    const name=editor.shadowRoot?.querySelector<HTMLInputElement>('input[aria-label="Bookmark name"]');
+    if (!name) throw new Error('Bookmark name missing');
+    name.value='Introduction';name.dispatchEvent(new Event('change'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({command:{op:'put',item:expect.objectContaining({id:saved.id,name:'Introduction',start:25,createdAt:saved.createdAt})}}));
+    const listener=changed.addListener.mock.calls.at(-1)?.[0];
+    listener({playerTools:{newValue:{...DEFAULT_PLAYER_TOOLS,youtubeBookmarksEnabled:false}}},'sync');
+    expect(editor.hidden).toBe(true);expect(bookmark.isConnected).toBe(false);
+    listener({playerTools:{newValue:DEFAULT_PLAYER_TOOLS}},'sync');
+    bookmark.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',shiftKey:true,bubbles:true}));
+    expect(editor.hidden).toBe(false);
+    document.dispatchEvent(new Event('yt-navigate-start'));
+    expect(editor.hidden).toBe(true);
+  });
+  it('reports failed bookmark creation and does not add an unsaved marker', async () => {
+    send.mockImplementation(async ({command}) => command.op==='put' ? {error:'Storage unavailable'} : {library:{version:1,items:[]}});
+    document.querySelector<HTMLButtonElement>('.mfs-bookmarks-button')?.click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(document.querySelector('.mfs-youtube-bookmarks')?.textContent).toContain('Could not save bookmark');
+    expect(root.querySelector('.items')?.textContent).not.toContain('Moment 0:25');
+  });
+  it('keeps bookmark editing open when the opening hold releases outside the repositioned button', async () => {
+    const bookmark = document.querySelector<HTMLButtonElement>('.mfs-bookmarks-button');
+    if (!bookmark) throw new Error('Bookmark button missing');
+    const clicked = vi.fn();
+    video.addEventListener('click', clicked);
+    send.mockClear();
+    bookmark.dispatchEvent(new MouseEvent('pointerdown', { button: 0, bubbles: true }));
+    await vi.advanceTimersByTimeAsync(600);
+    const editor = document.querySelector('.mfs-youtube-bookmarks-editor') as HTMLElement;
+    expect(bookmark.getAttribute('aria-expanded')).toBe('true');
+    for (const type of ['pointerup', 'mouseup', 'click']) {
+      video.dispatchEvent(new MouseEvent(type, { button: 0, bubbles: true, cancelable: true }));
+    }
+    await vi.advanceTimersByTimeAsync(300);
+    expect(editor.hidden).toBe(false);
+    expect(bookmark.getAttribute('aria-expanded')).toBe('true');
+    expect(clicked).not.toHaveBeenCalled();
+    expect(send.mock.calls.filter(([message]) => message.command.op === 'put')).toHaveLength(0);
+    video.dispatchEvent(new MouseEvent('pointerdown', { button: 0, bubbles: true }));
+    video.click();
+    await vi.advanceTimersByTimeAsync(240);
+    expect(editor.hidden).toBe(true);
+    expect(clicked).not.toHaveBeenCalled();
+  });
+  it('persists dragged bookmarks as valid library entries and reports storage errors without losing the saved point', async () => {
+    const bookmark = document.querySelector('.mfs-bookmarks-button') as HTMLButtonElement;
+    bookmark.click();
+    await vi.advanceTimersByTimeAsync(0);
+    bookmark.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', shiftKey: true, bubbles: true}));
+    const editor = document.querySelector('.mfs-youtube-bookmarks-editor')?.shadowRoot;
+    if (!editor) throw new Error('Bookmark editor missing');
+    const pointer = (target: EventTarget, type: string, x: number) => {
+      const event = new MouseEvent(type, {clientX: x, button: 0, bubbles: true, composed: true});
+      Object.defineProperty(event, 'pointerId', {value: 1});
+      target.dispatchEvent(event);
+    };
+    send.mockClear();
+    send.mockImplementation(async ({command}) => {
+      if (command.op === 'put' && !validMoment(command.item)) return {error: 'Invalid saved moment.'};
+      return {};
+    });
+    pointer(editor.querySelector('.point') as HTMLElement, 'pointerdown', 160);
+    pointer(document, 'pointermove', 320);
+    pointer(document, 'pointerup', 320);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({command: {op: 'put', item: expect.objectContaining({start: 50})}}));
+    expect(editor.querySelector('.point')?.getAttribute('style')).toContain('50%');
+    send.mockResolvedValueOnce({error: 'Storage quota exceeded.'});
+    pointer(editor.querySelector('.point') as HTMLElement, 'pointerdown', 320);
+    pointer(document, 'pointermove', 480);
+    pointer(document, 'pointerup', 480);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(editor.querySelector('.point')?.getAttribute('style')).toContain('50%');
+    expect(editor.querySelector('[role=status]')?.textContent).toContain('Storage quota exceeded.');
+  });
   it('starts Cinema inactive and supports button, Escape, backdrop and PiP exit paths', async () => {
     const cinema = document.querySelector(
       '.mfs-cinema-button'
@@ -373,14 +516,14 @@ describe('player tools integration', () => {
     native.click();
     expect(native.getAttribute('aria-pressed')).toBe('false');
     expect(track.dataset.loopEnabled).toBe('false');
-    (document.querySelector('.mfs-loop-edit-button') as HTMLButtonElement).click();
+    (document.querySelector('.mfs-loop-button') as HTMLButtonElement).dispatchEvent(new KeyboardEvent('keydown', {key:'Enter',shiftKey:true,bubbles:true}));
     expect(track.classList.contains('editing')).toBe(true);
     expect(native.getAttribute('aria-pressed')).toBe('false');
     (track.querySelector('.close-loop-editor') as HTMLButtonElement).click();
     native.click();
     expect(native.getAttribute('aria-pressed')).toBe('true');
     expect(track.classList.contains('editing')).toBe(false);
-    (document.querySelector('.mfs-loop-edit-button') as HTMLButtonElement).click();
+    (document.querySelector('.mfs-loop-button') as HTMLButtonElement).dispatchEvent(new KeyboardEvent('keydown', {key:'Enter',shiftKey:true,bubbles:true}));
     (track.querySelector('.clear-loop-sections') as HTMLButtonElement).click();
     await vi.advanceTimersByTimeAsync(0);
     expect(track.classList.contains('editing')).toBe(true);
@@ -583,7 +726,7 @@ describe('player tools integration', () => {
   });
   it('keeps playing within dragged boundaries as each handle crosses the playhead', () => {
     findButton('Enable loop').click();
-    (document.querySelector('.mfs-loop-edit-button') as HTMLButtonElement).click();
+    (document.querySelector('.mfs-loop-button') as HTMLButtonElement).dispatchEvent(new KeyboardEvent('keydown', {key:'Enter',shiftKey:true,bubbles:true}));
     const track = document.querySelector('.mfs-loop-surface')!.shadowRoot!.querySelector('.timeline') as HTMLElement;
     track.getBoundingClientRect = video.getBoundingClientRect;
     Object.defineProperty(video, 'paused', { value: false, configurable: true });
@@ -614,7 +757,7 @@ describe('player tools integration', () => {
   });
   it.each([true, false])('restores pre-drag playback on editing exit (playing: %s)', async (wasPlaying) => {
     findButton('Enable loop').click();
-    (document.querySelector('.mfs-loop-edit-button') as HTMLButtonElement).click();
+    (document.querySelector('.mfs-loop-button') as HTMLButtonElement).dispatchEvent(new KeyboardEvent('keydown', {key:'Enter',shiftKey:true,bubbles:true}));
     const track = document.querySelector('.mfs-loop-surface')!.shadowRoot!.querySelector('.timeline') as HTMLElement;
     track.getBoundingClientRect = video.getBoundingClientRect;
     video.play = vi.fn(async () => { Object.defineProperty(video, 'paused', { value: false, configurable: true }); });
@@ -643,7 +786,7 @@ describe('player tools integration', () => {
   });
   it('moves playing video into a relocated section only when outside it', () => {
     findButton('Enable loop').click();
-    (document.querySelector('.mfs-loop-edit-button') as HTMLButtonElement).click();
+    (document.querySelector('.mfs-loop-button') as HTMLButtonElement).dispatchEvent(new KeyboardEvent('keydown', {key:'Enter',shiftKey:true,bubbles:true}));
     const track = document.querySelector('.mfs-loop-surface')!.shadowRoot!.querySelector('.timeline') as HTMLElement;
     track.getBoundingClientRect = video.getBoundingClientRect;
     Object.defineProperty(video, 'paused', { value: false, configurable: true });

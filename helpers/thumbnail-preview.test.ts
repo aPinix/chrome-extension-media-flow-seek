@@ -37,6 +37,42 @@ afterEach(() => {
 });
 
 describe('thumbnail preview labels and metadata', () => {
+  it('hides previews outside the timeline unless a pointer drag is active', () => {
+    const video = document.createElement('video');
+    Object.defineProperty(video, 'duration', { value: 100 });
+    const wrapper = document.createElement('div');
+    const timeline = document.createElement('div');
+    timeline.style.opacity = '1';
+    const preview = createSeekbarThumbnailPreviewElement(document);
+    const decoder = preview.querySelector('video') as HTMLVideoElement;
+    decoder.load = vi.fn();
+    wrapper.append(timeline, preview);
+    document.body.append(wrapper);
+    wrapper.getBoundingClientRect = () => rect(0, 0, 300, 200);
+    timeline.getBoundingClientRect = () => rect(10, 190, 280, 6);
+    let pointerDragging = false;
+    const controller = new SeekbarThumbnailPreviewController({
+      getTimelinePosition: () => 'bottom',
+      getYouTubeChapters: () => undefined,
+      isEnabled: () => true,
+      isScrubbing: () => pointerDragging,
+      preview,
+      timeline,
+      video,
+      wrapper,
+    });
+    controller.updateAtPoint(150, 192);
+    expect(preview.dataset.mfsVisible).toBe('true');
+    controller.updateAtPoint(160, 80);
+    expect(preview.dataset.mfsVisible).toBe('false');
+    pointerDragging = true;
+    controller.updateAtPoint(160, 80);
+    expect(preview.dataset.mfsVisible).toBe('true');
+    pointerDragging = false;
+    controller.updateAtPoint(160, 80);
+    expect(preview.dataset.mfsVisible).toBe('false');
+    controller.cleanup();
+  });
   it('defaults to the hovered time and supports remaining time or both', () => {
     const range = { start: 0, end: 265, duration: 265 };
     expect(formatThumbnailTimeLabel(65, range)).toBe('1:05');

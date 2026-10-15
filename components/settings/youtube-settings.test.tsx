@@ -10,12 +10,16 @@ vi.mock('./youtube-cinema-setting', () => ({
   YouTubeCinemaSetting: () => null,
 }));
 vi.mock('./youtube-loop-setting', () => ({ YouTubeLoopSetting: () => null }));
+vi.mock('./youtube-bookmarks-setting', () => ({
+  YouTubeBookmarksSetting: () => null,
+}));
 vi.mock('./youtube-info-cards-setting', () => ({
   YouTubeInfoCardsSetting: () => null,
 }));
 vi.mock('./youtube-mini-player-setting', () => ({
   YouTubeMiniPlayerSetting: () => null,
 }));
+vi.mock('./youtube-pip-setting', () => ({ YouTubePipSetting: () => null }));
 vi.mock('./youtube-screenshot-setting', () => ({
   YouTubeScreenshotSetting: () => null,
 }));

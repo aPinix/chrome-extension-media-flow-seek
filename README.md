@@ -142,6 +142,16 @@ Enable **Mini player on scroll** to keep a playing YouTube video visible when it
 
 **Picture-in-Picture** provides playback, skip, seek, volume, speed, remaining-time, and active-loop controls in browsers supporting Document PiP. Other compatible browsers fall back to native PiP with the browser's own controls. Mini Player and PiP are mutually exclusive. Live streams do not support saved loop editing in this version.
 
+**YouTube PiP Override** offers a **Custom PiP / Chrome PiP** button group. Custom PiP uses the Mini Player's controls in an always-on-top Document PiP window. Drag anywhere on the video to move it; resize from all four sides and corners. The video keeps its aspect ratio; position and size are saved on this device. Controls stay the same size as the window grows. Flick toward a corner to glide there with a smooth ease-out animation. Dragging past an edge also slides back on release without bouncing or overshooting, leaving a 10px gap inside the display's usable area (including the menu bar, Dock, or taskbar). The invisible resize handles retain their resize cursors. Chrome supplies the window title bar. Chrome PiP uses the browser's video-only player without a header, with Chrome's playback controls, dragging, resizing, and boundaries. This setting works independently of the scrolling Mini Player.
+
+The **Picture-in-Picture** icon in YouTube's player toolbar opens PiP directly (shortcut **P**). It uses the override when enabled and the usual PiP player otherwise. Its tooltip and size match the adjacent Volume Boost and Loop buttons.
+
+The PiP settings include a preview for each player. Try **Flick** or **Move**, then **Bring video back** to see the transition without changing your playback.
+
+Both modes use the same black placeholder with **Playing in picture-in-picture** near the upper left and **Bring video back** centered horizontally and vertically. The button has hover and pressed feedback. Clicking it returns the same video to the page without interrupting playback; Custom PiP animates back to the original video area. Flick and return animations run on the visible PiP's animation frames to avoid background timer throttling.
+
+Its **Open PiP when switching tabs** sub-option uses Chrome's automatic PiP support for playing videos and returns the video to the page when you switch back. Chrome may prompt for YouTube's automatic Picture-in-Picture permission; muted, paused, or otherwise ineligible playback will not trigger it. Requires Chrome 134 or a compatible browser for automatic playback PiP. Unsupported browsers keep native PiP.
+
 ### Basic Usage
 
 1. **Navigate to any video** - YouTube, Vimeo, Netflix, or any website with video

@@ -15,6 +15,7 @@ export type VideoStateT = {
   isWheelHovering?: boolean;
   wheelHoverTimeout?: number;
   isUserScrubbing: boolean;
+  isTimelineDragging?: boolean;
   isVideoDragging?: boolean;
   videoControlsBeforeHide?: boolean;
   hiddenControlsContainer?: HTMLElement;

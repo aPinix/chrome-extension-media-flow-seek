@@ -2,6 +2,7 @@ import { EXT_URL } from '@/config/variables.config';
 import { getAppLogoBase64 } from '@/helpers/logo';
 import { createNotificationFunction } from '@/helpers/notification-shared';
 import { registerLibraryBackground } from '@/helpers/saved-media';
+import { registerYouTubePipWindowBackground } from '@/helpers/youtube-pip-window';
 
 const FAVICON_DATA_URL_REQUEST = 'GET_FAVICON_DATA_URL';
 const MAX_FAVICON_BYTES = 1024 * 1024;
@@ -66,6 +67,7 @@ const fetchFaviconAsDataUrl = async (url: string): Promise<string | null> => {
 
 export default defineBackground(() => {
   registerLibraryBackground();
+  registerYouTubePipWindowBackground();
   // Content scripts cannot reliably read pixels from cross-origin favicons.
   // Fetch them from the extension origin and return a canvas-safe data URL.
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {

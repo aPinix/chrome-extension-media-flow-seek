@@ -19,13 +19,17 @@ export interface YouTubePlayerButtonState {
   infoCards: { enabled: boolean; visible: boolean; available: boolean };
   screenshot: { enabled: boolean; available: boolean };
   filters: { enabled: boolean; available: boolean; expanded: boolean };
+  pip: { enabled: boolean; available: boolean };
+  bookmarks: { enabled: boolean; available: boolean; expanded: boolean };
 }
 
 const groupStyle =
-  'position:relative;display:inline-flex;align-items:center;height:100%;vertical-align:top;';
+  'position:relative;display:inline-flex;align-items:center;height:100%;vertical-align:top;flex-shrink:0;';
 const buttonStyle =
   'position:relative;align-items:center;justify-content:center;width:48px;height:100%;padding:0;border:0;background:transparent;color:inherit;cursor:pointer;';
 const controlStyles = `
+  .mfs-youtube-controls[data-stacked=true]{position:absolute!important;height:auto!important;flex-wrap:wrap;justify-content:flex-end;box-sizing:border-box;padding:4px;border-radius:20px;background:rgba(0,0,0,.45);backdrop-filter:blur(16px);white-space:normal;z-index:1}
+  .mfs-youtube-controls[data-stacked=true] > span,.mfs-youtube-controls[data-stacked=true] .mfs-player-button{height:32px!important;flex-shrink:0}
   .mfs-player-button.ytp-button::after{display:none!important}
   .mfs-player-button.ytp-button{display:inline-flex}
   .mfs-player-button.ytp-button,.mfs-player-button.ytp-button:hover,.mfs-player-button.ytp-button:focus-visible{background:transparent!important;box-shadow:none!important;border-radius:0!important}
@@ -41,7 +45,6 @@ const controlStyles = `
   .mfs-player-button:focus-visible{outline:none}
   .mfs-player-button:focus-visible::before{outline:2px solid #fff;outline-offset:-1px;background:var(--yt-sys-color-baseline--overlay-button-secondary,rgba(255,255,255,.1))}
   .mfs-youtube-buttons[data-split=true]::before{content:"";position:absolute;left:0;right:0;top:50%;height:32px;transform:translateY(-50%);border-radius:999px;background:rgba(255,255,255,.1);pointer-events:none}
-  .mfs-youtube-buttons[data-split=true] .mfs-loop-edit-button .mfs-loop-icon::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:1px;background:rgba(255,255,255,.25)}
   .mfs-loop-tooltip{position:absolute;z-index:1003;bottom:calc(100% + 12px);left:50%;transform:translateX(-50%);display:flex;align-items:center;padding:5px 9px;border-radius:8px;backdrop-filter:var(--yt-frosted-glass-backdrop-filter-override,blur(16px));background:var(--yt-sys-color-baseline--overlay-background-medium-light,rgba(0,0,0,.3));color:#fff;font-size:118%;font-weight:500;line-height:15px;text-shadow:0 0 2px #000;white-space:nowrap;pointer-events:none;opacity:0;visibility:hidden;transition:opacity 100ms ease}
   .mfs-loop-tooltip .ytp-tooltip-keyboard-shortcut{display:flex;justify-content:center;align-items:center;border:1px solid rgba(255,255,255,.3);min-width:11px;border-radius:4px;margin-left:4px;color:#fff;padding:0 2px;font:inherit}
   .mfs-loop-tooltip[data-advanced=true]{flex-direction:column;gap:4px;padding:7px 9px}
@@ -51,6 +54,7 @@ const controlStyles = `
   .mfs-player-button:hover + .mfs-loop-tooltip,.mfs-player-button:focus-visible + .mfs-loop-tooltip{opacity:1;visibility:visible}
   .mfs-player-button[aria-expanded=true] + .mfs-loop-tooltip{opacity:0;visibility:hidden}
   .mfs-screenshot-status{bottom:calc(100% + 24px);left:auto;right:0;transform:none;opacity:1;visibility:visible;max-width:260px;white-space:normal}
+  .mfs-bookmark-status{width:max-content;font-size:12px}
   .mfs-filters-open,.mfs-advanced-open{cursor:auto!important}.mfs-filters-open .ytp-chrome-bottom,.mfs-advanced-open .ytp-chrome-bottom{opacity:1!important;visibility:visible!important;pointer-events:auto!important;transform:none!important}
 `;
 
@@ -59,23 +63,31 @@ export class YouTubePlayerButtons {
   readonly toolbar: HTMLSpanElement;
   readonly container: HTMLSpanElement;
   readonly loopButton: HTMLButtonElement;
-  readonly editButton: HTMLButtonElement;
   readonly boostButton: HTMLButtonElement;
   readonly cinemaButton: HTMLButtonElement;
   readonly infoCardsButton: HTMLButtonElement;
   readonly screenshotButton: HTMLButtonElement;
   readonly filtersButton: HTMLButtonElement;
+  readonly pipButton: HTMLButtonElement;
+  readonly bookmarksButton: HTMLButtonElement;
   private boostContainer: HTMLSpanElement;
   private cinemaContainer: HTMLSpanElement;
   private infoCardsContainer: HTMLSpanElement;
   private screenshotContainer: HTMLSpanElement;
   private filtersContainer: HTMLSpanElement;
+  private pipContainer: HTMLSpanElement;
+  private bookmarksContainer: HTMLSpanElement;
+  private bookmarkStatus: HTMLSpanElement;
+  private bookmarkStatusTimer: ReturnType<typeof setTimeout> | undefined;
   private screenshotStatus: HTMLSpanElement;
   private statusTimer: ReturnType<typeof setTimeout> | undefined;
   private tips = new Map<HTMLButtonElement, HTMLSpanElement>();
   private disposed = false;
   private holdTimer: ReturnType<typeof setTimeout> | undefined;
   private cleanups: Array<() => void> = [];
+  private resizeObserver: ResizeObserver | undefined;
+  private controlsObserver: MutationObserver | undefined;
+  private observedControls: HTMLElement | undefined;
 
   constructor(
     private video: HTMLVideoElement,
@@ -87,6 +99,9 @@ export class YouTubePlayerButtons {
       onInfoCards: () => void;
       onScreenshot: () => void;
       onFilters: () => void;
+      onPip: () => void;
+      onBookmarks: () => void;
+      onEditBookmarks: () => void;
       onAdvanced?: (kind: YouTubeAdvancedControl) => void;
     }
   ) {
@@ -102,9 +117,11 @@ export class YouTubePlayerButtons {
     this.boostContainer = this.group('mfs-youtube-boost');
     this.cinemaContainer = this.group('mfs-youtube-cinema');
     this.container = this.group('mfs-youtube-buttons');
+    this.bookmarksContainer = this.group('mfs-youtube-bookmarks');
     this.infoCardsContainer = this.group('mfs-youtube-info-cards');
     this.screenshotContainer = this.group('mfs-youtube-screenshot');
     this.filtersContainer = this.group('mfs-youtube-filters');
+    this.pipContainer = this.group('mfs-youtube-pip');
     this.boostButton = this.control(
       'boost',
       this.boostContainer,
@@ -116,8 +133,17 @@ export class YouTubePlayerButtons {
       actions.onCinema
     );
     this.loopButton = this.control('loop', this.container, actions.onLoop);
-    this.editButton = this.control('edit', this.container, actions.onEdit);
-    this.editButton.classList.add('mfs-loop-edit-button');
+    this.bookmarksButton = this.control(
+      'bookmarks',
+      this.bookmarksContainer,
+      actions.onBookmarks
+    );
+    this.bookmarkStatus = doc.createElement('span');
+    this.bookmarkStatus.className =
+      'mfs-loop-tooltip mfs-screenshot-status mfs-bookmark-status';
+    this.bookmarkStatus.setAttribute('role', 'status');
+    this.bookmarkStatus.hidden = true;
+    this.bookmarksContainer.append(this.bookmarkStatus);
     this.infoCardsButton = this.control(
       'infoCards',
       this.infoCardsContainer,
@@ -139,10 +165,13 @@ export class YouTubePlayerButtons {
       actions.onFilters
     );
     this.filtersButton.setAttribute('aria-haspopup', 'dialog');
+    this.pipButton = this.control('pip', this.pipContainer, actions.onPip);
     for (const [kind, button] of [
       ['boost', this.boostButton],
       ['cinema', this.cinemaButton],
+      ['loop', this.loopButton],
       ['screenshot', this.screenshotButton],
+      ['bookmarks', this.bookmarksButton],
     ] as const) {
       button.setAttribute('aria-haspopup', 'dialog');
       button.setAttribute('aria-expanded', 'false');
@@ -160,7 +189,9 @@ export class YouTubePlayerButtons {
         this.holdTimer = setTimeout(() => {
           if (!this.disposed && !button.disabled && button.isConnected) {
             held = true;
-            actions.onAdvanced?.(kind);
+            if (kind === 'bookmarks') actions.onEditBookmarks();
+            else if (kind === 'loop') actions.onEdit();
+            else actions.onAdvanced?.(kind);
           }
         }, 600);
       });
@@ -172,15 +203,17 @@ export class YouTubePlayerButtons {
           cancel();
       });
       button.addEventListener('pointerleave', cancel);
-      button.addEventListener(
-        'click',
-        (event) => {
-          if (!held) return;
-          held = false;
-          event.preventDefault();
-          event.stopImmediatePropagation();
-        },
-        true
+      // Opening an editor can reposition the toolbar underneath the pointer.
+      // Consume the rest of that hold even if its release now targets the video.
+      const finishHoldClick = (event: Event) => {
+        if (!held) return;
+        held = false;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      };
+      doc.addEventListener('click', finishHoldClick, true);
+      this.cleanups.push(() =>
+        doc.removeEventListener('click', finishHoldClick, true)
       );
       // Shift+Enter also makes advanced options reachable when tabbing through controls.
       button.addEventListener('keydown', (event) => {
@@ -193,12 +226,23 @@ export class YouTubePlayerButtons {
         ) {
           event.preventDefault();
           event.stopPropagation();
-          actions.onAdvanced?.(kind);
+          if (kind === 'bookmarks') actions.onEditBookmarks();
+          else if (kind === 'loop') actions.onEdit();
+          else actions.onAdvanced?.(kind);
         }
       });
-      for (const type of ['pointerup', 'pointercancel']) {
-        doc.addEventListener(type, cancel, true);
-        this.cleanups.push(() => doc.removeEventListener(type, cancel, true));
+      const finishHold = (event: Event) => {
+        cancel();
+        if (event.type === 'pointercancel') held = false;
+        if (!held) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      };
+      for (const type of ['pointerup', 'pointercancel', 'mouseup']) {
+        doc.addEventListener(type, finishHold, true);
+        this.cleanups.push(() =>
+          doc.removeEventListener(type, finishHold, true)
+        );
       }
     }
     for (const type of ['pointerdown', 'mousedown', 'dblclick'])
@@ -228,13 +272,23 @@ export class YouTubePlayerButtons {
     button.style.cssText = buttonStyle;
     if (kind !== 'edit') {
       const key = YOUTUBE_CONTROL_SHORTCUTS[kind].toUpperCase();
-      const advanced = ['boost', 'cinema', 'screenshot'].includes(kind);
+      const advanced = [
+        'boost',
+        'cinema',
+        'loop',
+        'screenshot',
+        'bookmarks',
+      ].includes(kind);
       button.setAttribute(
         'aria-keyshortcuts',
         advanced ? `${key} Shift+${key} Shift+Enter` : key
       );
       button.dataset.shortcut = YOUTUBE_CONTROL_SHORTCUTS[kind];
       if (advanced) button.dataset.advanced = 'true';
+      if (kind === 'bookmarks')
+        button.dataset.advancedHint = 'Hold to edit bookmarks';
+      if (kind === 'loop')
+        button.dataset.advancedHint = 'Hold to edit loop sections';
       if (advanced)
         button.setAttribute(
           'aria-description',
@@ -302,6 +356,155 @@ export class YouTubePlayerButtons {
     if (tip) this.tooltip(button, tooltip);
   }
 
+  private watchLayout(controls: HTMLElement): void {
+    if (this.observedControls === controls) return;
+    this.resizeObserver?.disconnect();
+    this.controlsObserver?.disconnect();
+    this.observedControls = controls;
+    const win = this.video.ownerDocument.defaultView;
+    if (win?.ResizeObserver) {
+      this.resizeObserver = new win.ResizeObserver(() => this.layout());
+      const chrome = controls.closest<HTMLElement>('.ytp-chrome-bottom');
+      const left = chrome?.querySelector<HTMLElement>('.ytp-left-controls');
+      for (const element of [controls, chrome, left, ...controls.children]) {
+        if (element) this.resizeObserver.observe(element);
+      }
+    }
+    if (win?.MutationObserver) {
+      this.controlsObserver = new win.MutationObserver((records) => {
+        if (records.some(({ target }) => !this.toolbar.contains(target)))
+          this.layout();
+      });
+      const chrome = controls.closest('.ytp-chrome-bottom') ?? controls;
+      this.controlsObserver.observe(chrome, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['class', 'style', 'hidden'],
+      });
+    }
+  }
+
+  private layout(): void {
+    const controls = this.observedControls;
+    if (this.disposed || !controls || this.toolbar.parentElement !== controls)
+      return;
+    const chrome = controls.closest<HTMLElement>('.ytp-chrome-bottom');
+    if (!chrome || chrome.clientWidth <= 0) return;
+    const win = this.video.ownerDocument.defaultView;
+    if (!win) return;
+    const chromeRect = chrome.getBoundingClientRect();
+    const scale = chromeRect.width / chrome.clientWidth || 1;
+    const horizontalSpacing = (style: CSSStyleDeclaration): number =>
+      (Number.parseFloat(style.paddingLeft) || 0) +
+      (Number.parseFloat(style.paddingRight) || 0);
+    const children = (element: HTMLElement): HTMLElement[] =>
+      [...element.children].filter(
+        (child): child is HTMLElement => child instanceof win.HTMLElement
+      );
+    const width = (element: HTMLElement): number => {
+      const style = win.getComputedStyle(element);
+      if (element.hidden || style.display === 'none') return 0;
+      const renderedWidth = element.getBoundingClientRect().width / scale;
+      return (
+        (renderedWidth ||
+          element.offsetWidth ||
+          Number.parseFloat(style.width) ||
+          0) +
+        (Number.parseFloat(style.marginLeft) || 0) +
+        (Number.parseFloat(style.marginRight) || 0)
+      );
+    };
+    const contentWidth = (element: HTMLElement): number => {
+      const style = win.getComputedStyle(element);
+      if (element.hidden || style.display === 'none') return 0;
+      const visible = children(element).filter(
+        (child) =>
+          !child.hidden && win.getComputedStyle(child).display !== 'none'
+      );
+      if (!style.display.includes('flex') || !visible.length)
+        return width(element);
+      return (
+        visible.reduce((total, child) => total + contentWidth(child), 0) +
+        (Number.parseFloat(style.columnGap) || 0) * (visible.length - 1) +
+        horizontalSpacing(style) +
+        (Number.parseFloat(style.marginLeft) || 0) +
+        (Number.parseFloat(style.marginRight) || 0)
+      );
+    };
+    const left = chrome.querySelector<HTMLElement>('.ytp-left-controls');
+    const native = [...controls.children].filter(
+      (element): element is HTMLElement =>
+        element instanceof win.HTMLElement && element !== this.toolbar
+    );
+    const nativeWidth = native.reduce(
+      (total, element) =>
+        total + Math.max(width(element), contentWidth(element)),
+      0
+    );
+    const customWidth = [...this.tips.keys()]
+      .filter((button) => this.toolbar.contains(button))
+      .reduce((total, button) => total + width(button), 0);
+    const controlsStyle = win.getComputedStyle(controls);
+    const chromeStyle = win.getComputedStyle(chrome);
+    const gap = Number.parseFloat(controlsStyle.columnGap) || 0;
+    const leftStyle = left && win.getComputedStyle(left);
+    // Modern YouTube stretches/shrinks the left container to fill the remaining
+    // space. Measure its controls, not that allocated width. Chapter titles are
+    // intentionally allowed to truncate before moving our buttons to a new row.
+    const leftChildren =
+      left &&
+      children(left).filter(
+        (child) =>
+          !child.classList.contains('ytp-chapter-container') &&
+          !child.hidden &&
+          win.getComputedStyle(child).display !== 'none'
+      );
+    const leftWidth =
+      left &&
+      leftStyle &&
+      leftChildren?.length &&
+      leftStyle.display.includes('flex')
+        ? leftChildren.reduce(
+            (total, child) =>
+              total + Math.max(width(child), contentWidth(child)),
+            0
+          ) +
+          horizontalSpacing(leftStyle) +
+          (Number.parseFloat(leftStyle.columnGap) || 0) *
+            (leftChildren.length - 1) +
+          (Number.parseFloat(leftStyle.marginLeft) || 0) +
+          (Number.parseFloat(leftStyle.marginRight) || 0)
+        : left
+          ? width(left)
+          : 0;
+    // Keep the original inline layout up to its actual fit boundary. An extra
+    // safety margin would move the buttons above the native row prematurely.
+    const stacked =
+      customWidth +
+        nativeWidth +
+        leftWidth +
+        gap * native.length +
+        horizontalSpacing(controlsStyle) >
+      chrome.clientWidth - horizontalSpacing(chromeStyle);
+    this.toolbar.dataset.stacked = String(stacked);
+    if (!stacked) {
+      this.toolbar.style.removeProperty('bottom');
+      this.toolbar.style.removeProperty('right');
+      this.toolbar.style.removeProperty('max-width');
+      this.toolbar.style.removeProperty('width');
+      return;
+    }
+    // Position above the whole native chrome, including the progress bar.
+    // Convert viewport coordinates back to player-local units for scaled players.
+    const parent = (this.toolbar.offsetParent as HTMLElement | null) ?? chrome;
+    const parentRect = parent.getBoundingClientRect();
+    this.toolbar.style.bottom = `${Math.max(0, (parentRect.bottom - chromeRect.top) / scale) + 8}px`;
+    this.toolbar.style.right = `${Math.max(0, (parentRect.right - chromeRect.right) / scale)}px`;
+    this.toolbar.style.maxWidth = `${chrome.clientWidth}px`;
+    this.toolbar.style.width = `${Math.min(customWidth + 8, chrome.clientWidth)}px`;
+  }
+
   private tooltip(button: HTMLButtonElement, label: string): void {
     const tip = this.tips.get(button);
     if (!tip) return;
@@ -323,7 +526,7 @@ export class YouTubePlayerButtons {
         tip.dataset.advanced = 'true';
         const hint = this.video.ownerDocument.createElement('span');
         hint.className = 'mfs-tooltip-hint';
-        hint.textContent = 'Hold for options';
+        hint.textContent = button.dataset.advancedHint ?? 'Hold for options';
         tip.append(hint);
       }
     }
@@ -337,20 +540,24 @@ export class YouTubePlayerButtons {
     infoCards,
     screenshot,
     filters,
+    pip,
+    bookmarks,
   }: YouTubePlayerButtonState): void {
     if (this.disposed) return;
     const player = this.video.closest('#movie_player, .html5-video-player');
     const mainVideo =
       player?.querySelector('video.html5-main-video') ??
       player?.querySelector('video');
-    const controls = player?.querySelector('.ytp-right-controls');
+    const controls = player?.querySelector<HTMLElement>('.ytp-right-controls');
     const groups = [
       [this.boostContainer, boost.level > 0],
       [this.cinemaContainer, cinema.enabled],
       [this.container, loop.enabled],
+      [this.bookmarksContainer, bookmarks.enabled],
       [this.infoCardsContainer, infoCards.enabled],
       [this.screenshotContainer, screenshot.enabled],
       [this.filtersContainer, filters.enabled],
+      [this.pipContainer, pip.enabled],
     ] as const;
     if (
       !controls ||
@@ -358,6 +565,9 @@ export class YouTubePlayerButtons {
       !groups.some(([, enabled]) => enabled)
     ) {
       this.toolbar.remove();
+      this.resizeObserver?.disconnect();
+      this.controlsObserver?.disconnect();
+      this.observedControls = undefined;
       return;
     }
     // Move only when order changes so focus and native hover state survive updates.
@@ -432,6 +642,27 @@ export class YouTubePlayerButtons {
     this.filtersButton.disabled = !filters.available;
     this.filtersButton.setAttribute('aria-expanded', String(filters.expanded));
     this.filtersButton.style.opacity = filters.available ? '1' : '.3';
+    this.pipButton.disabled = !pip.available;
+    this.bookmarksButton.disabled = !bookmarks.available;
+    this.bookmarksButton.style.opacity = bookmarks.available ? '1' : '.3';
+    this.bookmarksButton.setAttribute(
+      'aria-expanded',
+      String(bookmarks.expanded)
+    );
+    if (bookmarks.expanded) this.bookmarkStatus.hidden = true;
+    this.tooltip(
+      this.bookmarksButton,
+      bookmarks.available
+        ? 'Bookmark this moment'
+        : 'Bookmarks unavailable during ads or live streams'
+    );
+    this.pipButton.style.opacity = pip.available ? '1' : '.3';
+    this.tooltip(
+      this.pipButton,
+      pip.available
+        ? 'Open Picture-in-Picture'
+        : 'Picture-in-Picture unavailable for this video'
+    );
     const screenshotTip = this.tips.get(this.screenshotButton);
     if (screenshotTip)
       this.tooltip(
@@ -443,11 +674,9 @@ export class YouTubePlayerButtons {
     const filtersTip = this.tips.get(this.filtersButton);
     if (filtersTip) this.tooltip(this.filtersButton, 'Video Filters');
     this.loopButton.style.opacity = loop.available ? '1' : '.4';
-    this.container.dataset.split = String(loop.hasSections);
-    this.editButton.hidden = !loop.hasSections;
-    this.editButton.style.display = loop.hasSections ? 'inline-flex' : 'none';
-    this.editButton.disabled = !loop.available;
-    this.editButton.setAttribute('aria-expanded', String(loop.expanded));
+    this.loopButton.setAttribute('aria-expanded', String(loop.expanded));
+    this.watchLayout(controls);
+    this.layout();
   }
 
   reportScreenshot(message: string): void {
@@ -460,11 +689,24 @@ export class YouTubePlayerButtons {
     }, 5000);
   }
 
+  reportBookmark(message: string): void {
+    if (this.disposed) return;
+    clearTimeout(this.bookmarkStatusTimer);
+    this.bookmarkStatus.textContent = message;
+    this.bookmarkStatus.hidden = false;
+    this.bookmarkStatusTimer = setTimeout(() => {
+      this.bookmarkStatus.hidden = true;
+    }, 3000);
+  }
+
   cleanup(): void {
     this.disposed = true;
     clearTimeout(this.statusTimer);
+    clearTimeout(this.bookmarkStatusTimer);
     clearTimeout(this.holdTimer);
     for (const cleanup of this.cleanups) cleanup();
+    this.resizeObserver?.disconnect();
+    this.controlsObserver?.disconnect();
     this.toolbar.remove();
   }
 }

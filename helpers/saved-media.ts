@@ -17,6 +17,7 @@ export type LibraryCommand =
   | { op: 'list' }
   | { op: 'put'; item: SavedMoment }
   | { op: 'delete'; id: string }
+  | { op: 'replace-bookmarks'; mediaKey: string; items: SavedMoment[] }
   | { op: 'import'; library: MediaLibrary }
   | { op: 'open'; id: string }
   | { op: 'claim'; mediaKey: string };
@@ -174,6 +175,28 @@ export function registerLibraryBackground(): void {
           (entry) => entry.id !== command.item.id
         );
         library.items.push(command.item);
+        library = parseLibrary(library);
+      } else if (command.op === 'replace-bookmarks') {
+        if (typeof command.mediaKey !== 'string' || !command.mediaKey)
+          throw new Error('Invalid video identity.');
+        const keep = library.items.filter(
+          (entry) =>
+            entry.mediaKey !== command.mediaKey || entry.end !== undefined
+        );
+        if (
+          !Array.isArray(command.items) ||
+          command.items.some(
+            (entry) =>
+              !validMoment(entry) ||
+              entry.end !== undefined ||
+              entry.mediaKey !== command.mediaKey ||
+              keep.some((other) => other.id === entry.id)
+          ) ||
+          new Set(command.items.map((entry) => entry.id)).size !==
+            command.items.length
+        )
+          throw new Error('Invalid bookmarks.');
+        library.items = [...keep, ...command.items];
         library = parseLibrary(library);
       } else if (command.op === 'delete')
         library.items = library.items.filter(

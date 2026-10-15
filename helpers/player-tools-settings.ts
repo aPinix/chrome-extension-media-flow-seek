@@ -19,6 +19,7 @@ export type PlayerToolsSettings = {
   forwardShortcut: string;
   youtubeSpeed: number;
   youtubeLoop: boolean;
+  youtubeBookmarksEnabled: boolean;
   youtubeBoost: number;
   youtubeBoostEnabled: boolean;
   youtubeCinemaEnabled: boolean;
@@ -32,6 +33,9 @@ export type PlayerToolsSettings = {
   hideCards: boolean;
   hideEndScreens: boolean;
   miniPlayer: boolean;
+  youtubePipOverride: boolean;
+  youtubePipMode: 'mini-player' | 'chrome-video';
+  youtubePipAutoOnTabChange: boolean;
   autoChapters: boolean;
   dimming: number;
   cinemaColor: string;
@@ -48,6 +52,7 @@ export const DEFAULT_PLAYER_TOOLS: PlayerToolsSettings = {
   forwardShortcut: '',
   youtubeSpeed: 1,
   youtubeLoop: true,
+  youtubeBookmarksEnabled: true,
   youtubeBoost: 2,
   youtubeBoostEnabled: true,
   youtubeCinemaEnabled: true,
@@ -61,6 +66,9 @@ export const DEFAULT_PLAYER_TOOLS: PlayerToolsSettings = {
   hideCards: false,
   hideEndScreens: false,
   miniPlayer: true,
+  youtubePipOverride: false,
+  youtubePipMode: 'mini-player',
+  youtubePipAutoOnTabChange: false,
   autoChapters: false,
   dimming: 80,
   cinemaColor: '#000000',
@@ -108,6 +116,7 @@ export function normalizePlayerTools(value: unknown): PlayerToolsSettings {
     youtubeScreenshotIncludeFilters: v.youtubeScreenshotIncludeFilters === true,
     youtubeFiltersEnabled: v.youtubeFiltersEnabled !== false,
     youtubeLoop: v.youtubeLoop !== false,
+    youtubeBookmarksEnabled: v.youtubeBookmarksEnabled !== false,
     youtubeAutoBoost: v.youtubeAutoBoost === true,
     youtubeBoostEnabled: v.youtubeBoostEnabled !== false,
     youtubeBoost: Number.isInteger(v.youtubeBoost) && v.youtubeBoost! >= 2 && v.youtubeBoost! <= 10 ? v.youtubeBoost! : 2,
@@ -122,6 +131,9 @@ export function normalizePlayerTools(value: unknown): PlayerToolsSettings {
     hideCards: v.hideCards === true,
     hideEndScreens: v.hideEndScreens === true,
     miniPlayer: v.miniPlayer !== false,
+    youtubePipOverride: v.youtubePipOverride === true,
+    youtubePipMode: v.youtubePipMode === 'chrome-video' ? 'chrome-video' : 'mini-player',
+    youtubePipAutoOnTabChange: v.youtubePipAutoOnTabChange === true,
     autoChapters: v.autoChapters === true,
     dimming: numeric(v.dimming, 80, 0, 100),
     cinemaColor: typeof v.cinemaColor === 'string' && /^#[0-9a-f]{6}$/i.test(v.cinemaColor) ? v.cinemaColor.toLowerCase() : DEFAULT_PLAYER_TOOLS.cinemaColor,

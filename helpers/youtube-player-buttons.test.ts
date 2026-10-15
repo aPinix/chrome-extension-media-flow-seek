@@ -14,6 +14,9 @@ const actions = {
   onInfoCards: vi.fn(),
   onScreenshot: vi.fn(),
   onFilters: vi.fn(),
+  onPip: vi.fn(),
+  onBookmarks: vi.fn(),
+  onEditBookmarks: vi.fn(),
   onAdvanced: vi.fn(),
 };
 const state = (): YouTubePlayerButtonState => ({
@@ -29,6 +32,8 @@ const state = (): YouTubePlayerButtonState => ({
   infoCards: { enabled: true, visible: true, available: true },
   screenshot: { enabled: true, available: true },
   filters: { enabled: true, available: true, expanded: false },
+  pip: { enabled: true, available: true },
+  bookmarks: { enabled: true, available: true, expanded: false },
 });
 beforeEach(() => {
   vi.clearAllMocks();
@@ -42,10 +47,205 @@ beforeEach(() => {
 afterEach(() => {
   buttons.cleanup();
   vi.useRealTimers();
+  vi.unstubAllGlobals();
   document.body.replaceChildren();
 });
 
 describe('YouTube toolbar ownership', () => {
+  it('bookmarks on click, opens the editor on hold without adding, and supports Shift+Enter', async () => {
+    vi.useFakeTimers();
+    buttons.update(state());
+    buttons.bookmarksButton.click();
+    expect(actions.onBookmarks).toHaveBeenCalledOnce();
+    actions.onBookmarks.mockClear();
+    buttons.bookmarksButton.dispatchEvent(
+      new MouseEvent('pointerdown', { button: 0, bubbles: true })
+    );
+    await vi.advanceTimersByTimeAsync(600);
+    buttons.bookmarksButton.dispatchEvent(
+      new Event('pointerup', { bubbles: true })
+    );
+    buttons.bookmarksButton.click();
+    expect(actions.onEditBookmarks).toHaveBeenCalledOnce();
+    expect(actions.onBookmarks).not.toHaveBeenCalled();
+    buttons.bookmarksButton.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true })
+    );
+    expect(actions.onEditBookmarks).toHaveBeenCalledTimes(2);
+    const next = state();
+    next.bookmarks.enabled = false;
+    buttons.update(next);
+    expect(buttons.bookmarksButton.isConnected).toBe(false);
+  });
+  it('opens loop editing on hold without toggling on release and has no separate edit button', async () => {
+    vi.useFakeTimers();
+    buttons.update(state());
+    expect(document.querySelector('.mfs-loop-edit-button')).toBeNull();
+    buttons.loopButton.dispatchEvent(
+      new MouseEvent('pointerdown', { button: 0, bubbles: true })
+    );
+    await vi.advanceTimersByTimeAsync(600);
+    buttons.loopButton.dispatchEvent(new Event('pointerup', { bubbles: true }));
+    buttons.loopButton.click();
+    expect(actions.onEdit).toHaveBeenCalledOnce();
+    expect(actions.onLoop).not.toHaveBeenCalled();
+    expect(buttons.loopButton.nextElementSibling?.textContent).toContain(
+      'Hold to edit loop sections'
+    );
+    buttons.loopButton.click();
+    expect(actions.onLoop).toHaveBeenCalledOnce();
+  });
+  it('detects overflow inside modern flex controls and restores inline after widening', () => {
+    let resize: (() => void) | undefined;
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: () => void) {
+          resize = callback;
+        }
+        observe() {}
+        disconnect() {}
+      }
+    );
+    const controls = document.querySelector(
+      '.ytp-right-controls'
+    ) as HTMLElement;
+    const chrome = document.createElement('div');
+    chrome.className = 'ytp-chrome-bottom';
+    controls.before(chrome);
+    chrome.innerHTML =
+      '<div class="ytp-chrome-controls" style="display:flex"><div class="ytp-left-controls" style="display:flex;flex:1;min-width:0"><button style="width:40px"></button><span style="width:40px;margin-left:12px"></span><div style="width:100px"></div><div class="ytp-chapter-container" style="width:300px"></div></div></div>';
+    chrome.firstElementChild?.append(controls);
+    controls.style.display = 'flex';
+    controls.innerHTML =
+      '<div class="ytp-right-controls-left" style="display:flex;width:80px"><button class="ytp-subtitles-button" style="width:48px"></button><button class="ytp-settings-button" style="width:48px"></button></div><div class="ytp-right-controls-right" style="display:flex;width:64px"><button style="width:48px"></button><button style="width:48px"></button></div>';
+    let availableWidth = 576;
+    Object.defineProperty(chrome, 'clientWidth', { get: () => availableWidth });
+    const left = chrome.querySelector('.ytp-left-controls') as HTMLElement;
+    Object.defineProperty(left, 'offsetWidth', {
+      get: () => availableWidth - 576,
+    });
+    buttons.update(state());
+    // The allocated left/right widths fit, but their actual controls do not.
+    expect(buttons.toolbar.dataset.stacked).toBe('true');
+    availableWidth = 816;
+    resize?.();
+    expect(buttons.toolbar.dataset.stacked).toBe('false');
+    availableWidth = 576;
+    resize?.();
+    expect(buttons.toolbar.dataset.stacked).toBe('true');
+  });
+
+  it('moves all custom controls above crowded native controls and restores the row on resize', () => {
+    let resize: (() => void) | undefined;
+    const disconnect = vi.fn();
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: () => void) {
+          resize = callback;
+        }
+        observe() {}
+        disconnect = disconnect;
+      }
+    );
+    const controls = document.querySelector(
+      '.ytp-right-controls'
+    ) as HTMLElement;
+    const chrome = document.createElement('div');
+    chrome.className = 'ytp-chrome-bottom';
+    controls.before(chrome);
+    const left = document.createElement('div');
+    left.className = 'ytp-left-controls';
+    chrome.append(left, controls);
+    let availableWidth = 520;
+    Object.defineProperty(chrome, 'clientWidth', { get: () => availableWidth });
+    Object.defineProperty(left, 'offsetWidth', { value: 180 });
+    chrome.getBoundingClientRect = () =>
+      ({
+        top: 400,
+        bottom: 464,
+        left: 0,
+        right: availableWidth,
+        width: availableWidth,
+        height: 64,
+      }) as DOMRect;
+    for (const child of controls.children)
+      Object.defineProperty(child, 'offsetWidth', { value: 48 });
+    buttons.update(state());
+    expect(buttons.toolbar.dataset.stacked).toBe('true');
+    expect(buttons.toolbar.style.bottom).toBe('72px');
+    expect(buttons.toolbar.style.maxWidth).toBe('520px');
+    expect(buttons.toolbar.querySelectorAll('button')).toHaveLength(8);
+    expect(controls.querySelector('.ytp-subtitles-button')?.parentElement).toBe(
+      controls
+    );
+    // Eight custom buttons, two native controls, and the left controls fit
+    // exactly. Do not reserve extra space that forces a second row early.
+    availableWidth = 660;
+    resize?.();
+    expect(buttons.toolbar.dataset.stacked).toBe('false');
+    expect(buttons.toolbar.style.bottom).toBe('');
+    availableWidth = 659;
+    resize?.();
+    expect(buttons.toolbar.dataset.stacked).toBe('true');
+    availableWidth = 660;
+    resize?.();
+    expect(buttons.toolbar.dataset.stacked).toBe('false');
+    availableWidth = 280;
+    resize?.();
+    expect(buttons.toolbar.dataset.stacked).toBe('true');
+    expect(buttons.toolbar.style.maxWidth).toBe('280px');
+    buttons.cleanup();
+    expect(disconnect).toHaveBeenCalled();
+  });
+
+  it('uses rendered native control widths instead of larger declared widths', () => {
+    const controls = document.querySelector(
+      '.ytp-right-controls'
+    ) as HTMLElement;
+    const chrome = document.createElement('div');
+    chrome.className = 'ytp-chrome-bottom';
+    controls.before(chrome);
+    chrome.append(controls);
+    Object.defineProperty(chrome, 'clientWidth', { value: 496 });
+    chrome.getBoundingClientRect = () => ({ width: 248 }) as DOMRect;
+    for (const child of controls.children) {
+      const element = child as HTMLElement;
+      element.style.width = '48px';
+      element.getBoundingClientRect = () => ({ width: 16 }) as DOMRect;
+    }
+    buttons.update(state());
+    // 432px custom + 64px native, even when the player is scaled to 50%.
+    expect(buttons.toolbar.dataset.stacked).toBe('false');
+  });
+
+  it('recalculates the layout when features are disabled', () => {
+    const controls = document.querySelector(
+      '.ytp-right-controls'
+    ) as HTMLElement;
+    const chrome = document.createElement('div');
+    chrome.className = 'ytp-chrome-bottom';
+    controls.before(chrome);
+    chrome.append(controls);
+    Object.defineProperty(chrome, 'clientWidth', { value: 320 });
+    for (const child of controls.children)
+      Object.defineProperty(child, 'offsetWidth', { value: 48 });
+    buttons.update(state());
+    expect(buttons.toolbar.dataset.stacked).toBe('true');
+    const next = state();
+    next.cinema.enabled =
+      next.loop.enabled =
+      next.infoCards.enabled =
+      next.screenshot.enabled =
+      next.filters.enabled =
+      next.pip.enabled =
+      next.bookmarks.enabled =
+        false;
+    buttons.update(next);
+    expect(buttons.toolbar.dataset.stacked).toBe('false');
+  });
+
   it('shows a second-line options hint only on buttons with long-press controls', () => {
     buttons.update(state());
     buttons.update(state());
@@ -64,12 +264,7 @@ describe('YouTube toolbar ownership', () => {
         tip.querySelector('.mfs-tooltip-heading .ytp-tooltip-keyboard-shortcut')
       ).not.toBeNull();
     }
-    for (const button of [
-      buttons.loopButton,
-      buttons.editButton,
-      buttons.infoCardsButton,
-      buttons.filtersButton,
-    ]) {
+    for (const button of [buttons.infoCardsButton, buttons.filtersButton]) {
       expect(
         button.nextElementSibling?.querySelector('.mfs-tooltip-hint')
       ).toBeNull();
@@ -198,14 +393,13 @@ describe('YouTube toolbar ownership', () => {
       buttons.boostButton,
       buttons.cinemaButton,
       buttons.loopButton,
-      buttons.editButton,
       buttons.infoCardsButton,
       buttons.screenshotButton,
       buttons.filtersButton,
     ]) {
       Object.defineProperties(button, {
-        offsetLeft: { value: button === buttons.editButton ? 40 : 0 },
-        offsetWidth: { value: button === buttons.editButton ? 32 : 40 },
+        offsetLeft: { value: button === buttons.loopButton ? 40 : 0 },
+        offsetWidth: { value: button === buttons.loopButton ? 32 : 40 },
       });
       button.dispatchEvent(new Event('pointerenter'));
       const tip = button.nextElementSibling as HTMLElement;
@@ -213,7 +407,7 @@ describe('YouTube toolbar ownership', () => {
       expect(tip.style.top).toBe('');
       expect(tip.style.bottom).toBe('calc(100% + 12px)');
       expect(tip.style.left).toBe(
-        button === buttons.editButton ? '56px' : '20px'
+        button === buttons.loopButton ? '56px' : '20px'
       );
       expect(tip.style.fontSize).toBe('14px');
       nativeTip.style.top = '400px';
@@ -226,7 +420,7 @@ describe('YouTube toolbar ownership', () => {
   });
   it('keeps tooltip centers in local coordinates when the player is scaled or resized', () => {
     buttons.update(state());
-    const button = buttons.editButton;
+    const button = buttons.loopButton;
     Object.defineProperties(button, {
       offsetLeft: { value: 40 },
       offsetTop: { value: 8 },
@@ -244,7 +438,7 @@ describe('YouTube toolbar ownership', () => {
     expect(tip.style.left).toBe('56px');
     expect(tip.style.top).toBe('');
   });
-  it.each(Array.from({ length: 64 }, (_, i) => i))(
+  it.each(Array.from({ length: 256 }, (_, i) => i))(
     'keeps the correct order for feature combination %i',
     (mask) => {
       const next = state();
@@ -254,6 +448,8 @@ describe('YouTube toolbar ownership', () => {
       next.infoCards.enabled = Boolean(mask & 8);
       next.screenshot.enabled = Boolean(mask & 16);
       next.filters.enabled = Boolean(mask & 32);
+      next.pip.enabled = Boolean(mask & 64);
+      next.bookmarks.enabled = Boolean(mask & 128);
       buttons.update(next);
       const controls = document.querySelector(
         '.ytp-right-controls'
@@ -265,10 +461,11 @@ describe('YouTube toolbar ownership', () => {
         mask & 1 && 'Boost Volume',
         mask & 2 && 'Cinema Mode',
         mask & 4 && 'Loop Sections',
-        mask & 4 && 'Edit loop sections',
+        mask & 128 && 'Bookmarks',
         mask & 8 && 'Info Cards',
         mask & 16 && 'Screenshot',
         mask & 32 && 'Video Filters',
+        mask & 64 && 'Picture-in-Picture',
       ].filter(Boolean);
       expect(
         [...controls.querySelectorAll('.mfs-player-button')].map((node) =>
@@ -278,6 +475,25 @@ describe('YouTube toolbar ownership', () => {
       if (mask) expect(controls.firstElementChild).toBe(buttons.toolbar);
     }
   );
+  it('opens PiP from its native-style button and blocks unavailable playback', () => {
+    const next = state();
+    buttons.update(next);
+    expect(buttons.pipButton.querySelector('svg rect')).not.toBeNull();
+    expect(buttons.pipButton.getAttribute('aria-keyshortcuts')).toBe('P');
+    expect(buttons.pipButton.nextElementSibling?.textContent).toContain(
+      'Open Picture-in-Picture'
+    );
+    buttons.pipButton.click();
+    expect(actions.onPip).toHaveBeenCalledOnce();
+    next.pip.available = false;
+    buttons.update(next);
+    buttons.pipButton.click();
+    expect(actions.onPip).toHaveBeenCalledOnce();
+    expect(buttons.pipButton.disabled).toBe(true);
+    buttons.cleanup();
+    buttons.pipButton.click();
+    expect(actions.onPip).toHaveBeenCalledOnce();
+  });
   it('sets action tooltips and accurate pressed states and blocks unavailable controls', () => {
     const next = state();
     next.cinema.active = true;
@@ -286,12 +502,14 @@ describe('YouTube toolbar ownership', () => {
     buttons.update(next);
     expect(buttons.cinemaButton.getAttribute('aria-pressed')).toBe('true');
     expect(buttons.infoCardsButton.getAttribute('aria-pressed')).toBe('false');
-    expect(buttons.editButton.getAttribute('aria-expanded')).toBe('true');
+    expect(buttons.loopButton.getAttribute('aria-expanded')).toBe('true');
     expect(buttons.toolbar.textContent).toContain('Turn off Cinema Mode');
     expect(buttons.toolbar.textContent).toContain('Show Info Cards');
     buttons.cinemaButton.click();
     buttons.infoCardsButton.click();
-    buttons.editButton.click();
+    buttons.loopButton.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true })
+    );
     buttons.screenshotButton.click();
     buttons.filtersButton.click();
     expect(buttons.filtersButton.getAttribute('aria-haspopup')).toBe('dialog');
@@ -314,7 +532,6 @@ describe('YouTube toolbar ownership', () => {
       buttons.cinemaButton,
       buttons.infoCardsButton,
       buttons.loopButton,
-      buttons.editButton,
       buttons.boostButton,
       buttons.screenshotButton,
       buttons.filtersButton,

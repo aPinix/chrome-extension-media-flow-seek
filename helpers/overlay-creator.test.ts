@@ -2333,6 +2333,28 @@ describe('OverlayCreator timeline seeking', () => {
     };
   };
 
+  it.each([
+    'pointerup', 'pointercancel', 'lostpointercapture', 'cleanup', 'cancel',
+  ])(
+    'tracks a real timeline drag separately from wheel scrubbing until %s',
+    (finish) => {
+      const { controller, state } = setupTimelineSeeking(true);
+      state.isUserScrubbing = true;
+      expect(state.isTimelineDragging).not.toBe(true);
+      state.timeline.dispatchEvent(
+        createPointerEvent('pointerdown', { clientX: 60, clientY: 116 })
+      );
+      expect(state.isTimelineDragging).toBe(true);
+      if (finish === 'cleanup') controller.cleanup();
+      else if (finish === 'cancel') controller.cancel();
+      else state.timeline.dispatchEvent(
+        createPointerEvent(finish, { clientX: 60, clientY: 80 })
+      );
+      expect(state.isTimelineDragging).toBe(false);
+      controller.cleanup();
+    }
+  );
+
   it('updates existing timeline hit testing when the setting changes', () => {
     let enabled = true;
     const settingsManager = {

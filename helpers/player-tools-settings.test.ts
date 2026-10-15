@@ -3,6 +3,7 @@ import {
   DEFAULT_PLAYER_TOOLS,
   normalizePlayerTools,
 } from './player-tools-settings';
+
 it('enables Boost Volume and Loop Sections by default without starting automatic boost', () => {
   for (const settings of [
     DEFAULT_PLAYER_TOOLS,
@@ -11,18 +12,31 @@ it('enables Boost Volume and Loop Sections by default without starting automatic
   ]) {
     expect(settings.youtubeBoostEnabled).toBe(true);
     expect(settings.youtubeLoop).toBe(true);
+    expect(settings.youtubeBookmarksEnabled).toBe(true);
     expect(settings.youtubeAutoBoost).toBe(false);
     expect(settings.miniPlayer).toBe(true);
+    expect(settings.youtubePipOverride).toBe(false);
+    expect(settings.youtubePipMode).toBe('mini-player');
+    expect(settings.youtubePipAutoOnTabChange).toBe(false);
     expect(settings.youtubeScreenshotEnabled).toBe(true);
     expect(settings.youtubeFiltersEnabled).toBe(true);
     expect(settings.youtubeScreenshotIncludeFilters).toBe(false);
   }
+});
+it('preserves Chrome video PiP and falls back to Mini Player for unknown player modes', () => {
+  expect(
+    normalizePlayerTools({ youtubePipMode: 'chrome-video' }).youtubePipMode
+  ).toBe('chrome-video');
+  expect(
+    normalizePlayerTools({ youtubePipMode: 'unknown' }).youtubePipMode
+  ).toBe('mini-player');
 });
 
 it('preserves saved button choices and dimming', () => {
   const settings = normalizePlayerTools({
     youtubeBoostEnabled: false,
     youtubeLoop: false,
+    youtubeBookmarksEnabled: false,
     dimming: 65,
     hideEndScreens: true,
     miniPlayer: false,
@@ -32,6 +46,7 @@ it('preserves saved button choices and dimming', () => {
   });
   expect(settings.youtubeBoostEnabled).toBe(false);
   expect(settings.youtubeLoop).toBe(false);
+  expect(settings.youtubeBookmarksEnabled).toBe(false);
   expect(settings.dimming).toBe(65);
   expect(settings.hideEndScreens).toBe(true);
   expect(settings.miniPlayer).toBe(false);

@@ -7,6 +7,7 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { YouTubeBookmarksSetting } from './youtube-bookmarks-setting';
 import { YouTubeCinemaSetting } from './youtube-cinema-setting';
 import { YouTubeFiltersSetting } from './youtube-filters-setting';
 import { YouTubeInfoCardsSetting } from './youtube-info-cards-setting';
@@ -48,6 +49,28 @@ const readySwitch = async (name: string) => {
 };
 
 describe('YouTube button settings', () => {
+  it('defaults Bookmarks on, preserves the saved choice, and reports storage errors', async () => {
+    render(<YouTubeBookmarksSetting />);
+    const toggle = await readySwitch('Show Bookmarks button on YouTube');
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(preferences.youtubeBookmarksEnabled).toBe(false)
+    );
+    expect(preferences.hideEndScreens).toBe(true);
+    cleanup();
+    render(<YouTubeBookmarksSetting />);
+    const restored = await readySwitch('Show Bookmarks button on YouTube');
+    expect(restored.getAttribute('aria-checked')).toBe('false');
+    set.mockRejectedValueOnce(new Error('Storage unavailable'));
+    fireEvent.click(restored);
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'Could not save Bookmarks settings.'
+    );
+    await waitFor(() =>
+      expect(restored.getAttribute('aria-checked')).toBe('false')
+    );
+  });
   it('saves Cinema preset and custom colors without changing dimming and reports storage errors', async () => {
     render(<YouTubeCinemaSetting />);
     await readySwitch('Show Cinema Mode button on YouTube');
@@ -323,12 +346,14 @@ describe('YouTube button settings', () => {
       'Show Boost Volume button on YouTube',
       'Show Cinema Mode button on YouTube',
       'Show Loop Sections button on YouTube',
+      'Show Bookmarks button on YouTube',
       'Show Info Cards button on YouTube',
       'Show Screenshot button on YouTube',
       'Show Video Filters button on YouTube',
+      'Use PiP Override on YouTube',
     ]);
     const preview = screen.getByRole('img', {
-      name: 'YouTube player controls: Boost Volume, Cinema Mode, Loop Sections, Info Cards, Screenshot, Video Filters',
+      name: 'YouTube player controls: Boost Volume, Cinema Mode, Loop Sections, Bookmarks, Info Cards, Screenshot, Video Filters, Picture-in-Picture',
     });
     expect(
       preview.querySelector('button, input, [tabindex]:not([tabindex="-1"])')
@@ -341,6 +366,7 @@ describe('YouTube button settings', () => {
       'Boost Volume',
       'Cinema Mode',
       'Loop Sections',
+      'Bookmarks',
       'Info Cards',
       'Screenshot',
       'Video Filters',
@@ -361,7 +387,7 @@ describe('YouTube button settings', () => {
     );
     fireEvent.mouseOver(screen.getByText('Chaptered Timeline'));
     expect(preview.getAttribute('aria-label')).toBe(
-      'YouTube player controls: Boost Volume, Cinema Mode, Loop Sections, Info Cards, Screenshot, Video Filters'
+      'YouTube player controls: Boost Volume, Cinema Mode, Loop Sections, Bookmarks, Info Cards, Screenshot, Video Filters, Picture-in-Picture'
     );
     expect(
       screen.getByText(

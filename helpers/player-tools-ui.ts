@@ -34,7 +34,7 @@ summary{cursor:pointer;color:#aebace;padding:8px 0}details{margin:6px 0}.muted{c
 .timeline.editing .range:hover .delete-loop-section,.timeline.editing .saved-range:hover .delete-loop-section,.timeline.editing .delete-loop-section:focus-visible{opacity:1;pointer-events:auto}
 .delete-loop-section:not(:disabled):hover{background:#ffe477}
 .timeline:not(.editing) .delete-loop-section,.timeline[data-dragging=true] .delete-loop-section{display:none}
-.marker{position:absolute;top:0;width:8px;height:10px;padding:0;transform:translateX(-50%);background:#ffce75;border:1px solid #332300;pointer-events:auto;border-radius:2px}
+.marker{position:absolute;top:0;width:8px;height:10px;padding:0;transform:translateX(-50%);background:#38d9ff;border:1px solid #06333f;pointer-events:auto;border-radius:2px}
 .saved-range{z-index:2;position:absolute;bottom:1px;height:6px;padding:0;border-radius:1px;background:#F3CD45;pointer-events:auto;min-width:4px}
 .loop-editor{width:auto;max-width:none;display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:10px;border-radius:12px 12px 4px 4px;transform-origin:bottom center;opacity:0;transform:translateY(16px) scaleY(.85);visibility:hidden;pointer-events:none;transition:opacity 200ms ease,transform 240ms ease,visibility 0s 240ms}
 .loop-editor[data-open=true]{opacity:1;transform:translateY(0) scaleY(1);visibility:visible;pointer-events:auto;transition-delay:0s}

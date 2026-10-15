@@ -67,6 +67,53 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 describe('saved library background coordination', () => {
+  it('replaces only one video bookmarks atomically and preserves sections and other videos', async () => {
+    const section = { ...item, id: 'section', end: 20 };
+    const other = {
+      ...item,
+      id: 'other',
+      mediaKey: 'youtube:other',
+      url: 'https://www.youtube.com/watch?v=other',
+    };
+    for (const entry of [item, section, other])
+      await request({ op: 'put', item: entry });
+    await request({
+      op: 'replace-bookmarks',
+      mediaKey: item.mediaKey,
+      items: [],
+    });
+    expect((await request({ op: 'list' })).library).toMatchObject({
+      items: [section, other],
+    });
+    await request({
+      op: 'replace-bookmarks',
+      mediaKey: item.mediaKey,
+      items: [item],
+    });
+    expect((await request({ op: 'list' })).library).toMatchObject({
+      items: [section, other, item],
+    });
+    expect(
+      await request({
+        op: 'replace-bookmarks',
+        mediaKey: item.mediaKey,
+        items: [other],
+      })
+    ).toHaveProperty('error');
+    vi.spyOn(chrome.storage.local, 'set').mockRejectedValueOnce(
+      new Error('Storage unavailable')
+    );
+    expect(
+      await request({
+        op: 'replace-bookmarks',
+        mediaKey: item.mediaKey,
+        items: [],
+      })
+    ).toHaveProperty('error');
+    expect((await request({ op: 'list' })).library).toMatchObject({
+      items: [section, other, item],
+    });
+  });
   it('serializes simultaneous saves from different tabs without dropping items', async () => {
     await Promise.all([
       request({ op: 'put', item }),

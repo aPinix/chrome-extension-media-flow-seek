@@ -11,12 +11,14 @@ import {
   type YouTubeControl,
 } from '@/helpers/youtube-control-icons';
 import { cn } from '@/lib/utils';
+import { YouTubeBookmarksSetting } from './youtube-bookmarks-setting';
 import { YouTubeBoostSetting } from './youtube-boost-setting';
 import { YouTubeCinemaSetting } from './youtube-cinema-setting';
 import { YouTubeFiltersSetting } from './youtube-filters-setting';
 import { YouTubeInfoCardsSetting } from './youtube-info-cards-setting';
 import { YouTubeLoopSetting } from './youtube-loop-setting';
 import { YouTubeMiniPlayerSetting } from './youtube-mini-player-setting';
+import { YouTubePipSetting } from './youtube-pip-setting';
 import { YouTubePlayerButtonPreview } from './youtube-player-button-preview';
 import { YouTubeScreenshotSetting } from './youtube-screenshot-setting';
 
@@ -68,10 +70,12 @@ export function YouTubeSettings({
         <YouTubeBoostSetting disabled={!extensionEnabled} />
         <YouTubeCinemaSetting disabled={!extensionEnabled} />
         <YouTubeLoopSetting disabled={!extensionEnabled} />
+        <YouTubeBookmarksSetting disabled={!extensionEnabled} />
         <YouTubeInfoCardsSetting disabled={!extensionEnabled} />
         <YouTubeScreenshotSetting disabled={!extensionEnabled} />
         <YouTubeFiltersSetting disabled={!extensionEnabled} />
         <YouTubeMiniPlayerSetting disabled={!extensionEnabled} />
+        <YouTubePipSetting disabled={!extensionEnabled} />
         <CardListItem
           components={{
             RightSlot: (

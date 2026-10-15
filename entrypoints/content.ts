@@ -17,6 +17,9 @@ export default defineContentScript({
   matchAboutBlank: true,
   matchOriginAsFallback: true,
   main() {
+    // The opener supplies the video and controls in Document PiP. Avoid
+    // creating a second overlay/controller in its about:blank window.
+    if (window.matchMedia?.('(display-mode: picture-in-picture)').matches) return;
     // Initialize managers
     const settingsManager = new SettingsManager();
     const videoStateManager = new VideoStateManager();

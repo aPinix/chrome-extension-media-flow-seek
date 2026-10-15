@@ -14,6 +14,20 @@ import {
 } from './player-actions';
 import { clamp, type PlayerToolsSettings } from './player-tools-settings';
 import { button, element, TOOLS_STYLES } from './player-tools-ui';
+import {
+  DEFAULT_YOUTUBE_PIP_SIZE,
+  normalizeYouTubePipSize,
+  type PipWindow,
+  YOUTUBE_PIP_REQUEST,
+  YOUTUBE_PIP_RESULT,
+  YOUTUBE_PIP_SETTINGS_CHANGED,
+  YOUTUBE_PIP_SIZE_KEY,
+} from './youtube-pip';
+import { controlYouTubePipWindow } from './youtube-pip-interaction';
+import {
+  animateYouTubePipReturn,
+  createYouTubePipReturnArea,
+} from './youtube-pip-return';
 
 type Geometry = MiniPlayerGeometry;
 export function clampMiniGeometry(
@@ -38,16 +52,11 @@ export function clampMiniGeometry(
     ),
   };
 }
-type DocumentPip = {
-  window: Window | null;
-  requestWindow(options: { width: number; height: number }): Promise<Window>;
-};
-type PipWindow = Window & { documentPictureInPicture?: DocumentPip };
-
 export class FloatingPlayer {
   private doc: Document;
   private win: Window;
   private overlayHost: HTMLElement;
+  private root: ShadowRoot;
   private placeholder: HTMLElement | null = null;
   private player: HTMLElement | null = null;
   private restoreStyles: (() => void) | null = null;
@@ -68,7 +77,12 @@ export class FloatingPlayer {
   private geometryReady = false;
   private suppressed = false;
   private pip: Window | null = null;
+  private overridePip = false;
+  private pipSize = { ...DEFAULT_YOUTUBE_PIP_SIZE };
+  private pipSizeTimer = 0;
   private restorePip: (() => void) | null = null;
+  private returnPip: (() => void) | null = null;
+  private restoreNativePip: (() => void) | null = null;
   private disposed = false;
   private pendingPip = false;
   private generation = 0;
@@ -94,6 +108,7 @@ export class FloatingPlayer {
     this.doc = video.ownerDocument;
     this.win = this.doc.defaultView ?? window;
     this.overlayHost = root.host as HTMLElement;
+    this.root = root;
     this.bar = element(this.doc, 'div', 'mini-bar');
     this.bar.hidden = true;
     this.bar.tabIndex = 0;
@@ -106,6 +121,10 @@ export class FloatingPlayer {
       this.doc,
       'Back to top',
       () => {
+        if (this.overridePip) {
+          this.returnPip?.();
+          return;
+        }
         this.restoreMini();
         this.win.scrollTo({ top: 0, behavior: 'instant' });
       },
@@ -117,6 +136,10 @@ export class FloatingPlayer {
       this.doc,
       'Close',
       () => {
+        if (this.overridePip) {
+          this.closePip();
+          return;
+        }
         this.suppressed = true;
         this.restoreMini();
       },
@@ -209,6 +232,7 @@ export class FloatingPlayer {
     const start = (event: Event, resizing: boolean) => {
       const e = event as PointerEvent;
       if (
+        this.overridePip ||
         e.button !== 0 ||
         (!resizing && (e.target as Element).closest('button'))
       )
@@ -250,6 +274,7 @@ export class FloatingPlayer {
       listen(node, 'keydown', (event) => {
         const e = event as KeyboardEvent;
         if (
+          this.overridePip ||
           e.target !== node ||
           !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)
         )
@@ -268,6 +293,7 @@ export class FloatingPlayer {
         this.geometry = { ...this.renderedGeometry };
       });
       listen(node, 'keyup', (event) => {
+        if (this.overridePip) return;
         if (
           ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(
             (event as KeyboardEvent).key
@@ -286,17 +312,66 @@ export class FloatingPlayer {
       'timeupdate',
       'progress',
       'seeked',
+      'enterpictureinpicture',
+      'leavepictureinpicture',
     ])
       listen(video, type, () => {
         this.update();
         this.syncControls();
       });
+    listen(video, 'enterpictureinpicture', () => {
+      if (
+        !this.isYouTube ||
+        !this.settings().youtubePipOverride ||
+        this.settings().youtubePipMode !== 'chrome-video'
+      )
+        return;
+      this.restoreNativePip?.();
+      const { area, button } = createYouTubePipReturnArea(
+        this.doc,
+        () => {
+          button.disabled = true;
+          void this.doc.exitPictureInPicture().catch(() => {
+            button.disabled = false;
+          });
+        },
+        true
+      );
+      video.parentElement?.append(area);
+      this.restoreNativePip = () => {
+        area.remove();
+        this.restoreNativePip = null;
+      };
+      this.onFloat();
+    });
+    listen(video, 'leavepictureinpicture', () => this.restoreNativePip?.());
     const keyboardMode = (enabled: boolean) => {
       for (const node of [this.bar, this.controls, this.resize])
         node.dataset.keyboard = String(enabled);
     };
     listen(this.doc, 'keydown', () => keyboardMode(true));
     listen(this.doc, 'pointerdown', () => keyboardMode(false));
+    if (this.isYouTube) {
+      listen(video, YOUTUBE_PIP_REQUEST, (event) => {
+        if (video.dataset.mfsPipOverride !== 'true') return;
+        event.preventDefault();
+        void this.openPip().then(
+          () => {
+            delete video.dataset.mfsPipError;
+            video.dispatchEvent(new Event(YOUTUBE_PIP_RESULT));
+          },
+          (error: unknown) => {
+            const message =
+              error instanceof Error
+                ? error.message
+                : 'Could not open Picture-in-Picture.';
+            video.dataset.mfsPipError = message;
+            video.dispatchEvent(new Event(YOUTUBE_PIP_RESULT));
+            this.report(message);
+          }
+        );
+      });
+    }
     listen(this.seek, 'pointerdown', (event) => {
       const e = event as PointerEvent;
       const range = getMediaSeekRange(this.video);
@@ -365,12 +440,14 @@ export class FloatingPlayer {
       chrome.storage.onChanged?.removeListener(storageChanged)
     );
     void chrome.storage.local
-      .get(MINI_PLAYER_GEOMETRY_KEY)
+      .get([MINI_PLAYER_GEOMETRY_KEY, YOUTUBE_PIP_SIZE_KEY])
       .then((data) => {
         if (!this.disposed)
           this.geometry = normalizeMiniPlayerGeometry(
             data[MINI_PLAYER_GEOMETRY_KEY]
           );
+        if (!this.disposed)
+          this.pipSize = normalizeYouTubePipSize(data[YOUTUBE_PIP_SIZE_KEY]);
       })
       .catch(() => {})
       .finally(() => {
@@ -507,6 +584,7 @@ export class FloatingPlayer {
   }
   update(): void {
     if (this.disposed) return;
+    this.updatePipOverride();
     if (
       !this.isYouTube ||
       this.doc.location.pathname !== '/watch' ||
@@ -534,6 +612,41 @@ export class FloatingPlayer {
     if (!this.player && !this.video.paused) this.startMini();
     this.layoutMini();
     this.syncControls();
+  }
+  private updatePipOverride(): void {
+    if (!this.isYouTube) return;
+    const mode = this.settings().youtubePipMode;
+    const enabled =
+      this.settings().youtubePipOverride &&
+      this.doc.location.pathname === '/watch' &&
+      this.video.isConnected &&
+      !this.doc.fullscreenElement &&
+      !this.doc.querySelector(
+        '#movie_player.ad-showing,#movie_player.ad-interrupting'
+      ) &&
+      (mode === 'chrome-video'
+        ? this.doc.pictureInPictureEnabled
+        : Boolean((this.win as PipWindow).documentPictureInPicture)) &&
+      this.win === this.win.top;
+    const auto = enabled && this.settings().youtubePipAutoOnTabChange;
+    if (
+      this.video.dataset.mfsPipOverride === String(enabled) &&
+      this.video.dataset.mfsPipAuto === String(auto) &&
+      this.video.dataset.mfsPipMode === mode
+    )
+      return;
+    const previousMode = this.video.dataset.mfsPipMode;
+    this.video.dataset.mfsPipOverride = String(enabled);
+    this.video.dataset.mfsPipAuto = String(auto);
+    this.video.dataset.mfsPipMode = mode;
+    this.doc.dispatchEvent(new Event(YOUTUBE_PIP_SETTINGS_CHANGED));
+    if ((!enabled || mode === 'chrome-video') && this.overridePip) this.reset();
+    if (
+      previousMode === 'chrome-video' &&
+      (!enabled || mode !== previousMode) &&
+      this.doc.pictureInPictureElement === this.video
+    )
+      void this.doc.exitPictureInPicture().catch(() => {});
   }
   private startMini(): void {
     const player = this.video.closest<HTMLElement>('#movie_player');
@@ -788,12 +901,18 @@ export class FloatingPlayer {
     this.geometrySignature = '';
     this.bar.hidden = this.resize.hidden = this.controls.hidden = true;
   }
-  async openPip(): Promise<void> {
-    if (this.inPip) return;
+  async openPip(): Promise<Window | undefined> {
+    if (this.disposed) return;
+    if (this.inPip) return this.pip ?? undefined;
     this.restoreMini();
     const generation = this.generation;
     const api = (this.win as PipWindow).documentPictureInPicture;
-    if (!api || this.win !== this.win.top) {
+    const override = this.isYouTube && this.settings().youtubePipOverride;
+    if (
+      !api ||
+      this.win !== this.win.top ||
+      (override && this.settings().youtubePipMode === 'chrome-video')
+    ) {
       if (
         !this.doc.pictureInPictureEnabled ||
         !this.video.requestPictureInPicture
@@ -816,17 +935,37 @@ export class FloatingPlayer {
       return;
     }
     this.pendingPip = true;
+    this.overridePip = override;
     let pip: Window;
     try {
-      pip = await api.requestWindow({ width: 560, height: 400 });
+      pip = await api.requestWindow(
+        override
+          ? {
+              width: this.pipSize.width,
+              height: Math.round(
+                this.pipSize.width /
+                  (this.video.videoWidth && this.video.videoHeight
+                    ? this.video.videoWidth / this.video.videoHeight
+                    : 16 / 9)
+              ),
+              preferInitialWindowPlacement: false,
+            }
+          : { width: 560, height: 400 }
+      );
+    } catch (error) {
+      this.overridePip = false;
+      this.update();
+      throw error;
     } finally {
       this.pendingPip = false;
     }
     if (this.disposed || generation !== this.generation) {
       pip.close();
+      this.overridePip = false;
       return;
     }
     this.pip = pip;
+    this.onFloat();
     const video = this.video;
     const marker = this.doc.createComment('mfs-pip-video');
     video.before(marker);
@@ -853,6 +992,10 @@ export class FloatingPlayer {
       const original = this.doc.createElement('div');
       original.setAttribute('style', style);
       video.style.filter = original.style.filter;
+    }
+    if (override) {
+      this.setupOverridePip(pip, shadow, marker, style, wasPlaying);
+      return pip;
     }
     const controls = element(pip.document, 'div', 'pip-controls');
     shadow.append(controls);
@@ -973,19 +1116,194 @@ export class FloatingPlayer {
     };
     this.restorePip = restore;
     pip.addEventListener('pagehide', restore, { once: true });
+    return pip;
+  }
+  private setupOverridePip(
+    pip: Window,
+    shadow: ShadowRoot,
+    marker: Comment,
+    originalStyle: string | null,
+    wasPlaying: boolean
+  ): void {
+    const video = this.video;
+    const { area: returnArea, button: returnButton } =
+      createYouTubePipReturnArea(this.doc, () => this.returnPip?.());
+    marker.parentElement?.append(returnArea);
+    video.style.height = '100vh';
+    const css = element(pip.document, 'style');
+    css.textContent =
+      ':host{display:block}.mini-bar,.mini-controls{border-radius:0}.mini-bar[data-dragging=true]{cursor:grabbing}[data-mfs-pip-returning=true]{opacity:0!important;pointer-events:none!important}';
+    shadow.append(css, this.bar, this.controls, this.resize);
+    this.bar.hidden = this.controls.hidden = false;
+    this.resize.hidden = true;
+    this.bar.setAttribute(
+      'aria-label',
+      'Move Picture-in-Picture. Drag anywhere on the video.'
+    );
+    const releaseWindowControls = controlYouTubePipWindow(
+      pip,
+      this.bar,
+      video,
+      (message) => {
+        this.miniStatus.textContent = message;
+      }
+    );
+    let controlsReleased = false;
+    const releaseControls = () => {
+      if (controlsReleased) return;
+      controlsReleased = true;
+      releaseWindowControls();
+    };
+    let returning = false;
+    const back = this.bar.querySelector<HTMLButtonElement>('.mini-return');
+    const close = this.bar.querySelector<HTMLButtonElement>('.mini-close');
+    back?.setAttribute('aria-label', 'Back to tab');
+    if (back) back.title = 'Back to tab';
+    close?.setAttribute('aria-label', 'Close Picture-in-Picture');
+    if (close) close.title = 'Close Picture-in-Picture';
+    const layout = () => {
+      const width = pip.innerWidth;
+      const height = pip.innerHeight;
+      for (const node of [this.bar, this.controls])
+        node.style.cssText = `left:0;top:0;width:${width}px;height:${height}px;--mini-scale:1`;
+      this.syncControls();
+    };
+    const saveSize = () => {
+      this.pipSize = normalizeYouTubePipSize({
+        width: pip.innerWidth,
+        height: pip.innerHeight,
+      });
+      void chrome.storage.local
+        .set({ [YOUTUBE_PIP_SIZE_KEY]: { ...this.pipSize } })
+        .catch(() => {
+          if (!this.disposed)
+            this.miniStatus.textContent =
+              'Could not save Picture-in-Picture size.';
+        });
+    };
+    const resized = () => {
+      if (returning) return;
+      layout();
+      pip.clearTimeout(this.pipSizeTimer);
+      this.pipSizeTimer = pip.setTimeout(saveSize, 200);
+    };
+    const keyboard = () => {
+      this.bar.dataset.keyboard = this.controls.dataset.keyboard = 'true';
+    };
+    const pointer = () => {
+      this.bar.dataset.keyboard = this.controls.dataset.keyboard = 'false';
+    };
+    this.returnPip = () => {
+      if (returning || this.pip !== pip) return;
+      const focusPlayer = () => {
+        this.win.focus();
+        this.doc
+          .querySelector<HTMLElement>('#movie_player')
+          ?.focus({ preventScroll: true });
+      };
+      const destination = marker.parentElement;
+      if (
+        !destination ||
+        !chrome.runtime?.sendMessage ||
+        this.win.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+      ) {
+        focusPlayer();
+        this.closePip();
+        return;
+      }
+      const bounds = destination.getBoundingClientRect();
+      if (
+        bounds.top < this.headerBottom() ||
+        bounds.bottom > this.win.innerHeight ||
+        bounds.left < 0 ||
+        bounds.right > this.win.innerWidth
+      )
+        destination.scrollIntoView({
+          block: 'center',
+          inline: 'nearest',
+          behavior: 'instant',
+        });
+      pip.clearTimeout(this.pipSizeTimer);
+      saveSize();
+      returning = true;
+      releaseControls();
+      returnButton.disabled = true;
+      returnButton.setAttribute('aria-busy', 'true');
+      this.bar.dataset.mfsPipReturning = this.controls.dataset.mfsPipReturning =
+        'true';
+      focusPlayer();
+      void animateYouTubePipReturn(pip, video, destination)
+        .catch(() => {})
+        .finally(() => {
+          if (this.pip === pip) this.closePip();
+        });
+    };
+    pip.addEventListener('resize', resized);
+    pip.document.addEventListener('keydown', keyboard);
+    pip.document.addEventListener('pointerdown', pointer);
+    const restore = () => {
+      if (!this.restorePip) return;
+      this.restorePip = null;
+      this.returnPip = null;
+      returnArea.remove();
+      releaseControls();
+      pip.clearTimeout(this.pipSizeTimer);
+      if (!returning) saveSize();
+      pip.removeEventListener('resize', resized);
+      pip.removeEventListener('pagehide', restore);
+      pip.document.removeEventListener('keydown', keyboard);
+      pip.document.removeEventListener('pointerdown', pointer);
+      this.root.append(this.bar, this.controls, this.resize);
+      delete this.bar.dataset.mfsPipReturning;
+      delete this.controls.dataset.mfsPipReturning;
+      this.bar.hidden = this.controls.hidden = this.resize.hidden = true;
+      this.bar.setAttribute(
+        'aria-label',
+        'Move mini player. Use arrow keys; Shift for fine adjustments.'
+      );
+      back?.setAttribute('aria-label', 'Back to top');
+      if (back) back.title = 'Back to top';
+      close?.setAttribute('aria-label', 'Close mini player');
+      if (close) close.title = 'Close mini player';
+      this.seekDrag = null;
+      this.controls.dataset.seeking = 'false';
+      this.seekHint.hidden = true;
+      const playing = !video.paused;
+      if (marker.parentNode) marker.replaceWith(video);
+      if (originalStyle === null) video.removeAttribute('style');
+      else video.setAttribute('style', originalStyle);
+      delete video.dataset.mfsPip;
+      this.pip = null;
+      this.overridePip = false;
+      if (playing && video.isConnected && !this.disposed)
+        void video.play().catch(() => {});
+      this.win.dispatchEvent(new Event('resize'));
+    };
+    this.restorePip = restore;
+    pip.addEventListener('pagehide', restore, { once: true });
+    layout();
+    if (wasPlaying) void video.play().catch(() => {});
+  }
+  private closePip(): void {
+    const pip = this.pip;
+    this.restorePip?.();
+    pip?.close();
   }
   reset(): void {
     this.generation++;
     this.suppressed = false;
     this.restoreMini();
-    const pip = this.pip;
-    this.restorePip?.();
-    pip?.close();
+    this.closePip();
+    this.restoreNativePip?.();
     if (this.doc.pictureInPictureElement === this.video)
       void this.doc.exitPictureInPicture().catch(() => {});
   }
   cleanup(): void {
     this.disposed = true;
+    delete this.video.dataset.mfsPipOverride;
+    delete this.video.dataset.mfsPipAuto;
+    delete this.video.dataset.mfsPipMode;
+    this.doc.dispatchEvent(new Event(YOUTUBE_PIP_SETTINGS_CHANGED));
     this.reset();
     for (const clean of this.cleanupEvents) clean();
     this.bar.remove();

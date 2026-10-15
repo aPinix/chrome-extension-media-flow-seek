@@ -557,7 +557,9 @@ export class OverlayCreator {
             this.youtubePreviewChapterModels.get(scrubTimeline),
           isEnabled: () =>
             this.settingsManager.isSeekbarThumbnailPreviewEnabled?.() ?? false,
-          isScrubbing: () => videoState.isUserScrubbing,
+          isScrubbing: () =>
+            videoState.isTimelineDragging === true ||
+            videoState.isVideoDragging === true,
           preview: thumbnailPreview,
           timeline: scrubTimeline,
           video,
@@ -1591,6 +1593,7 @@ ${MEDIA_OVERLAY_STYLES}
       if (commitPendingSeek) deferredSeek.commit();
       releasePointer(pointerId);
       videoState.isUserScrubbing = false;
+      videoState.isTimelineDragging = false;
       this.updateTimelineInteractivityForVideo(video, timeline);
       this.updateTimelineHoverState(video, videoState, videoState.isHovering);
     };
@@ -1614,6 +1617,7 @@ ${MEDIA_OVERLAY_STYLES}
       event.stopPropagation();
       activePointerId = event.pointerId;
       videoState.isUserScrubbing = true;
+      videoState.isTimelineDragging = true;
       timeline.style.cursor = 'grabbing';
 
       try {
@@ -1679,6 +1683,7 @@ ${MEDIA_OVERLAY_STYLES}
           activePointerId = null;
           releasePointer(pointerId);
           videoState.isUserScrubbing = false;
+          videoState.isTimelineDragging = false;
         }
         timeline.removeEventListener('pointerdown', handlePointerDown);
         timeline.removeEventListener('pointermove', handlePointerMove);

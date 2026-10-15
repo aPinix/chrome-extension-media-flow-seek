@@ -34,6 +34,7 @@ export default defineConfig({
         'tabs',
         'storage',
         'scripting',
+        'system.display',
         // 'notifications',
         // 'contextMenus',
         // 'sidePanel',

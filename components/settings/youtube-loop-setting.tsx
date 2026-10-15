@@ -1,4 +1,5 @@
 import { RepeatIcon } from 'lucide-react';
+import { useId } from 'react';
 import { AppSwitch } from '@/components/app/app-switch';
 import { CardListItem } from '@/components/popup/card-list-item';
 import { ExtraFeaturePreviewTooltip } from '@/components/popup/extra-feature-preview-tooltip';
@@ -11,6 +12,7 @@ export function YouTubeLoopSetting({
 }) {
   const { settings, ready, saving, error, save } =
     usePlayerToolsPreferences('Loop Sections');
+  const rememberId = useId();
   return (
     <CardListItem
       components={{
@@ -25,33 +27,36 @@ export function YouTubeLoopSetting({
         ),
         BottomSlot:
           settings.youtubeLoop || error ? (
-            <>
+            <div className="space-y-3">
               {settings.youtubeLoop && (
-                <div className="ml-8 flex items-center justify-between gap-3 border-slate-100 border-t pt-3 dark:border-white/5">
-                  <div>
-                    <div className="font-medium text-slate-700 text-xs dark:text-slate-300">
-                      Remember loops in videos
-                    </div>
-                    <p className="mt-1 text-muted-foreground text-xs">
+                <label
+                  className="flex cursor-pointer items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-3 text-slate-600 text-xs dark:bg-slate-900/40 dark:text-slate-300"
+                  htmlFor={rememberId}
+                >
+                  <span aria-hidden="true">
+                    <span className="block">Remember loops in videos</span>
+                    <span className="mt-1 block text-muted-foreground text-xs">
                       Save sections for your next visit.
-                    </p>
-                  </div>
+                    </span>
+                  </span>
                   <AppSwitch
                     aria-label="Remember loops in videos"
                     checked={settings.rememberYoutubeLoops}
                     disabled={disabled || !ready || saving}
+                    id={rememberId}
                     onCheckedChange={(next) =>
                       save({ rememberYoutubeLoops: next })
                     }
+                    size="sm"
                   />
-                </div>
+                </label>
               )}
               {error && (
                 <p className="text-red-600 text-xs" role="alert">
                   {error}
                 </p>
               )}
-            </>
+            </div>
           ) : undefined,
       }}
       description="Add a button to repeat sections of the video"

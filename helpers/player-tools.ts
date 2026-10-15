@@ -42,6 +42,7 @@ import {
   YouTubeAdvancedMenu,
   type YouTubeAdvancedPreferences,
 } from './youtube-advanced-menu';
+import { YouTubeBookmarksEditor } from './youtube-bookmarks-editor';
 import {
   extractYouTubeChapterModel,
   isYouTubeHostname,
@@ -90,6 +91,7 @@ export class PlayerTools {
   private screenshotBusy = false;
   private filtersMenu: YouTubeFiltersMenu | null;
   private advancedMenu: YouTubeAdvancedMenu | null = null;
+  private bookmarksEditor: YouTubeBookmarksEditor | null = null;
   private advancedSaveQueue: Promise<void> = Promise.resolve();
   private editToggle: HTMLButtonElement;
   private settings = { ...DEFAULT_PLAYER_TOOLS };
@@ -226,16 +228,21 @@ export class PlayerTools {
           onLoop: () => {
             if (!this.canLoop()) return;
             if (!this.loop) {
-              const first = this.items.find((item) => item.end !== undefined);
+              const first = this.items.find((item) => item.end !== undefined &&
+                this.video.currentTime >= item.start && this.video.currentTime < item.end) ??
+                this.items.find((item) => item.end !== undefined);
               if (!first) {
                 this.setLoopOpen(true);
                 return;
               }
-              this.activateItem(first, true);
+              this.activateItem(first, true, !(this.video.currentTime >= first.start &&
+                first.end !== undefined && this.video.currentTime < first.end));
             } else this.toggleLoop();
             this.layout();
           },
           onEdit: () => this.setLoopOpen(true),
+          onBookmarks: () => this.addYouTubeBookmark(),
+          onEditBookmarks: () => this.openBookmarks(),
           onBoost: () => this.toggleBoost(),
           onCinema: () => this.toggleCinema(),
           onInfoCards: () => {
@@ -254,6 +261,7 @@ export class PlayerTools {
             )
               return;
             this.advancedMenu?.close();
+            this.bookmarksEditor?.close();
             if (!this.filtersMenu?.isOpen) {
               if (this.open) this.setOpen(false);
               this.setLoopOpen(false);
@@ -261,6 +269,11 @@ export class PlayerTools {
             this.filtersMenu?.toggle(this.youtubeButtons.filtersButton);
           },
           onAdvanced: (kind) => this.openAdvanced(kind),
+          onPip: () => {
+            this.cinema = false;
+            this.layout();
+            this.perform(() => this.floating.openPip());
+          },
         })
       : null;
     this.filtersMenu = this.youtube
@@ -287,7 +300,11 @@ export class PlayerTools {
     this.floating = new FloatingPlayer(
       video,
       this.root,
-      () => ({ ...this.settings, miniPlayer: this.initialized && this.settings.miniPlayer }),
+      () => ({
+        ...this.settings,
+        miniPlayer: this.initialized && this.settings.miniPlayer,
+        youtubePipOverride: this.initialized && this.settings.youtubePipOverride,
+      }),
       this.youtube,
       (message) => this.report(message),
       (speed) => {
@@ -425,6 +442,24 @@ export class PlayerTools {
     if (this.loopPreview) loopStyle.textContent += '.time-pill{display:none!important}';
     loopRoot.append(loopStyle, this.track);
     this.timeline.append(this.loopSurface);
+    this.bookmarksEditor = this.youtube
+      ? new YouTubeBookmarksEditor(video, this.timeline, {
+          onSave: (item) => this.saveBookmarkEdit(item),
+          onDelete: (id) => this.deleteBookmark(id),
+          onAdd: (time) => this.saveMoment(false, time),
+          onRestore: (items) => this.restoreBookmarks(items),
+          onSeek: (time) => {
+            const item = this.items.find(
+              (entry) => entry.end === undefined && entry.start === time
+            );
+            if (item) this.activateItem(item);
+          },
+          onOpenChange: () => {
+            this.renderMarkers();
+            this.layout();
+          },
+        })
+      : null;
     const barStyle = element(this.doc, 'style');
     barStyle.textContent = '.scrub-timeline[data-mfs-loop-animating=true]{transition:height 220ms ease,top 220ms ease,opacity 300ms ease!important}.scrub-timeline[data-mfs-loop-editing=true],.scrub-timeline[data-mfs-loop-closing=true]{overflow:visible!important;clip-path:none!important;opacity:1!important;visibility:visible!important}.scrub-timeline[data-mfs-loop-editing=true]{pointer-events:auto!important}@media(prefers-reduced-motion:reduce){.scrub-timeline{transition:none!important}}';
     this.doc.documentElement.append(barStyle);
@@ -538,10 +573,15 @@ export class PlayerTools {
     this.listen(this.doc, 'mfs-toggle-active-loop', (event) => {
       if ((event as CustomEvent).detail === this.video) this.toggleLoop();
     });
+    this.listen(video, 'play', () => {
+      if (this.loopEnabled && this.loop && !this.editing && !this.dragging && this.canLoop() &&
+        (video.currentTime < this.loop.start || video.currentTime >= this.loop.end))
+        seekVideo(video, this.loop.start);
+      this.sync();
+    });
     for (const type of [
       'timeupdate',
       'ratechange',
-      'play',
       'pause',
       'seeked',
       'durationchange',
@@ -922,6 +962,7 @@ export class PlayerTools {
     if (value) {
       this.filtersMenu?.close();
       this.advancedMenu?.close();
+      this.bookmarksEditor?.close();
       this.loopOpen = false;
       this.editing = false;
     }
@@ -982,6 +1023,7 @@ export class PlayerTools {
     if (value) {
       this.filtersMenu?.close();
       this.advancedMenu?.close();
+      this.bookmarksEditor?.close();
     }
     if (value) this.setOpen(false);
     if (!value) this.loopPreview?.(null);
@@ -1043,6 +1085,13 @@ export class PlayerTools {
   }
   private toggleLoop(): void {
     if (!this.canLoop()) return;
+    const containing = !this.loopEnabled && this.items.find((item) =>
+      item.end !== undefined && this.video.currentTime >= item.start && this.video.currentTime < item.end);
+    if (containing && containing.id !== this.activeSavedId) {
+      this.activateItem(containing, true, false);
+      this.scheduleLoop();
+      return;
+    }
     if (!this.loop)
       this.loop = normalizeLoop(
         this.video.currentTime,
@@ -1052,7 +1101,8 @@ export class PlayerTools {
     if (!this.loop) return;
     this.loopEnabled = !this.loopEnabled;
     this.commitLoop();
-    if (this.loopEnabled) seekVideo(this.video, this.loop.start);
+    if (this.loopEnabled && (this.video.currentTime < this.loop.start || this.video.currentTime >= this.loop.end))
+      seekVideo(this.video, this.loop.start);
     this.renderLoop();
     this.scheduleLoop();
   }
@@ -1383,14 +1433,89 @@ export class PlayerTools {
     if (this.identity.persistent) await libraryRequest({ op: 'delete', id });
     this.renderItems();
   }
-  private async saveMoment(asLoop: boolean): Promise<void> {
+  private addYouTubeBookmark(): void {
+    if (
+      !this.initialized ||
+      !this.settings.youtubeBookmarksEnabled ||
+      !this.finite()
+    ) return;
+    const generation = this.identityGeneration;
+    const time = this.video.currentTime;
+    void this.saveMoment(false)
+      .then(() => {
+        if (!this.disposed && generation === this.identityGeneration)
+          this.youtubeButtons?.reportBookmark(`Bookmarked ${formatTime(time)}`);
+      })
+      .catch(() => {
+        if (!this.disposed && generation === this.identityGeneration)
+          this.youtubeButtons?.reportBookmark('Could not save bookmark. Try again.');
+      });
+  }
+  private openBookmarks(): void {
+    const anchor = this.youtubeButtons?.bookmarksButton;
+    if (!anchor || anchor.disabled || !this.settings.youtubeBookmarksEnabled) return;
+    this.filtersMenu?.close();
+    this.advancedMenu?.close();
+    if (this.open) this.setOpen(false);
+    this.setLoopOpen(false);
+    this.bookmarksEditor?.open(anchor);
+    void this.loadItems();
+  }
+  private async saveBookmarkEdit(item: SavedMoment): Promise<void> {
+    const existing = this.items.find(
+      (entry) => entry.id === item.id && entry.end === undefined
+    );
+    if (!existing || !this.finite() || !this.settings.youtubeBookmarksEnabled)
+      throw new Error('Bookmark unavailable.');
+    const generation = this.identityGeneration;
+    const next = { ...existing, name: item.name, start: item.start };
+    try {
+      if (this.identity.persistent) await libraryRequest({ op: 'put', item: next });
+    } catch (error) {
+      throw new Error(`Could not save bookmark. ${error instanceof Error ? error.message : 'Try again.'}`);
+    }
+    if (this.disposed || generation !== this.identityGeneration) return;
+    this.sessions = [...this.sessions.filter((entry) => entry.id !== next.id), next];
+    this.items = this.items.map((entry) => entry.id === next.id ? next : entry);
+    this.renderItems();
+  }
+  private async deleteBookmark(id: string): Promise<void> {
+    if (!this.items.some((item) => item.id === id && item.end === undefined) || !this.finite()) return;
+    const generation = this.identityGeneration;
+    try {
+      if (this.identity.persistent) await libraryRequest({ op: 'delete', id });
+    } catch {
+      throw new Error('Could not delete bookmark. Try again.');
+    }
+    if (this.disposed || generation !== this.identityGeneration) return;
+    this.items = this.items.filter((item) => item.id !== id);
+    this.sessions = this.sessions.filter((item) => item.id !== id);
+    this.renderItems();
+  }
+  private async restoreBookmarks(bookmarks: SavedMoment[]): Promise<void> {
+    if (!this.finite() || !this.settings.youtubeBookmarksEnabled)
+      throw new Error('Bookmarks unavailable.');
+    const generation = this.identityGeneration;
+    try {
+      if (this.identity.persistent)
+        await libraryRequest({ op: 'replace-bookmarks', mediaKey: this.identity.key, items: bookmarks });
+    } catch {
+      throw new Error('Could not save bookmarks. Try again.');
+    }
+    if (this.disposed || generation !== this.identityGeneration) return;
+    this.sessions = [...this.sessions.filter((item) => item.end !== undefined), ...bookmarks];
+    this.items = [...this.items.filter((item) => item.end !== undefined), ...bookmarks];
+    this.renderItems();
+  }
+  private async saveMoment(asLoop: boolean, bookmarkTime = this.video.currentTime): Promise<void> {
+    const generation = this.identityGeneration;
     if (asLoop && !this.canLoop())
       throw new Error('Enable Loop Sections in YouTube settings to save sections.');
     if (!this.finite())
       throw new Error('Saved moments require a video with a finite duration.');
     if (asLoop && !this.loop) throw new Error('Create a loop range first.');
     const range = asLoop ? this.loop : null;
-    const start = range ? range.start : this.video.currentTime;
+    const start = range ? range.start : bookmarkTime;
     const item: SavedMoment = {
       id:
         asLoop && this.activeSavedId ? this.activeSavedId : crypto.randomUUID(),
@@ -1403,7 +1528,7 @@ export class PlayerTools {
       start,
       ...(range ? { end: range.end } : {}),
       createdAt:
-        this.items.find((saved) => saved.id === this.activeSavedId)
+        this.items.find((saved) => asLoop && saved.id === this.activeSavedId)
           ?.createdAt ?? Date.now(),
     };
     if (asLoop) {
@@ -1414,6 +1539,10 @@ export class PlayerTools {
     const persist =
       this.identity.persistent &&
       (!asLoop || this.settings.rememberYoutubeLoops);
+    if (!asLoop && persist) {
+      await libraryRequest({ op: 'put', item });
+      if (this.disposed || generation !== this.identityGeneration) return;
+    }
     this.sessions = this.sessions.filter((entry) => entry.id !== item.id);
     this.sessions.push(item);
     this.items = this.items.filter((entry) => entry.id !== item.id);
@@ -1421,7 +1550,7 @@ export class PlayerTools {
     if (asLoop) this.activeSavedId = item.id;
     this.renderItems();
     this.renderLoop();
-    if (persist) await libraryRequest({ op: 'put', item });
+    if (asLoop && persist) await libraryRequest({ op: 'put', item });
     this.report(
       persist
         ? 'Saved to your local library.'
@@ -1502,6 +1631,7 @@ export class PlayerTools {
       );
     }
     this.renderMarkers();
+    this.updateYouTubeButtons();
   }
   private updateEditingActions(): void {
     const signature = (sections: SavedMoment[]) => JSON.stringify(
@@ -1602,6 +1732,7 @@ export class PlayerTools {
         this.addSectionDeleteButton(section, () => item.id);
         this.markers.append(section);
       } else {
+        if (this.bookmarksEditor?.isVisible || this.loopOpen || this.loopClosing) continue;
         const node = button(
           this.doc,
           '',
@@ -1664,6 +1795,11 @@ export class PlayerTools {
       return;
     }
     if (event.key === 'Escape') {
+      if (this.bookmarksEditor?.isVisible) {
+        event.preventDefault(); event.stopImmediatePropagation();
+        this.bookmarksEditor.close(true);
+        return;
+      }
       // Keep the page and general keyboard suspension from hiding the timeline
       // before its closing animation finishes, including repeated Escape presses.
       if (this.loopOpen || this.loopClosing) {
@@ -1688,7 +1824,7 @@ export class PlayerTools {
             ) ||
               node === this.host ||
               node.matches(
-                '.mfs-youtube-advanced-popup,.mfs-youtube-filters-popup'
+                '.mfs-youtube-advanced-popup,.mfs-youtube-filters-popup,.mfs-youtube-bookmarks-editor'
               ) ||
               (node as HTMLElement).isContentEditable)
         )
@@ -1730,7 +1866,7 @@ export class PlayerTools {
       ) {
         const target = this.youtubeControl(control);
         const advanced =
-          control === 'boost' || control === 'cinema' || control === 'screenshot';
+          control === 'boost' || control === 'cinema' || control === 'screenshot' || control === 'bookmarks' || control === 'loop';
         if (
           target?.isConnected &&
           !target.disabled &&
@@ -1738,7 +1874,9 @@ export class PlayerTools {
         ) {
           event.preventDefault();
           event.stopImmediatePropagation();
-          if (event.shiftKey && advanced) this.openAdvanced(control);
+          if (event.shiftKey && control === 'bookmarks') this.openBookmarks();
+          else if (event.shiftKey && control === 'loop') this.setLoopOpen(true);
+          else if (event.shiftKey && advanced && control !== 'bookmarks' && control !== 'loop') this.openAdvanced(control);
           else target.click();
           return;
         }
@@ -1907,8 +2045,10 @@ export class PlayerTools {
     this.panel.hidden = this.floating.inMini || !this.open || !visible;
     const showLoop = !this.floating.inMini && this.loopOpen && visible && this.canLoop();
     const closing = this.loopClosing && !this.floating.inMini && visible && this.canLoop();
-    this.timeline.dataset.mfsLoopClosing = String(closing);
-    if (this.timeline.dataset.mfsLoopEditing !== String(showLoop)) {
+    const showBookmarks = this.bookmarksEditor?.isOpen ?? false;
+    const bookmarkClosing = this.bookmarksEditor?.isVisible && !showBookmarks;
+    this.timeline.dataset.mfsLoopClosing = String(closing || bookmarkClosing);
+    if (this.timeline.dataset.mfsLoopEditing !== String(showLoop || showBookmarks)) {
       if (this.timeline.dataset.mfsLoopEditing !== undefined) {
         this.win.clearTimeout(this.loopAnimationTimer);
         this.timeline.dataset.mfsLoopAnimating = 'true';
@@ -1916,7 +2056,7 @@ export class PlayerTools {
           delete this.timeline.dataset.mfsLoopAnimating;
         }, 240);
       }
-      this.timeline.dataset.mfsLoopEditing = String(showLoop);
+      this.timeline.dataset.mfsLoopEditing = String(showLoop || showBookmarks);
       this.timeline.dispatchEvent(new Event('mfs-loop-layout'));
     }
     this.loopPanel.hidden = true;
@@ -1930,6 +2070,7 @@ export class PlayerTools {
       this.floating.inMini || !visible ||
       !this.finite() ||
       (!this.editing && !closing && !this.loop && !this.items.some(item => item.end !== undefined) && !(this.hovering || this.open));
+    if (this.bookmarksEditor?.isVisible) this.track.hidden = true;
 
     this.layoutCinema(r, visible);
   }
@@ -1986,6 +2127,13 @@ export class PlayerTools {
       hasPreset: Boolean(this.settings.siteFilters[this.doc.location.hostname]),
     });
     this.advancedMenu?.update(this.settings, filtersAvailable);
+    const bookmarksAvailable = this.initialized && this.finite() &&
+      !this.floating.inMini && !this.floating.inPip;
+    this.bookmarksEditor?.update(
+      this.items,
+      this.settings.youtubeBookmarksEnabled,
+      bookmarksAvailable
+    );
     this.youtubeButtons?.update({
       loop: {
         enabled: this.settings.youtubeLoop,
@@ -1995,6 +2143,11 @@ export class PlayerTools {
         hasSections:
           Boolean(this.loop) ||
           this.items.some((item) => item.end !== undefined),
+      },
+      bookmarks: {
+        enabled: this.settings.youtubeBookmarksEnabled,
+        available: bookmarksAvailable,
+        expanded: this.bookmarksEditor?.isOpen ?? false,
       },
       boost: {
         level: this.settings.youtubeBoostEnabled
@@ -2029,7 +2182,17 @@ export class PlayerTools {
         available: filtersAvailable,
         expanded: this.filtersMenu?.isOpen ?? false,
       },
+      pip: {
+        enabled: true,
+        available:
+          this.initialized && !this.isAd() && !this.floating.inPip &&
+          !this.floating.inMini && this.video.readyState >= 2 &&
+          this.video.isConnected &&
+          Boolean((this.win as Window & { documentPictureInPicture?: unknown }).documentPictureInPicture ||
+            this.doc.pictureInPictureEnabled && this.video.requestPictureInPicture),
+      },
     });
+    this.bookmarksEditor?.layout();
   }
   private youtubeControl(kind: YouTubeControl): HTMLButtonElement | undefined {
     return this.youtubeButtons?.[`${kind}Button`];
@@ -2038,6 +2201,7 @@ export class PlayerTools {
     const anchor = this.youtubeControl(kind);
     if (!anchor || !this.advancedMenu || anchor.disabled) return;
     this.filtersMenu?.close();
+    this.bookmarksEditor?.close();
     if (this.open) this.setOpen(false);
     this.setLoopOpen(false);
     this.advancedMenu.open(kind, anchor);
@@ -2096,6 +2260,7 @@ export class PlayerTools {
     this.lastAppliedFilter = null;
   }
   private resetMedia(): void {
+    this.bookmarksEditor?.reset();
     this.filtersMenu?.reset();
     this.advancedMenu?.close();
     this.autoBoostSuppressed = false;
@@ -2135,6 +2300,7 @@ export class PlayerTools {
     this.disposed = true;
     this.filtersMenu?.cleanup();
     this.advancedMenu?.cleanup();
+    this.bookmarksEditor?.cleanup();
     this.cinemaBackdrop?.cleanup();
     this.youtubeButtons?.cleanup();
     this.win.clearTimeout(this.loopAnimationTimer);

@@ -1,6 +1,7 @@
 import { installNativePlayerSeekBridge } from '@/helpers/media';
-import { installYouTubeStoryboardBridge } from '@/helpers/youtube-storyboards';
 import { installSocialThumbnailBridge } from '@/helpers/social-thumbnails';
+import { installYouTubePipBridge } from '@/helpers/youtube-pip';
+import { installYouTubeStoryboardBridge } from '@/helpers/youtube-storyboards';
 
 export default defineContentScript({
   matches: ['<all_urls>'],
@@ -13,5 +14,6 @@ export default defineContentScript({
     installNativePlayerSeekBridge(document);
     installYouTubeStoryboardBridge(document);
     installSocialThumbnailBridge(document);
+    installYouTubePipBridge(document);
   },
 });
